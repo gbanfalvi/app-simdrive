@@ -73,16 +73,19 @@ final class ScreenTargets {
             }
             current = try await calibrate(display: display, orientation: orientation)
         }
-        let isRotated = current.full.isLandscape != (display?.nativeSize.isLandscape ?? false)
-        return Target(display: display, record: current, mapping: ScreenMapping(isRotated: isRotated, orientation: orientation))
+        let mapping = ScreenMapping(screenshot: current, panelIsLandscape: display?.nativeSize.isLandscape ?? false,
+                                    deviceOrientation: orientation)
+        return Target(display: display, record: current, mapping: mapping)
     }
 
     func screenshot(to path: String, display selector: DisplaySelector, maxDimension: Int) async throws -> JSONValue {
         let display = try await resolveDisplay(selector)
         let orientation = try await currentOrientation()
         let canRotate = try await self.orientation.value() != nil
+        async let interfaceOrientation = Screenshots.interfaceOrientation(udid: udid, display: display?.index, tools: tools)
         let shot = try await Screenshots.capture(udid: udid, display: display?.index, to: path, maxDimension: maxDimension, tools: tools)
-        store.save(ScreenRecord(shot, orientation: orientation), for: display?.digitizerTarget ?? .mainScreen)
+        store.save(ScreenRecord(shot, orientation: orientation, interfaceOrientation: await interfaceOrientation),
+                   for: display?.digitizerTarget ?? .mainScreen)
         return ["path": .string(shot.path), "width": .number(Double(shot.image.width)), "height": .number(Double(shot.image.height)),
                 "fullPath": .string(shot.fullPath), "fullWidth": .number(Double(shot.full.width)),
                 "fullHeight": .number(Double(shot.full.height)), "display": JSONValue(display?.index),
@@ -105,9 +108,10 @@ final class ScreenTargets {
     }
 
     private func calibrate(display: SimulatorDisplay?, orientation: DeviceOrientation) async throws -> ScreenRecord {
+        async let interfaceOrientation = Screenshots.interfaceOrientation(udid: udid, display: display?.index, tools: tools)
         let shot = try await Screenshots.capture(udid: udid, display: display?.index,
             to: StatePaths.calibration(for: udid).path, maxDimension: 0, tools: tools)
-        let record = ScreenRecord(shot, orientation: orientation)
+        let record = ScreenRecord(shot, orientation: orientation, interfaceOrientation: await interfaceOrientation)
         store.save(record, for: display?.digitizerTarget ?? .mainScreen)
         return record
     }
@@ -127,7 +131,9 @@ final class ScreenTargets {
         // The probe doubles as the first calibration; an existing record may be the one pixel coordinates refer to.
         if store.record(for: .mainScreen) == nil {
             let size = try Screenshots.size(of: path)
-            store.save(ScreenRecord(full: size, image: size, orientation: try await currentOrientation()), for: .mainScreen)
+            store.save(ScreenRecord(full: size, image: size, orientation: try await currentOrientation(),
+                                    interfaceOrientation: await Screenshots.interfaceOrientation(udid: udid, display: nil, tools: tools)),
+                       for: .mainScreen)
         }
         return []
     }

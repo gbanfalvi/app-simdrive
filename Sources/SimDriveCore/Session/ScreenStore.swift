@@ -7,11 +7,13 @@ struct ScreenRecord: Codable, Equatable, Sendable {
     /// The image the caller reads, which may be downscaled.
     let image: PixelSize
     let orientation: DeviceOrientation
+    /// The interface's orientation at capture, which the screenshot is rotated by; nil when `simctl` reports none.
+    let interfaceOrientation: InterfaceOrientation?
 }
 
 extension ScreenRecord {
-    init(_ shot: Screenshot, orientation: DeviceOrientation) {
-        self.init(full: shot.full, image: shot.image, orientation: orientation)
+    init(_ shot: Screenshot, orientation: DeviceOrientation, interfaceOrientation: InterfaceOrientation?) {
+        self.init(full: shot.full, image: shot.image, orientation: orientation, interfaceOrientation: interfaceOrientation)
     }
 }
 

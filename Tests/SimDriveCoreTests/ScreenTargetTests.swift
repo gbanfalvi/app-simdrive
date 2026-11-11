@@ -5,7 +5,8 @@ import Testing
 
 struct ScreenTargetTests {
     private let target = ScreenTargets.Target(display: nil,
-        record: ScreenRecord(full: PixelSize(width: 2000, height: 4000), image: PixelSize(width: 500, height: 1000), orientation: .portrait),
+        record: ScreenRecord(full: PixelSize(width: 2000, height: 4000), image: PixelSize(width: 500, height: 1000), orientation: .portrait,
+                             interfaceOrientation: .portrait),
         mapping: ScreenMapping(isRotated: false, orientation: .portrait))
 
     @Test func pixelsReferToTheDownscaledImage() {

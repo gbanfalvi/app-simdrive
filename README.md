@@ -65,7 +65,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 
 Values in 0–1 written with a decimal point (`0.5 0.25`, `1.0 0.0`) are fractions of the screen. Other values are pixels of the last screenshot's image, so `screenshot` then `tap 120 340` taps what the image shows at that pixel. Pixel taps fail once the device rotates, until a new screenshot.
 
-Taps follow the screen's rotation, which simdrive reads from screenshots. `launch` and `button home` forget the rotation, since a new app may rotate the interface without rotating the device; take a screenshot after other app switches before tapping.
+Taps follow the interface's rotation, which simdrive reads from `simctl` with each screenshot, so they land right even when the app does not turn with the device. `launch` and `button home` forget the rotation, since a new app may rotate the interface without rotating the device; take a screenshot after other app switches before tapping.
 
 ### Buttons
 

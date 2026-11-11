@@ -22,10 +22,18 @@ struct Screenshot: Sendable {
 enum Screenshots {
     private static let fullExtension = "full"
     private static let pngExtension = "png"
+    /// The screen ID `simctl` gives a single-display device's screen.
+    private static let mainScreenID = 1
 
     /// The `simctl` arguments that capture a screen as PNG. A multi-display device needs `display`.
     static func simctlArguments(udid: String, display: Int?, path: String) -> [String] {
         ["io", udid, "screenshot", "--type=\(pngExtension)"] + (display.map { ["--display=\($0)"] } ?? []) + [path]
+    }
+
+    /// The interface orientation `simctl` rotates a screen's screenshots by; nil when it reports none.
+    static func interfaceOrientation(udid: String, display: Int?, tools: DeveloperTools) async -> InterfaceOrientation? {
+        guard let result = try? await tools.simctlResult(["io", udid, "enumerate"]), result.succeeded else { return nil }
+        return InterfaceOrientation.parse(enumeration: result.standardOutput)[display ?? mainScreenID]
     }
 
     /// Captures a screen with `simctl` and, when it is larger than `maxDimension` pixels, writes a downscaled copy to
