@@ -1,5 +1,4 @@
 import CoreGraphics
-import Foundation
 import SimDriveNative
 import Testing
 @testable import SimDriveCore
@@ -17,7 +16,7 @@ struct CommandParserTests {
     }
 
     @Test func pointsWithADecimalPointInZeroToOneAreFractions() throws {
-        #expect(try CommandParser.parse(["tap", "0.5", "1"]) == .tap(.unit(CGPoint(x: 0.5, y: 1)), display: .automatic))
+        #expect(try CommandParser.parse(["tap", "0.5", "1"]) == .tap(.normalized(CGPoint(x: 0.5, y: 1)), display: .automatic))
         #expect(try CommandParser.parse(["tap", "1", "1"]) == .tap(.pixels(CGPoint(x: 1, y: 1)), display: .automatic))
         #expect(try CommandParser.parse(["tap", "120", "0.5"]) == .tap(.pixels(CGPoint(x: 120, y: 0.5)), display: .automatic))
         #expect(throws: UsageError.self) { try CommandParser.parse(["tap", "-1", "2"]) }
@@ -25,10 +24,10 @@ struct CommandParserTests {
 
     @Test func swipeDefaultsAndOptions() throws {
         let plain = try CommandParser.parse(["swipe", "0.5", "0.9", "0.5", "0.1"])
-        #expect(plain == .swipe(from: .unit(CGPoint(x: 0.5, y: 0.9)), to: .unit(CGPoint(x: 0.5, y: 0.1)),
+        #expect(plain == .swipe(from: .normalized(CGPoint(x: 0.5, y: 0.9)), to: .normalized(CGPoint(x: 0.5, y: 0.1)),
                                 duration: CommandParser.defaultSwipeDuration, edge: nil, display: .automatic))
         let edge = try CommandParser.parse(["swipe", "0.5", "0.99", "0.5", "0.5", "--edge", "bottom", "--duration", "250", "--display", "cover"])
-        #expect(edge == .swipe(from: .unit(CGPoint(x: 0.5, y: 0.99)), to: .unit(CGPoint(x: 0.5, y: 0.5)),
+        #expect(edge == .swipe(from: .normalized(CGPoint(x: 0.5, y: 0.99)), to: .normalized(CGPoint(x: 0.5, y: 0.5)),
                                duration: .milliseconds(250), edge: .bottom, display: .cover))
     }
 
@@ -45,7 +44,6 @@ struct CommandParserTests {
             == .button(.playPause, count: 2, hold: .milliseconds(800)))
         #expect(throws: UsageError.self) { try CommandParser.parse(["button", "select", "--hold", "0"]) }
         #expect(throws: UsageError.self) { try CommandParser.parse(["button", "power"]) }
-        #expect(Set(HardwareButton.allCases.map(\.usage)).count == HardwareButton.allCases.count)
     }
 
     @Test func pasteboardReadsWithoutAnArgument() throws {
@@ -79,53 +77,13 @@ struct CommandParserTests {
         #expect(command == .run(steps: [["tap", "0.5", "0.5"], ["key", "tab"], ["wait", "100"]]))
         #expect(!command.isStep)
     }
-}
 
-struct StepsTests {
-    @Test func tokenizeKeepsQuotedText() throws {
-        #expect(try Steps.tokenize(#"type "hello world"  'a b' c"#) == ["type", "hello world", "a b", "c"])
-        #expect(try Steps.tokenize(#"type """#) == ["type", ""])
-        #expect(throws: UsageError.self) { try Steps.tokenize(#"type "open"#) }
-    }
-
-    @Test func stepsMustBeAnArrayOfStringsOrScalarArrays() {
-        #expect(throws: UsageError.self) { try Steps.parse(Data(#"{"tap": 1}"#.utf8)) }
-        #expect(throws: UsageError.self) { try Steps.parse(Data(#"[1]"#.utf8)) }
-        #expect(throws: UsageError.self) { try Steps.parse(Data(#"[["tap", [1]]]"#.utf8)) }
-    }
-}
-
-struct DisplayInfoTests {
-    private let listing = """
-        An error was encountered processing the command (domain=NSPOSIXErrorDomain, code=22):
-        Cannot choose between 2 displays. Specify one with --display:
-            --display=3  LCD-1 (primary-1) 2007x2853
-            --display=1  LCD (primary) 1398x2034
-        Invalid argument
-        """
-
-    @Test func parsesTheSimctlListingByIndex() {
-        let displays = DisplayInfo.parse(listing: listing)
-        #expect(displays.map(\.index) == [1, 3])
-        #expect(displays.map(\.role) == [DisplayInfo.coverRole, DisplayInfo.innerRole])
-        #expect(displays[1].name == "LCD-1")
-        #expect(displays[1].digitizerTarget == "display3")
-        #expect(!displays[1].isNativeLandscape)
-    }
-
-    @Test func selectorNames() {
-        #expect(DisplaySelector(name: "inner") == .inner)
-        #expect(DisplaySelector(name: "2") == .index(2))
-        #expect(DisplaySelector(name: "side") == nil)
-    }
-}
-
-struct JSONValueTests {
-    @Test func argumentsDropTheFractionOfWholeNumbers() {
-        #expect(JSONValue.number(100).argument == "100")
-        #expect(JSONValue.number(0.5).argument == "0.5")
-        #expect(JSONValue.number(1e300).argument == "1e+300")
-        #expect(JSONValue.bool(true).argument == "true")
-        #expect(JSONValue.null.argument == nil)
+    @Test func orientationNamesMatchTheirOutput() {
+        for orientation in DeviceOrientation.allCases {
+            #expect(DeviceOrientation(name: orientation.name) == orientation)
+        }
+        #expect(DeviceOrientation(name: "landscape-left") == .landscapeLeft)
+        #expect(DeviceOrientation(name: "portraitUpsideDown") == .portraitUpsideDown)
+        #expect(DeviceOrientation(name: "sideways") == nil)
     }
 }

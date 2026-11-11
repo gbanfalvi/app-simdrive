@@ -12,10 +12,10 @@ struct KeyMapTests {
     }
 
     @Test func shiftedCharactersUseTheirBaseKey() {
-        #expect(KeyMap.stroke(for: "A") == KeyStroke(kVK_ANSI_A, shift: true))
-        #expect(KeyMap.stroke(for: "!") == KeyStroke(kVK_ANSI_1, shift: true))
-        #expect(KeyMap.stroke(for: "\"") == KeyStroke(kVK_ANSI_Quote, shift: true))
-        #expect(KeyMap.stroke(for: "?") == KeyStroke(kVK_ANSI_Slash, shift: true))
+        #expect(KeyMap.stroke(for: "A") == KeyStroke(kVK_ANSI_A, needsShift: true))
+        #expect(KeyMap.stroke(for: "!") == KeyStroke(kVK_ANSI_1, needsShift: true))
+        #expect(KeyMap.stroke(for: "\"") == KeyStroke(kVK_ANSI_Quote, needsShift: true))
+        #expect(KeyMap.stroke(for: "?") == KeyStroke(kVK_ANSI_Slash, needsShift: true))
     }
 
     @Test func charactersOutsideTheUSLayoutHaveNoStroke() {

@@ -1,4 +1,5 @@
 import CoreGraphics
+import SimDriveNative
 import Testing
 @testable import SimDriveCore
 
@@ -30,11 +31,5 @@ struct ScreenMappingTests {
         #expect(ScreenMapping(isRotated: true, orientation: .landscapeLeft).digitizerEdge(.bottom) == .left)
         #expect(ScreenMapping(isRotated: true, orientation: .portrait).digitizerEdge(.bottom) == .right)
         #expect(ScreenMapping(isRotated: true, orientation: .portrait).digitizerEdge(.left) == .bottom)
-    }
-
-    @Test func orientationNames() {
-        #expect(DeviceOrientation(name: "landscape-left") == .landscapeLeft)
-        #expect(DeviceOrientation(name: "portraitUpsideDown") == .portraitUpsideDown)
-        #expect(DeviceOrientation(name: "sideways") == nil)
     }
 }

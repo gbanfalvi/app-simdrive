@@ -6,13 +6,15 @@
 
 | simdrive | NeoSimulator |
 | --- | --- |
-| `GuestHID.swift` | `NeoSimulatorDeviceIO/CoreDevice/SimulatorGuestHID.swift`, `DeviceOrientation.swift` |
-| `HIDService.swift` | `NeoSimulatorDeviceIO/CoreDevice/CoreDeviceHIDService.swift` |
-| `KeyboardReports.swift`, `GuestKeyboard.swift` | `NeoSimulatorPresentationAdapters/Native/CoreDeviceHIDReports.swift`, `NativeDeviceKeyboard.swift` |
-| `GuestScreenInput.swift` | `NeoSimulatorPresentationAdapters/Native/GuestScreenInput.swift` |
-| `CoreDevice.swift` | `NeoSimulatorDeviceIO/CoreDevice/CoreDeviceRemoteScreenDevice.swift` |
-| `Posture.swift` | `NeoSimulatorPresentationAdapters/Native/NativeDevicePostureTransport.swift`, `NeoSimulatorKit/Devices/DevicePosture.swift` |
-| `NativeFrameworks.swift` | `NeoSimulatorNative/NativeFrameworks.swift` |
+| `Simulator/SimulatorDevice.swift`, `SimulatorGuest.swift`, `GuestMessageCodec.swift` | `NeoSimulatorDeviceIO/CoreDevice/SimulatorGuestHID.swift` |
+| `DeviceControl/GuestOrientation.swift` | `NeoSimulatorDeviceIO/CoreDevice/SimulatorGuestHID.swift`, `DeviceOrientation.swift` |
+| `Input/GuestHIDService.swift` | `NeoSimulatorDeviceIO/CoreDevice/CoreDeviceHIDService.swift` |
+| `Input/KeyboardBindings.swift`, `GuestKeyboard.swift` | `NeoSimulatorPresentationAdapters/Native/CoreDeviceHIDReports.swift`, `NativeDeviceKeyboard.swift` |
+| `Input/GuestTouchscreen.swift`, `GuestButtons.swift` | `NeoSimulatorPresentationAdapters/Native/GuestScreenInput.swift` |
+| `CoreDevice/CoreDeviceRemote.swift` | `NeoSimulatorDeviceIO/CoreDevice/CoreDeviceRemoteScreenDevice.swift` |
+| `DeviceControl/CoreDeviceHinge.swift` | `NeoSimulatorPresentationAdapters/Native/NativeDevicePostureTransport.swift`, `NeoSimulatorKit/Devices/DevicePosture.swift` |
+| `DeviceControl/CoreDevicePasteboard.swift` | `NeoSimulatorPresentationAdapters/Native/CoreDevicePasteboard.swift` |
+| `Support/NativeFrameworks.swift` | `NeoSimulatorNative/NativeFrameworks.swift` |
 
 ```
 MIT License

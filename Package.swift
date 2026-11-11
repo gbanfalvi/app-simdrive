@@ -21,6 +21,7 @@ let package = Package(
         // Device sessions, commands, screen geometry, and the per-simulator daemon.
         .target(name: "SimDriveCore", dependencies: ["SimDriveNative"], swiftSettings: memberImportVisibility),
         .executableTarget(name: "simdrive", dependencies: ["SimDriveCore"], swiftSettings: memberImportVisibility),
+        .testTarget(name: "SimDriveNativeTests", dependencies: ["SimDriveNative"], swiftSettings: memberImportVisibility),
         .testTarget(name: "SimDriveCoreTests", dependencies: ["SimDriveCore", "SimDriveNative"], swiftSettings: memberImportVisibility),
     ]
 )
