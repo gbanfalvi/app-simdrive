@@ -7,6 +7,7 @@ package final class SimulatorDevice {
     private typealias ContextFunction = @convention(c) (AnyClass, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> NSObject?
     private typealias DeviceSetFunction = @convention(c) (NSObject, Selector, AutoreleasingUnsafeMutablePointer<NSError?>) -> NSObject?
     private typealias LookUpFunction = @convention(c) (NSObject, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> UInt32
+    private typealias PostFunction = @convention(c) (NSObject, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
 
     private static let bootedState = "Booted"
     private static let tvOSRuntimePrefix = "com.apple.CoreSimulator.SimRuntime.tvOS-"
@@ -42,6 +43,10 @@ package final class SimulatorDevice {
     package var isBooted: Bool { state == Self.bootedState }
     /// An Apple TV takes its remote's buttons, not touches.
     package var hasTouchscreen: Bool { !(string(forKey: "runtimeIdentifier")?.hasPrefix(Self.tvOSRuntimePrefix) ?? false) }
+    /// From a runtime identifier such as `com.apple.CoreSimulator.SimRuntime.iOS-18-3`.
+    package var majorOSVersion: Int? {
+        string(forKey: "runtimeIdentifier")?.split(separator: ".").last?.split(separator: "-").dropFirst().first.flatMap { Int($0) }
+    }
 
     /// A caller-owned send right to the guest's Mach service `name`.
     func lookUp(_ name: String) throws -> UInt32 {
@@ -59,6 +64,25 @@ package final class SimulatorDevice {
         guard let port = try? lookUp(name) else { return false }
         mach_port_deallocate(mach_task_self_, port)
         return true
+    }
+
+    /// Posts a Darwin notification in the guest, as `notifyutil -p` there would.
+    package func postDarwinNotification(_ name: String) throws {
+        let selector = NSSelectorFromString("postDarwinNotification:error:")
+        guard device.responds(to: selector) else {
+            throw SimDriveError(.guestNotification, "CoreSimulator cannot post notifications to \(self.name).")
+        }
+        var error: NSError?
+        let post = unsafeBitCast(device.method(for: selector), to: PostFunction.self)
+        guard post(device, selector, name as NSString, &error) else {
+            throw SimDriveError(.guestNotification, "Could not post \(name): \(error?.localizedDescription ?? "no reason given")")
+        }
+    }
+
+    /// A sender of the guest's accessibility requests, or nil when CoreSimulator cannot send them.
+    func accessibilityChannel(timeout: DispatchTimeInterval) -> AccessibilityChannel? {
+        guard device.responds(to: AccessibilityChannel.selector) else { return nil }
+        return AccessibilityChannel(device: device, timeout: timeout)
     }
 
     private func string(forKey key: String) -> String? {
@@ -83,5 +107,39 @@ package final class SimulatorDevice {
         }
         contexts[developerDirectory] = context
         return context
+    }
+}
+
+/// Sends accessibility requests to a simulator's guest and waits for each reply. Callable from any thread.
+struct AccessibilityChannel: @unchecked Sendable {
+    private typealias SendFunction = @convention(c) (NSObject, Selector, NSObject, DispatchQueue,
+                                                     @escaping @convention(block) (NSObject?) -> Void) -> Void
+
+    fileprivate static let selector = NSSelectorFromString("sendAccessibilityRequestAsync:completionQueue:completionHandler:")
+
+    private final class Reply: @unchecked Sendable {
+        var value: NSObject?
+    }
+
+    private let device: NSObject
+    private let timeout: DispatchTimeInterval
+    private let replies = DispatchQueue(label: "simdrive.accessibility.replies")
+
+    fileprivate init(device: NSObject, timeout: DispatchTimeInterval) {
+        self.device = device
+        self.timeout = timeout
+    }
+
+    /// The guest's reply, or nil when it does not answer in time.
+    func send(_ request: NSObject) -> NSObject? {
+        let answered = DispatchSemaphore(value: 0)
+        let reply = Reply()
+        let send = unsafeBitCast(device.method(for: Self.selector), to: SendFunction.self)
+        send(device, Self.selector, request, replies) { response in
+            reply.value = response
+            answered.signal()
+        }
+        guard answered.wait(timeout: .now() + timeout) == .success else { return nil }
+        return reply.value
     }
 }

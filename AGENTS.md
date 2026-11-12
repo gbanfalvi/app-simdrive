@@ -17,7 +17,7 @@ Reinstall after changing the skill here; the repo copy is the source.
 - Builds need Xcode 27 and macOS 26. Set `DEVELOPER_DIR` to the Xcode in use, such as `/Applications/Xcode_27_2.app/Contents/Developer`, when `xcode-select` points elsewhere.
 - Build with `swift build`, test with `swift test`, and release with `swift build -c release`.
 - Modules, lowest first. Each uses only the one below:
-  - `SimDriveNative`: private-framework drivers for CoreSimulator, the guest's HID and device-control services, and CoreDevice. `Guest*` types reach the guest's Mach services directly; `CoreDevice*` types go through CoreDevice.
+  - `SimDriveNative`: private-framework drivers for CoreSimulator, the guest's HID and device-control services, CoreDevice, and AccessibilityPlatformTranslation. `Guest*` types reach the guest's Mach services directly; `CoreDevice*` types go through CoreDevice.
   - `SimDriveCore`: commands and their parser, the per-device session, screen geometry, and the per-device daemon.
   - `simdrive`: the executable, which calls `SimDriveCLI.run`.
 
@@ -29,6 +29,8 @@ Reinstall after changing the skill here; the repo copy is the source.
 4. Error codes as `ErrorCode` constants.
 5. Parser tests, plus tests for any pure logic.
 6. The README's command table and JSON results, and the skill.
+
+A device setting is one row in `Sources/SimDriveCore/Settings/SettingCatalog.swift`, with no new command. Find its key by diffing `simctl spawn <udid> defaults export <domain> -` before and after toggling it in Settings, and its notification among the strings of UIKit and libAccessibility, with its `cache.` counterpart. Keep the row only if a probe app sees the change while running on the oldest and newest iOS runtimes, set `minimumOSVersion` where it is newer, and add it to the README's settings table.
 
 ### Verifying
 

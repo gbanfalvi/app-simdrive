@@ -40,4 +40,7 @@ extension ErrorCode {
     static let hingeObservation = ErrorCode(rawValue: "hinge-observation")
     static let hingeSnapshot = ErrorCode(rawValue: "hinge-snapshot")
     static let hingePayload = ErrorCode(rawValue: "hinge-payload")
+    static let accessibilityTimeout = ErrorCode(rawValue: "accessibility-timeout")
+    static let accessibilityTranslation = ErrorCode(rawValue: "accessibility-translation")
+    static let guestNotification = ErrorCode(rawValue: "guest-notification")
 }

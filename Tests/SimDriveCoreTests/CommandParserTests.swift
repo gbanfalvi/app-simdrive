@@ -60,6 +60,25 @@ struct CommandParserTests {
             == .screenshot(path: "a.png", display: .index(3), maxDimension: 0))
     }
 
+    @Test func treeReadsTheWholeHierarchyOrOnePoint() throws {
+        #expect(try CommandParser.parse(["tree"]) == .tree(at: nil))
+        #expect(try CommandParser.parse(["tree", "0.5", "0.25"]) == .tree(at: .normalized(CGPoint(x: 0.5, y: 0.25))))
+        #expect(try CommandParser.parse(["tree", "600", "400"]) == .tree(at: .pixels(CGPoint(x: 600, y: 400))))
+        #expect(throws: UsageError.self) { try CommandParser.parse(["tree", "0.5"]) }
+        #expect(throws: UsageError.self) { try CommandParser.parse(["tree", "--flat"]) }
+        #expect(try CommandParser.parse(["tree"]).isStep)
+    }
+
+    @Test func settingListsReadsOrChanges() throws {
+        #expect(try CommandParser.parse(["setting"]) == .setting(nil, value: nil))
+        #expect(try CommandParser.parse(["setting", "appearance"]) == .setting(SettingCatalog.appearance, value: nil))
+        #expect(try CommandParser.parse(["setting", "appearance", "dark"]) == .setting(SettingCatalog.appearance, value: "dark"))
+        #expect(try CommandParser.parse(["setting", "glass-tint", "1"]) == .setting(SettingCatalog.setting(named: "glass-tint"), value: 1))
+        #expect(throws: UsageError.self) { try CommandParser.parse(["setting", "voiceover", "on"]) }
+        #expect(throws: UsageError.self) { try CommandParser.parse(["setting", "bold-text", "maybe"]) }
+        #expect(throws: UsageError.self) { try CommandParser.parse(["setting", "bold-text", "on", "now"]) }
+    }
+
     @Test func launchPassesArgumentsAfterTheBundleIdentifier() throws {
         #expect(try CommandParser.parse(["launch", "com.example", "--", "--flag", "x"])
             == .launch(bundleID: "com.example", arguments: ["--flag", "x"]))

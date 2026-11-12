@@ -66,6 +66,21 @@ enum CommandParser {
             guard maxDimension >= 0 else { throw UsageError("--max-dim must not be negative") }
             return .screenshot(path: try list.single("an output path"), display: try display(list.option("display")),
                                maxDimension: maxDimension)
+        case "tree":
+            let values = try ArgumentList(rest).positionals
+            guard !values.isEmpty else { return .tree(at: nil) }
+            guard values.count == 2 else { throw UsageError("Expected x and y, or nothing") }
+            return .tree(at: try point(values[0], values[1]))
+        case "setting":
+            let values = try ArgumentList(rest).positionals
+            guard let name = values.first else { return .setting(nil, value: nil) }
+            guard values.count <= 2 else { throw UsageError("Expected a setting and at most one value") }
+            guard let setting = SettingCatalog.setting(named: name) else {
+                throw UsageError("Unknown setting \"\(name)\"; use \(SettingCatalog.all.map(\.name).joined(separator: ", "))")
+            }
+            guard values.count == 2 else { return .setting(setting, value: nil) }
+            guard let value = setting.value(parsing: values[1]) else { throw UsageError("\(name) takes \(setting.valueDescription)") }
+            return .setting(setting, value: value)
         case "launch":
             let list = try ArgumentList(rest)
             guard let bundleID = list.positionals.first else { throw UsageError("launch needs a bundle identifier") }
@@ -120,7 +135,8 @@ enum CommandParser {
     }
 
     static let usage = """
-        simdrive: drive a booted simulator's keyboard, touchscreen, buttons and hinge. Prints one JSON object.
+        simdrive: drive a booted simulator's keyboard, touchscreen, buttons and hinge, read its accessibility and change
+        its settings. Prints one JSON object.
 
         usage: simdrive list
                simdrive <udid|booted> <command> [--no-daemon]
@@ -137,6 +153,8 @@ enum CommandParser {
           orientation [portrait|landscape-left|landscape-right|upside-down]
           pasteboard [text]                   reads the device's pasteboard, or replaces it with text
           screenshot <path.png> [--display D] [--max-dim N]   default 1024; 0 keeps full resolution
+          tree [<x> <y>]                      the frontmost app's accessibility hierarchy, or the element at a point
+          setting [<name> [<value>]]          lists every setting, or reads or changes one, such as appearance dark
           launch <bundle-id> [args...]
           wait <ms>
           run <steps.json|->                  a JSON array of commands: ["tap 0.5 0.5", ["key", "tab"]]

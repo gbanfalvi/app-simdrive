@@ -5,7 +5,7 @@ import SimDriveNative
 /// Where points land: the device's displays, each screen's last screenshot, and how its points map to the digitizer.
 @MainActor
 final class ScreenTargets {
-    /// A screen to touch, with the screenshot its points refer to.
+    /// A screen, with the screenshot its points refer to.
     struct Target {
         let display: SimulatorDisplay?
         let record: ScreenRecord
@@ -49,12 +49,17 @@ final class ScreenTargets {
         store = ScreenStore(url: StatePaths.screens(for: udid))
     }
 
-    /// The display a point refers to, with the rotation of its last screenshot. Fractions take a calibration
-    /// screenshot when there is none for the current orientation; pixels need the caller's own.
+    /// The touchscreen display a point refers to.
     func target(_ selector: DisplaySelector, usesPixels: Bool) async throws -> Target {
         guard device.hasTouchscreen else {
             throw SimDriveError(.noTouchscreen, "\(device.name) has no touchscreen; use button or key to move focus.")
         }
+        return try await screen(selector, usesPixels: usesPixels)
+    }
+
+    /// The display a point refers to, with the rotation of its last screenshot. Fractions take a calibration
+    /// screenshot when there is none for the current orientation; pixels need the caller's own.
+    func screen(_ selector: DisplaySelector, usesPixels: Bool) async throws -> Target {
         let display = try await resolveDisplay(selector)
         let orientation = try await currentOrientation()
         var record = store.record(for: display?.digitizerTarget ?? .mainScreen)
@@ -73,7 +78,8 @@ final class ScreenTargets {
             }
             current = try await calibrate(display: display, orientation: orientation)
         }
-        let mapping = ScreenMapping(screenshot: current, panelIsLandscape: display?.nativeSize.isLandscape ?? false,
+        // Single touchscreens are portrait natively, and TVs landscape.
+        let mapping = ScreenMapping(screenshot: current, panelIsLandscape: display?.nativeSize.isLandscape ?? !device.hasTouchscreen,
                                     deviceOrientation: orientation)
         return Target(display: display, record: current, mapping: mapping)
     }

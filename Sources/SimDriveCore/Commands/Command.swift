@@ -36,6 +36,10 @@ enum Command: Equatable, Sendable {
     /// Replaces the pasteboard with text, or reads it without any.
     case pasteboard(text: String?)
     case screenshot(path: String, display: DisplaySelector, maxDimension: Int)
+    /// Reads the frontmost app's accessibility hierarchy, or the element at a point.
+    case tree(at: ScreenPoint?)
+    /// Lists every setting without one, reads it without a value, or changes it.
+    case setting(Setting?, value: JSONValue?)
     case launch(bundleID: String, arguments: [String])
     case wait(milliseconds: Int)
     case run(steps: [[String]])

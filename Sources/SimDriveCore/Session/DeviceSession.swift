@@ -18,6 +18,8 @@ final class DeviceSession {
     private let tools: DeveloperTools
     private let guest: SimulatorGuest
     private let screens: ScreenTargets
+    private let accessibility: AccessibilityTree
+    private let settings: DeviceSettings
     private let orientation: LazyCapability<GuestOrientation>
     private let pasteboard: LazyCapability<CoreDevicePasteboard>
     private let hinge: LazyCapability<Hinge>
@@ -42,6 +44,8 @@ final class DeviceSession {
         self.orientation = orientation
         self.hinge = hinge
         screens = ScreenTargets(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
+        accessibility = AccessibilityTree(device: device, screens: screens)
+        settings = DeviceSettings(udid: udid, device: device, tools: tools)
     }
 
     static func open(udid: String, tools: DeveloperTools) async throws -> DeviceSession {
@@ -81,6 +85,16 @@ final class DeviceSession {
         case .screenshot(let path, let display, let maxDimension):
             return try await screens.screenshot(to: Self.absolutePath(path, in: workingDirectory), display: display,
                                                 maxDimension: maxDimension)
+        case .tree(let point?):
+            return try await accessibility.element(at: point)
+        case .tree(nil):
+            return try await accessibility.tree()
+        case .setting(let setting?, let value?):
+            return try await settings.set(setting, to: value)
+        case .setting(let setting?, nil):
+            return try await settings.read(setting)
+        case .setting(nil, _):
+            return try await settings.all()
         case .launch(let bundleID, let arguments):
             return try await launch(bundleID, arguments: arguments)
         case .wait(let milliseconds):
@@ -309,6 +323,8 @@ final class DeviceSession {
             return "ready"
         }
         report["displays"] = await Self.check { try await self.screens.displaysJSON() }
+        report["accessibility"] = await Self.check { try await self.accessibility.doctorJSON() }
+        report["appearance"] = await Self.check { try await self.settings.value(of: SettingCatalog.appearance) }
         report["posture"] = await Self.check {
             guard try await self.hinge.value() != nil else { return "unsupported" }
             return try await self.readPosture()
