@@ -1,21 +1,21 @@
-/// The values a setting takes.
-enum SettingKind: Equatable, Sendable {
-    case toggle
-    case choice([String])
-    case number(ClosedRange<Double>)
-}
-
-/// Where a setting is kept.
-enum SettingStore: Equatable, Sendable {
-    /// A `simctl ui` option.
-    case interface(option: String)
-    /// A guest preference, and the Darwin notifications that tell running apps it changed. `defaultValue` applies
-    /// while the key is unset.
-    case preference(domain: String, key: String, defaultValue: JSONValue, notifications: [String])
-}
-
 /// A device setting that `setting` reads and changes.
 struct Setting: Equatable, Sendable {
+    /// The values a setting takes.
+    enum Kind: Equatable, Sendable {
+        case toggle
+        case choice([String])
+        case number(ClosedRange<Double>)
+    }
+
+    /// Where a setting is kept.
+    enum Storage: Equatable, Sendable {
+        /// A `simctl ui` option.
+        case interface(option: String)
+        /// A guest preference, and the Darwin notifications that tell running apps it changed. `defaultValue` applies
+        /// while the key is unset.
+        case preference(domain: String, key: String, defaultValue: JSONValue, notifications: [String])
+    }
+
     private static let toggleNames: [String: Bool] = ["on": true, "off": false, "true": true, "false": false]
     /// Preferences keep numbers as 32-bit floats; four decimals drop their rounding error.
     private static let numberPrecision = 10_000.0
@@ -26,25 +26,25 @@ struct Setting: Equatable, Sendable {
     }
 
     let name: String
-    let kind: SettingKind
-    let store: SettingStore
+    let kind: Kind
+    let storage: Storage
     let minimumOSVersion: Int?
 
-    init(name: String, kind: SettingKind, store: SettingStore, minimumOSVersion: Int? = nil) {
+    init(name: String, kind: Kind, storage: Storage, minimumOSVersion: Int? = nil) {
         self.name = name
         self.kind = kind
-        self.store = store
+        self.storage = storage
         self.minimumOSVersion = minimumOSVersion
     }
 
     /// True when the OS version is unknown.
-    func exists(onOSVersion version: Int?) -> Bool {
+    func isAvailable(onOSVersion version: Int?) -> Bool {
         guard let minimumOSVersion, let version else { return true }
         return version >= minimumOSVersion
     }
 
     /// A command-line value as the setting's JSON value, or nil when the setting does not take it.
-    func value(parsing text: String) -> JSONValue? {
+    func value(fromArgument text: String) -> JSONValue? {
         switch kind {
         case .toggle:
             return Self.toggleNames[text.lowercased()].map(JSONValue.bool)
@@ -66,7 +66,7 @@ struct Setting: Equatable, Sendable {
     }
 
     /// The value of a `simctl ui` reading. Readings such as "unsupported" stay as they are.
-    func value(interfaceReading reading: String) -> JSONValue {
+    func value(fromInterfaceReading reading: String) -> JSONValue {
         guard kind == .toggle else { return .string(reading) }
         switch reading {
         case InterfaceToggle.on: return true
@@ -75,14 +75,14 @@ struct Setting: Equatable, Sendable {
         }
     }
 
-    func interfaceArgument(_ value: JSONValue) -> String {
+    func interfaceArgument(for value: JSONValue) -> String {
         if case .bool(let isOn) = value { return isOn ? InterfaceToggle.on : InterfaceToggle.off }
         return value.argument ?? ""
     }
 
     /// The value of a stored preference, which is a number for toggles; nil when the key is unset.
-    func value(stored: JSONValue?) -> JSONValue {
-        guard case .preference(_, _, let defaultValue, _) = store else { return .null }
+    func value(fromPreference stored: JSONValue?) -> JSONValue {
+        guard case .preference(_, _, let defaultValue, _) = storage else { return .null }
         switch (kind, stored) {
         case (.toggle, .number(let number)?): return .bool(number != 0)
         case (.number, .number(let number)?): return .number((number * Self.numberPrecision).rounded() / Self.numberPrecision)
@@ -91,7 +91,7 @@ struct Setting: Equatable, Sendable {
         }
     }
 
-    func preferenceValue(_ value: JSONValue) -> PreferenceValue {
+    func preferenceValue(for value: JSONValue) -> PreferenceValue {
         switch value {
         case .bool(let isOn): .integer(isOn ? 1 : 0)
         case .number(let number): .float(number)
@@ -115,12 +115,12 @@ enum SettingCatalog {
         "accessibility-extra-extra-extra-large",
     ]
 
-    static let appearance = Setting(name: "appearance", kind: .choice(["light", "dark"]), store: .interface(option: "appearance"))
+    static let appearance = Setting(name: "appearance", kind: .choice(["light", "dark"]), storage: .interface(option: "appearance"))
 
     static let all: [Setting] = [
         appearance,
-        Setting(name: "text-size", kind: .choice(textSizes), store: .interface(option: "content_size")),
-        Setting(name: "increase-contrast", kind: .toggle, store: .interface(option: "increase_contrast")),
+        Setting(name: "text-size", kind: .choice(textSizes), storage: .interface(option: "content_size")),
+        Setting(name: "increase-contrast", kind: .toggle, storage: .interface(option: "increase_contrast")),
         accessibilityToggle("bold-text", key: "EnhancedTextLegibilityEnabled", notification: "text.legibility.status",
                             cache: "enhance.text.legibility"),
         accessibilityToggle("reduce-motion", key: "ReduceMotionEnabled", notification: "reduce.motion.status", cache: "reduce.motion"),
@@ -145,7 +145,7 @@ enum SettingCatalog {
                             defaultValue: true),
         accessibilityToggle("non-blinking-cursor", key: "PrefersNonBlinkingCursorIndicator", notification: "non.blinking.cursor.status",
                             cache: "non.blinking.cursor.status", minimumOSVersion: nonBlinkingCursorOSVersion),
-        Setting(name: "glass-tint", kind: .number(0...1), store: .preference(domain: uiKit, key: "UIViewGlassTintAmount",
+        Setting(name: "glass-tint", kind: .number(0...1), storage: .preference(domain: uiKit, key: "UIViewGlassTintAmount",
             defaultValue: .number(defaultGlassTint), notifications: ["UIViewGlassTintAmountUpdateNotification"]),
             minimumOSVersion: glassOSVersion),
     ]
@@ -158,8 +158,8 @@ enum SettingCatalog {
     private static func accessibilityToggle(_ name: String, key: String, notification: String, cache: String? = nil,
                                             defaultValue: Bool = false, minimumOSVersion: Int? = nil) -> Setting {
         let notifications = [notificationPrefix + notification] + (cache.map { [cacheNotificationPrefix + $0] } ?? [])
-        return Setting(name: name, kind: .toggle, store: .preference(domain: accessibility, key: key, defaultValue: .bool(defaultValue),
-                                                                     notifications: notifications),
-                       minimumOSVersion: minimumOSVersion)
+        let storage = Setting.Storage.preference(domain: accessibility, key: key, defaultValue: .bool(defaultValue),
+                                                 notifications: notifications)
+        return Setting(name: name, kind: .toggle, storage: storage, minimumOSVersion: minimumOSVersion)
     }
 }

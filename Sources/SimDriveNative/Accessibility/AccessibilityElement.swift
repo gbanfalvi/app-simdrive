@@ -3,35 +3,35 @@ import Foundation
 
 /// A node of an app's accessibility hierarchy as XCUITest snapshots it: VoiceOver's elements and the views around them.
 package struct AccessibilityElement: Equatable, Sendable {
-    package var type: ElementType?
-    package var label: String?
-    package var value: String?
-    package var hint: String?
-    package var identifier: String?
-    package var placeholder: String?
-    package var traits: Set<AccessibilityTrait> = []
+    package internal(set) var type: ElementType?
+    package internal(set) var label: String?
+    package internal(set) var value: String?
+    package internal(set) var hint: String?
+    package internal(set) var identifier: String?
+    package internal(set) var placeholder: String?
+    package internal(set) var traits: Set<AccessibilityTrait> = []
     /// Whether VoiceOver stops on it: an accessibility element outside other elements, whose descendants VoiceOver skips.
-    package var isVoiceOverElement = false
+    package internal(set) var isVoiceOverElement = false
     /// Whether it has the focus engine's focus, as on tvOS.
-    package var isFocused = false
-    package var isExpanded: Bool?
-    package var headingLevel: Int?
-    package var containerType: AccessibilityContainerType?
-    package var language: String?
+    package internal(set) var isFocused = false
+    package internal(set) var isExpanded: Bool?
+    package internal(set) var headingLevel: Int?
+    package internal(set) var containerType: AccessibilityContainerType?
+    package internal(set) var language: String?
     /// Voice Control's names for it, when they differ from its label.
-    package var inputLabels: [String] = []
-    package var customActions: [String] = []
-    package var customContent: [AccessibilityCustomContent] = []
+    package internal(set) var inputLabels: [String] = []
+    package internal(set) var customActions: [String] = []
+    package internal(set) var customContent: [AccessibilityCustomContent] = []
     /// In points of the interface, which turns with the app.
-    package var frame: CGRect = .zero
-    package var activationPoint: CGPoint?
-    package var url: String?
-    package var range: AdjustableRange?
-    package var className: String?
-    package var viewController: String?
-    package var children: [AccessibilityElement] = []
+    package internal(set) var frame: CGRect = .zero
+    package internal(set) var activationPoint: CGPoint?
+    package internal(set) var url: String?
+    package internal(set) var range: AdjustableRange?
+    package internal(set) var className: String?
+    package internal(set) var viewController: String?
+    package internal(set) var children: [AccessibilityElement] = []
 
-    package init() {}
+    init() {}
 
     /// A snapshot node and its descendants. `customContent` reads a VoiceOver element's content from its snapshot object.
     init?(snapshot: Any, customContent: (AnyObject) -> [AccessibilityCustomContent]) {
@@ -138,6 +138,14 @@ package struct AdjustableRange: Equatable, Sendable {
     package let value: Double?
 }
 
+/// How much of the accessibility hierarchy a tree reads and returns.
+package enum TreeDetail: Equatable, Sendable {
+    /// VoiceOver's elements in a flat list, with the fields that find and act on them.
+    case light
+    /// Every node, nested, with every field.
+    case full
+}
+
 /// XCUITest's snapshot attribute numbers. Others can crash the app or return whole subtrees, and visibility (2025)
 /// hit-tests every node, which times out on large screens, so only these are requested.
 enum SnapshotAttribute: Int, CaseIterable {
@@ -164,6 +172,16 @@ enum SnapshotAttribute: Int, CaseIterable {
     case viewControllerClass = 5042
     case placeholder = 5043
     case automationType = 5058
+
+    /// A light tree places VoiceOver's elements and names them; the guest computes nothing else for it.
+    private static let light: [SnapshotAttribute] = [
+        .label, .frame, .traits, .value, .activationPoint, .isAccessibilityElement, .hasFocus, .expandedStatus, .identifier,
+        .placeholder, .automationType,
+    ]
+
+    static func requested(for detail: TreeDetail) -> [SnapshotAttribute] {
+        detail == .full ? allCases : light
+    }
 }
 
 enum SnapshotKey {

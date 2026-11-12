@@ -1,67 +1,6 @@
 import CoreGraphics
 import SimDriveNative
 
-/// The frontmost app's accessibility hierarchy, placed in the screen fractions that `tap` takes.
-@MainActor
-final class AccessibilityTree {
-    private let device: SimulatorDevice
-    private let screens: ScreenTargets
-    private let accessibility: LazyCapability<SimulatorAccessibility>
-
-    init(device: SimulatorDevice, screens: ScreenTargets) {
-        self.device = device
-        self.screens = screens
-        accessibility = LazyCapability { try await SimulatorAccessibility.open(device: device) }
-    }
-
-    func tree(detail: TreeDetail) async throws -> JSONValue {
-        let accessibility = try await connected()
-        let screen = try await screens.screen(.automatic, usesPixels: false)
-        let snapshot = try await accessibility.snapshot()
-        let layout = AccessibilityLayout(screenSize: snapshot.application.screenSize, screen: screen)
-        let app = Self.json(snapshot.application)
-        let display = JSONValue(screen.display?.index)
-        switch detail {
-        case .light: return ["app": app, "display": display, "elements": layout.elements(snapshot.element)]
-        case .full: return ["app": app, "display": display, "root": layout.json(snapshot.element)]
-        }
-    }
-
-    /// The element VoiceOver finds at a point, with its descendants when full.
-    func element(at point: ScreenPoint, detail: TreeDetail) async throws -> JSONValue {
-        let accessibility = try await connected()
-        let screen = try await screens.screen(.automatic, usesPixels: point.usesPixels)
-        let layout = AccessibilityLayout(screenSize: try await accessibility.application().screenSize, screen: screen)
-        let fraction = screen.normalizedPoint(point)
-        guard let snapshot = try await accessibility.snapshot(at: layout.panelPoint(fraction), display: screen.display?.index ?? 0) else {
-            throw SimDriveError(.noElement, "No accessibility element is at \(fraction.x), \(fraction.y).")
-        }
-        let element = switch detail {
-        case .light: layout.summary(snapshot.element)
-        case .full: layout.json(snapshot.element)
-        }
-        return ["app": Self.json(snapshot.application), "display": JSONValue(screen.display?.index), "point": screen.json(point),
-                "element": element]
-    }
-
-    /// The frontmost app, or "unsupported".
-    func doctorJSON() async throws -> JSONValue {
-        guard let accessibility = try await accessibility.value() else { return "unsupported" }
-        return Self.json(try await accessibility.application())
-    }
-
-    private func connected() async throws -> SimulatorAccessibility {
-        guard let accessibility = try await accessibility.value() else {
-            throw SimDriveError(.accessibilityUnsupported, "CoreSimulator cannot read \(device.name)'s accessibility.")
-        }
-        return accessibility
-    }
-
-    private static func json(_ application: AccessibilityApplication) -> JSONValue {
-        ["name": JSONValue(application.name), "pid": JSONValue(application.pid.map(Int.init))]
-    }
-}
-
 /// Accessibility frames as fractions of the screenshot, which both follow the interface's rotation, and screenshot
 /// fractions as the panel points that hit testing takes.
 struct AccessibilityLayout: Equatable, Sendable {
@@ -82,19 +21,32 @@ struct AccessibilityLayout: Equatable, Sendable {
         self.mapping = mapping
     }
 
-    init(screenSize: CGSize, screen: ScreenTargets.Target) {
+    init(screenSize: CGSize, screen: Screen) {
         self.init(screenSize: screenSize, screenshot: screen.record.full, mapping: screen.mapping)
     }
+
+    // MARK: Geometry
 
     func panelPoint(_ fraction: CGPoint) -> CGPoint {
         let unit = mapping.digitizerPoint(fraction)
         return CGPoint(x: unit.x * panelSize.width, y: unit.y * panelSize.height)
     }
 
-    /// Defaults, nil and empty values are left out.
-    func json(_ element: AccessibilityElement) -> JSONValue {
-        json(element, visibleFrame: screenFrame)
+    private var screenFrame: CGRect { CGRect(origin: .zero, size: interfaceSize) }
+
+    private func point(of element: AccessibilityElement) -> CGPoint {
+        element.activationPoint ?? element.frame.center
     }
+
+    private func isOffscreen(_ element: AccessibilityElement, in visibleFrame: CGRect) -> Bool {
+        element.isVoiceOverElement && !visibleFrame.intersects(element.frame)
+    }
+
+    private func childrenFrame(of element: AccessibilityElement, in visibleFrame: CGRect) -> CGRect {
+        element.type.map(Self.scrollingTypes.contains) == true ? visibleFrame.intersection(element.frame) : visibleFrame
+    }
+
+    // MARK: Light
 
     /// VoiceOver's elements in hierarchy order, as `summary` describes them.
     func elements(_ root: AccessibilityElement) -> JSONValue {
@@ -107,8 +59,6 @@ struct AccessibilityLayout: Equatable, Sendable {
     func summary(_ element: AccessibilityElement) -> JSONValue {
         summary(element, visibleFrame: screenFrame)
     }
-
-    private var screenFrame: CGRect { CGRect(origin: .zero, size: interfaceSize) }
 
     private func collect(_ element: AccessibilityElement, visibleFrame: CGRect, into elements: inout [JSONValue]) {
         guard !element.isVoiceOverElement else {
@@ -138,6 +88,13 @@ struct AccessibilityLayout: Equatable, Sendable {
         return .object(fields)
     }
 
+    // MARK: Full
+
+    /// Defaults, nil and empty values are left out.
+    func json(_ element: AccessibilityElement) -> JSONValue {
+        json(element, visibleFrame: screenFrame)
+    }
+
     /// `visibleFrame` is the part of the screen that the element's scrolling ancestors show.
     private func json(_ element: AccessibilityElement, visibleFrame: CGRect) -> JSONValue {
         var fields: [String: JSONValue] = ["frame": json(element.frame), "point": json(point(of: element))]
@@ -152,7 +109,7 @@ struct AccessibilityLayout: Equatable, Sendable {
         fields["offscreen"] = isOffscreen(element, in: visibleFrame) ? true : nil
         fields["focused"] = element.isFocused ? true : nil
         fields["expanded"] = element.isExpanded.map(JSONValue.bool)
-        fields["headingLevel"] = element.headingLevel.map { .number(Double($0)) }
+        fields["headingLevel"] = element.headingLevel.map { JSONValue($0) }
         fields["containerType"] = element.containerType.map { .string("\($0)") }
         fields["language"] = element.language.map(JSONValue.string)
         fields["inputLabels"] = Self.list(element.inputLabels.map(JSONValue.string))
@@ -173,18 +130,6 @@ struct AccessibilityLayout: Equatable, Sendable {
         let childrenFrame = childrenFrame(of: element, in: visibleFrame)
         fields["children"] = Self.list(element.children.map { json($0, visibleFrame: childrenFrame) })
         return .object(fields)
-    }
-
-    private func point(of element: AccessibilityElement) -> CGPoint {
-        element.activationPoint ?? element.frame.center
-    }
-
-    private func isOffscreen(_ element: AccessibilityElement, in visibleFrame: CGRect) -> Bool {
-        element.isVoiceOverElement && !visibleFrame.intersects(element.frame)
-    }
-
-    private func childrenFrame(of element: AccessibilityElement, in visibleFrame: CGRect) -> CGRect {
-        element.type.map(Self.scrollingTypes.contains) == true ? visibleFrame.intersection(element.frame) : visibleFrame
     }
 
     private func json(_ point: CGPoint) -> JSONValue {

@@ -4,7 +4,8 @@ import SimDriveNative
 /// Reads and changes the settings of `SettingCatalog`.
 @MainActor
 final class DeviceSettings {
-    private static let unsupported = "unsupported"
+    /// What `simctl ui` reads for an option the device lacks.
+    private static let unsupportedReading = "unsupported"
 
     private let udid: String
     private let device: SimulatorDevice
@@ -28,15 +29,15 @@ final class DeviceSettings {
 
     /// Writes the value, tells running apps, and reads it back.
     func set(_ setting: Setting, to value: JSONValue) async throws -> JSONValue {
-        guard setting.exists(onOSVersion: device.majorOSVersion) else { throw unsupported(setting) }
-        switch setting.store {
+        guard setting.isAvailable(onOSVersion: device.majorOSVersion) else { throw unsupported(setting) }
+        switch setting.storage {
         case .interface(let option):
-            guard try await Self.interfaceReading(option, udid: udid, tools: tools) != Self.unsupported else {
+            guard try await Self.interfaceReading(option, udid: udid, tools: tools) != Self.unsupportedReading else {
                 throw unsupported(setting)
             }
-            try await tools.simctl(["ui", udid, option, setting.interfaceArgument(value)])
+            try await tools.simctl(["ui", udid, option, setting.interfaceArgument(for: value)])
         case .preference(let domain, let key, _, let notifications):
-            try await preferences.write(setting.preferenceValue(value), forKey: key, in: domain)
+            try await preferences.write(setting.preferenceValue(for: value), forKey: key, in: domain)
             for notification in notifications {
                 try device.postDarwinNotification(notification)
             }
@@ -52,26 +53,27 @@ final class DeviceSettings {
     private func values(of settings: [Setting]) async throws -> [String: JSONValue] {
         let (udid, tools, preferences) = (udid, tools, preferences)
         let version = device.majorOSVersion
-        let existing = settings.filter { $0.exists(onOSVersion: version) }
+        let available = settings.filter { $0.isAvailable(onOSVersion: version) }
         var keysByDomain: [String: [(setting: Setting, key: String)]] = [:]
-        for setting in existing {
-            if case .preference(let domain, let key, _, _) = setting.store { keysByDomain[domain, default: []].append((setting, key)) }
+        for setting in available {
+            if case .preference(let domain, let key, _, _) = setting.storage { keysByDomain[domain, default: []].append((setting, key)) }
         }
         return try await withThrowingTaskGroup(of: [String: JSONValue].self) { group in
-            for setting in existing {
-                guard case .interface(let option) = setting.store else { continue }
+            for setting in available {
+                guard case .interface(let option) = setting.storage else { continue }
                 group.addTask {
-                    [setting.name: setting.value(interfaceReading: try await Self.interfaceReading(option, udid: udid, tools: tools))]
+                    let reading = try await Self.interfaceReading(option, udid: udid, tools: tools)
+                    return [setting.name: setting.value(fromInterfaceReading: reading)]
                 }
             }
             for (domain, keys) in keysByDomain {
                 group.addTask {
                     let stored = try await preferences.export(domain)
-                    return Dictionary(uniqueKeysWithValues: keys.map { ($0.setting.name, $0.setting.value(stored: stored[$0.key])) })
+                    return Dictionary(uniqueKeysWithValues: keys.map { ($0.setting.name, $0.setting.value(fromPreference: stored[$0.key])) })
                 }
             }
-            var values = Dictionary(uniqueKeysWithValues: settings.filter { !$0.exists(onOSVersion: version) }.map {
-                ($0.name, JSONValue.string(Self.unsupported))
+            var values = Dictionary(uniqueKeysWithValues: settings.filter { !$0.isAvailable(onOSVersion: version) }.map {
+                ($0.name, JSONValue.unsupported)
             })
             for try await part in group {
                 values.merge(part) { current, _ in current }

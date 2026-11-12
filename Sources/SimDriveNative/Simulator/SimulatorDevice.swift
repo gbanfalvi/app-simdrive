@@ -10,6 +10,7 @@ package final class SimulatorDevice {
     private typealias PostFunction = @convention(c) (NSObject, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
 
     private static let bootedState = "Booted"
+    private static let lastBootedAtKey = "lastBootedAt"
     private static let tvOSRuntimePrefix = "com.apple.CoreSimulator.SimRuntime.tvOS-"
     private static var contexts: [String: NSObject] = [:]
 
@@ -43,9 +44,15 @@ package final class SimulatorDevice {
     package var isBooted: Bool { state == Self.bootedState }
     /// An Apple TV takes its remote's buttons, not touches.
     package var hasTouchscreen: Bool { !(string(forKey: "runtimeIdentifier")?.hasPrefix(Self.tvOSRuntimePrefix) ?? false) }
+    package var majorOSVersion: Int? { string(forKey: "runtimeIdentifier").flatMap(Self.majorOSVersion(ofRuntime:)) }
+    package var lastBootedAt: Date? {
+        guard device.responds(to: NSSelectorFromString(Self.lastBootedAtKey)) else { return nil }
+        return device.value(forKey: Self.lastBootedAtKey) as? Date
+    }
+
     /// From a runtime identifier such as `com.apple.CoreSimulator.SimRuntime.iOS-18-3`.
-    package var majorOSVersion: Int? {
-        string(forKey: "runtimeIdentifier")?.split(separator: ".").last?.split(separator: "-").dropFirst().first.flatMap { Int($0) }
+    static func majorOSVersion(ofRuntime identifier: String) -> Int? {
+        identifier.split(separator: ".").last?.split(separator: "-").dropFirst().first.flatMap { Int($0) }
     }
 
     /// A caller-owned send right to the guest's Mach service `name`.

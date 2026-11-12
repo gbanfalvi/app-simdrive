@@ -27,6 +27,7 @@ extension ErrorCode {
     static let deviceMissing = ErrorCode(rawValue: "device-missing")
     static let guestLookup = ErrorCode(rawValue: "guest-lookup")
     static let guestEndpoint = ErrorCode(rawValue: "guest-endpoint")
+    static let guestMessage = ErrorCode(rawValue: "guest-message")
     /// A guest service connection ended. Its services are gone, so its owner must open a new one.
     package static let guestConnection = ErrorCode(rawValue: "guest-connection")
     static let guestServiceTimeout = ErrorCode(rawValue: "guest-service-timeout")

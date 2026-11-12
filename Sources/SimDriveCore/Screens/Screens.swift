@@ -4,32 +4,9 @@ import SimDriveNative
 
 /// Where points land: the device's displays, each screen's last screenshot, and how its points map to the digitizer.
 @MainActor
-final class ScreenTargets {
-    /// A screen, with the screenshot its points refer to.
-    struct Target {
-        let display: SimulatorDisplay?
-        let record: ScreenRecord
-        let mapping: ScreenMapping
-
-        var digitizerTarget: DigitizerTarget { display?.digitizerTarget ?? .mainScreen }
-
-        /// The point as fractions of the screenshot, clamped to the screen.
-        func normalizedPoint(_ point: ScreenPoint) -> CGPoint {
-            let normalized = switch point {
-            case .normalized(let value): value
-            case .pixels(let value):
-                CGPoint(x: value.x / CGFloat(record.image.width), y: value.y / CGFloat(record.image.height))
-            }
-            return CGPoint(x: min(max(normalized.x, 0), 1), y: min(max(normalized.y, 0), 1))
-        }
-
-        func digitizerPoint(_ point: ScreenPoint) -> CGPoint { mapping.digitizerPoint(normalizedPoint(point)) }
-
-        func json(_ point: ScreenPoint) -> JSONValue {
-            let normalized = normalizedPoint(point)
-            return ["x": .number(normalized.x), "y": .number(normalized.y)]
-        }
-    }
+final class Screens {
+    /// A calibration screenshot keeps its full resolution.
+    private static let fullResolution = 0
 
     private let udid: String
     private let device: SimulatorDevice
@@ -37,7 +14,6 @@ final class ScreenTargets {
     private let orientation: LazyCapability<GuestOrientation>
     private let hinge: LazyCapability<Hinge>
     private let store: ScreenStore
-    private var displays: [SimulatorDisplay]?
 
     init(udid: String, device: SimulatorDevice, tools: DeveloperTools, orientation: LazyCapability<GuestOrientation>,
          hinge: LazyCapability<Hinge>) {
@@ -46,11 +22,11 @@ final class ScreenTargets {
         self.tools = tools
         self.orientation = orientation
         self.hinge = hinge
-        store = ScreenStore(url: StatePaths.screens(for: udid))
+        store = ScreenStore(url: StatePaths.screens(for: udid), bootedAt: device.lastBootedAt)
     }
 
     /// The touchscreen display a point refers to.
-    func target(_ selector: DisplaySelector, usesPixels: Bool) async throws -> Target {
+    func touchscreen(_ selector: DisplaySelector, usesPixels: Bool) async throws -> Screen {
         guard device.hasTouchscreen else {
             throw SimDriveError(.noTouchscreen, "\(device.name) has no touchscreen; use button or key to move focus.")
         }
@@ -59,93 +35,89 @@ final class ScreenTargets {
 
     /// The display a point refers to, with the rotation of its last screenshot. Fractions take a calibration
     /// screenshot when there is none for the current orientation; pixels need the caller's own.
-    func screen(_ selector: DisplaySelector, usesPixels: Bool) async throws -> Target {
-        let display = try await resolveDisplay(selector)
-        let orientation = try await currentOrientation()
-        var record = store.record(for: display?.digitizerTarget ?? .mainScreen)
+    func screen(_ selector: DisplaySelector, usesPixels: Bool) async throws -> Screen {
+        let display = try await display(for: selector)
+        let orientation = try await deviceOrientation() ?? .portrait
+        var record = store.record(for: DigitizerTarget(display: display))
         if let existing = record, existing.orientation != orientation {
             guard !usesPixels else {
                 throw SimDriveError(.staleScreenshot, "The device rotated since the last screenshot; take a new one.")
             }
             record = nil
         }
-        let current: ScreenRecord
+        let current: ScreenshotRecord
         if let record {
             current = record
         } else {
             guard !usesPixels else {
                 throw SimDriveError(.noScreenshot, "Pixel coordinates refer to the last screenshot; take one, or pass fractions such as 0.5 0.5.")
             }
-            current = try await calibrate(display: display, orientation: orientation)
+            current = try await capture(display, to: StatePaths.calibration(for: udid).path, maxDimension: Self.fullResolution,
+                                        orientation: orientation).record
         }
         // Single touchscreens are portrait natively, and TVs landscape.
         let mapping = ScreenMapping(screenshot: current, panelIsLandscape: display?.nativeSize.isLandscape ?? !device.hasTouchscreen,
                                     deviceOrientation: orientation)
-        return Target(display: display, record: current, mapping: mapping)
+        return Screen(display: display, record: current, mapping: mapping)
     }
 
     func screenshot(to path: String, display selector: DisplaySelector, maxDimension: Int) async throws -> JSONValue {
-        let display = try await resolveDisplay(selector)
-        let orientation = try await currentOrientation()
-        let canRotate = try await self.orientation.value() != nil
-        async let interfaceOrientation = Screenshots.interfaceOrientation(udid: udid, display: display?.index, tools: tools)
-        let shot = try await Screenshots.capture(udid: udid, display: display?.index, to: path, maxDimension: maxDimension, tools: tools)
-        store.save(ScreenRecord(shot, orientation: orientation, interfaceOrientation: await interfaceOrientation),
-                   for: display?.digitizerTarget ?? .mainScreen)
-        return ["path": .string(shot.path), "width": .number(Double(shot.image.width)), "height": .number(Double(shot.image.height)),
-                "fullPath": .string(shot.fullPath), "fullWidth": .number(Double(shot.full.width)),
-                "fullHeight": .number(Double(shot.full.height)), "display": JSONValue(display?.index),
-                "orientation": canRotate ? .string(orientation.name) : .null]
+        let display = try await display(for: selector)
+        let orientation = try await deviceOrientation()
+        let (shot, _) = try await capture(display, to: path, maxDimension: maxDimension, orientation: orientation ?? .portrait)
+        return shot.json(display: display, orientation: orientation)
     }
 
     /// Forgets every screenshot, since a new foreground app may rotate the interface without rotating the device.
     func forgetScreenshots() {
-        store.removeAll()
+        store.removeRecords()
     }
 
     func displaysJSON() async throws -> JSONValue {
-        .array(try await knownDisplays().map(\.json))
+        .array(try await displays().map(\.json))
     }
 
-    /// A device that cannot rotate, such as an Apple TV, counts as portrait.
-    func currentOrientation() async throws -> DeviceOrientation {
-        guard let control = try await orientation.value() else { return .portrait }
+    /// Nil when the device cannot rotate, as an Apple TV; screens then count as portrait.
+    func deviceOrientation() async throws -> DeviceOrientation? {
+        guard let control = try await orientation.value() else { return nil }
         return try await control.read().orientation ?? .portrait
     }
 
-    private func calibrate(display: SimulatorDisplay?, orientation: DeviceOrientation) async throws -> ScreenRecord {
+    /// Captures a screen and records it with the interface orientation, which `simctl` reads in parallel.
+    private func capture(_ display: SimulatorDisplay?, to path: String, maxDimension: Int,
+                         orientation: DeviceOrientation) async throws -> (shot: Screenshot, record: ScreenshotRecord) {
         async let interfaceOrientation = Screenshots.interfaceOrientation(udid: udid, display: display?.index, tools: tools)
-        let shot = try await Screenshots.capture(udid: udid, display: display?.index,
-            to: StatePaths.calibration(for: udid).path, maxDimension: 0, tools: tools)
-        let record = ScreenRecord(shot, orientation: orientation, interfaceOrientation: await interfaceOrientation)
-        store.save(record, for: display?.digitizerTarget ?? .mainScreen)
-        return record
+        let shot = try await Screenshots.capture(udid: udid, display: display?.index, to: path, maxDimension: maxDimension, tools: tools)
+        let record = ScreenshotRecord(shot, orientation: orientation, interfaceOrientation: await interfaceOrientation)
+        store.save(record, for: DigitizerTarget(display: display))
+        return (shot, record)
     }
 
-    private func knownDisplays() async throws -> [SimulatorDisplay] {
-        if let displays { return displays }
+    /// The displays of a multi-display device, or none for a single display.
+    private func displays() async throws -> [SimulatorDisplay] {
+        if let displays = store.displays { return displays }
         // A multi-display device refuses a screenshot without --display and lists its displays instead.
         let path = StatePaths.calibration(for: udid).path
         let result = try await tools.simctlResult(Screenshots.simctlArguments(udid: udid, display: nil, path: path))
         guard result.succeeded else {
             let found = SimulatorDisplay.parse(listing: result.standardOutput + "\n" + result.standardError)
             guard !found.isEmpty else { throw SimDriveError(.screenshot, "simctl could not capture the screen: \(result.diagnostics)") }
-            displays = found
+            store.displays = found
             return found
         }
-        displays = []
+        store.displays = []
         // The probe doubles as the first calibration; an existing record may be the one pixel coordinates refer to.
         if store.record(for: .mainScreen) == nil {
             let size = try Screenshots.size(of: path)
-            store.save(ScreenRecord(full: size, image: size, orientation: try await currentOrientation(),
-                                    interfaceOrientation: await Screenshots.interfaceOrientation(udid: udid, display: nil, tools: tools)),
+            store.save(ScreenshotRecord(full: size, image: size, orientation: try await deviceOrientation() ?? .portrait,
+                                        interfaceOrientation: await Screenshots.interfaceOrientation(udid: udid, display: nil, tools: tools)),
                        for: .mainScreen)
         }
         return []
     }
 
-    private func resolveDisplay(_ selector: DisplaySelector) async throws -> SimulatorDisplay? {
-        let displays = try await knownDisplays()
+    private func display(for selector: DisplaySelector) async throws -> SimulatorDisplay? {
+        let displays = try await displays()
         guard !displays.isEmpty else {
             guard selector == .automatic else { throw SimDriveError(.singleDisplay, "\(device.name) has one display.") }
             return nil

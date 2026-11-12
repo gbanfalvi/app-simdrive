@@ -8,13 +8,13 @@ enum DaemonClient {
     private static let exitLimit: Duration = .seconds(5)
     private static let poll: Duration = .milliseconds(100)
     private static let serveCommand = "serve"
+    private static let stopCommand = "stop"
+    private static let rootDirectory = "/"
     private static let logMode: mode_t = 0o600
 
     static func send(udid: String, arguments: [String], workingDirectory: String,
                      tools: DeveloperTools) async throws -> CommandResponse {
-        let request = try JSONEncoder.line.encode(DaemonRequest(arguments: arguments, workingDirectory: workingDirectory,
-                                                                build: BuildStamp.current,
-                                                                developerDirectory: tools.developerDirectory))
+        let request = try request(arguments, workingDirectory: workingDirectory, tools: tools)
         let response = try exchange(request, on: try await connection(udid: udid, tools: tools))
         guard response.code == ErrorCode.staleDaemon.rawValue else { return response }
         try await waitForExit(udid: udid)
@@ -26,11 +26,15 @@ enum DaemonClient {
         guard let socketDescriptor = UnixSocket.connect(to: StatePaths.socket(for: udid).path) else {
             return .success(["stopped": false])
         }
-        let request = try JSONEncoder.line.encode(DaemonRequest(arguments: ["stop"], workingDirectory: "/", build: BuildStamp.current,
-                                                                developerDirectory: tools.developerDirectory))
-        _ = try exchange(request, on: socketDescriptor)
+        _ = try exchange(try request([stopCommand], workingDirectory: rootDirectory, tools: tools), on: socketDescriptor)
         try await waitForExit(udid: udid)
         return .success(["stopped": true])
+    }
+
+    /// A daemon from another build or developer directory refuses the request and exits.
+    private static func request(_ arguments: [String], workingDirectory: String, tools: DeveloperTools) throws -> Data {
+        try JSONEncoder.line.encode(DaemonRequest(arguments: arguments, workingDirectory: workingDirectory, build: BuildStamp.current,
+                                                  developerDirectory: tools.developerDirectory))
     }
 
     private static func exchange(_ request: Data, on socketDescriptor: Int32) throws -> CommandResponse {

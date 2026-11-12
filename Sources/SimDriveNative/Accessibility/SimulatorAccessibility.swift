@@ -31,6 +31,7 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     private enum Limit {
         /// The whole hierarchy is one request, and a large app's first one takes seconds.
         static let request: DispatchTimeInterval = .seconds(10)
+        /// With `children`, far above any real app's hierarchy, so no tree is cut short; they only stop a runaway one.
         static let depth = 500
         static let children = 10_000
         /// An app answers with nothing while it launches, and sometimes at random; a guest's first request after its first
@@ -97,21 +98,26 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     }
 
     /// The frontmost app's whole hierarchy.
-    package func snapshot() async throws -> AccessibilitySnapshot {
+    package func snapshot(detail: TreeDetail) async throws -> AccessibilitySnapshot {
         try await perform {
             let (application, root) = try self.frontmost()
-            return AccessibilitySnapshot(application: application, element: try self.hierarchy(of: root))
+            return AccessibilitySnapshot(application: application, element: try self.hierarchy(of: root, detail: detail))
         }
     }
 
-    /// The VoiceOver element at a point of a display, in points of the panel's native orientation, or nil when there is none.
-    /// `display` is the simctl display index; single-display devices have 0.
-    package func snapshot(at point: CGPoint, display: Int) async throws -> AccessibilitySnapshot? {
+    /// The VoiceOver element at a point of a display, or nil when there is none. `point` turns the app's screen size
+    /// into points of the panel's native orientation. `display` is the simctl display index; single-display devices have 0.
+    package func snapshot(at point: @escaping @Sendable (CGSize) -> CGPoint, display: Int,
+                          detail: TreeDetail) async throws -> AccessibilitySnapshot? {
         try await perform {
             let (application, _) = try self.frontmost()
             let hitTest = unsafeBitCast(self.translator.method(for: Call.hitTest), to: HitTestFunction.self)
-            guard let translation = hitTest(self.translator, Call.hitTest, point, UInt32(display), self.token) else { return nil }
-            return AccessibilitySnapshot(application: application, element: try self.hierarchy(of: try self.platformElement(translation)))
+            guard let translation = hitTest(self.translator, Call.hitTest, point(application.screenSize), UInt32(display),
+                                            self.token) else {
+                return nil
+            }
+            let element = try self.hierarchy(of: try self.platformElement(translation), detail: detail)
+            return AccessibilitySnapshot(application: application, element: element)
         }
     }
 
@@ -146,15 +152,17 @@ package final class SimulatorAccessibility: @unchecked Sendable {
         return element
     }
 
-    /// One request returns the element's whole subtree.
-    private func hierarchy(of element: NSObject) throws -> AccessibilityElement {
+    /// One request returns the element's whole subtree. Custom content costs a request per VoiceOver element, so only
+    /// full trees read it.
+    private func hierarchy(of element: NSObject, detail: TreeDetail) throws -> AccessibilityElement {
         let parameters: NSDictionary = [
-            "attributes": SnapshotAttribute.allCases.map(\.rawValue), "maxDepth": Limit.depth, "maxChildren": Limit.children,
-            "maxArrayCount": Limit.children, "traverseFromParentsToChildren": true,
+            "attributes": SnapshotAttribute.requested(for: detail).map(\.rawValue), "maxDepth": Limit.depth,
+            "maxChildren": Limit.children, "maxArrayCount": Limit.children, "traverseFromParentsToChildren": true,
         ]
+        let readsCustomContent = detail == .full
         let root = Self.retrying {
             element.perform(Call.processAttribute, with: Name.snapshot, with: parameters).flatMap {
-                AccessibilityElement(snapshot: $0.takeUnretainedValue(), customContent: customContent(of:))
+                AccessibilityElement(snapshot: $0.takeUnretainedValue()) { readsCustomContent ? customContent(of: $0) : [] }
             }
         }
         guard let root else { throw SimDriveError(.accessibilityTimeout, "The app did not return its accessibility hierarchy. \(Self.retryHint)") }

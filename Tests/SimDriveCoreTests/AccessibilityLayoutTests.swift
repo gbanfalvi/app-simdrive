@@ -1,5 +1,5 @@
 import CoreGraphics
-import SimDriveNative
+@testable import SimDriveNative
 import Testing
 @testable import SimDriveCore
 

@@ -34,3 +34,10 @@ extension ErrorCode {
     static let daemonRunning = ErrorCode(rawValue: "daemon-running")
     static let daemonSocket = ErrorCode(rawValue: "daemon-socket")
 }
+
+extension SimDriveError {
+    /// A malformed command line, with a pointer to the help.
+    static func usage(_ message: String) -> SimDriveError {
+        SimDriveError(.usage, "\(message). Run `simdrive help` for usage.")
+    }
+}

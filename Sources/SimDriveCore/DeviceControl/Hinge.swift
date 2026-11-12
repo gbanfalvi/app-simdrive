@@ -10,20 +10,20 @@ final class Hinge {
         static let settle: Duration = .milliseconds(400)
     }
 
-    private let transport: CoreDeviceHinge
+    private let driver: CoreDeviceHinge
     private var observation: Task<Void, Never>?
     private(set) var angle: Double?
 
     var posture: DevicePosture? { DevicePosture(angle: angle) }
 
-    private init(transport: CoreDeviceHinge) {
-        self.transport = transport
+    private init(driver: CoreDeviceHinge) {
+        self.driver = driver
     }
 
     /// The hinge of `remote`'s device, or nil when it has none.
     static func open(remote: CoreDeviceRemote) async throws -> Hinge? {
-        guard let transport = try await CoreDeviceHinge.open(remote: remote) else { return nil }
-        let hinge = Hinge(transport: transport)
+        guard let driver = try await CoreDeviceHinge.open(remote: remote) else { return nil }
+        let hinge = Hinge(driver: driver)
         hinge.observe()
         return hinge
     }
@@ -35,7 +35,7 @@ final class Hinge {
 
     /// Moves the hinge to `posture` and waits until it stops there.
     func set(_ posture: DevicePosture) async throws {
-        try await transport.send(posture)
+        try await driver.send(posture)
         try await waitForAngle { DevicePosture(angle: $0) == posture }
         try await waitUntilSettled()
     }
@@ -48,8 +48,8 @@ final class Hinge {
     /// Follows the angle until the device stops reporting it; the next wait follows it again.
     private func observe() {
         guard observation == nil else { return }
-        observation = Task { [weak self, transport] in
-            try? await transport.observe { self?.angle = $0 }
+        observation = Task { [weak self, driver] in
+            try? await driver.observe { self?.angle = $0 }
             self?.angle = nil
             self?.observation = nil
         }

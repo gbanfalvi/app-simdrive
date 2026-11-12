@@ -83,8 +83,7 @@ package final class CoreDeviceHinge {
         let arguments: [NativeSwiftGenericArgument] = [.type(array), .type((any Error).self)]
         let sequence = try await runtime.resolve(.swift(.type("Swift.AsyncThrowingStream", genericArguments: arguments)))
         let measurement = try await runtime.resolve(.swift(.type("Foundation.Measurement", genericArguments: [.type(UnitAngle.self)])))
-        let abis = try Dictionary(uniqueKeysWithValues: [snapshot, configuration, sequence, measurement]
-            .map { ($0, try NativeType.opaque(named: $0.name)) })
+        let abis = try NativeType.opaqueABIs(for: [snapshot, configuration, sequence, measurement])
         let makeConfig = try await configuration.resolve(.swift(.initializer("init(changeThreshold:updateInterval:)",
             as: ((Measurement<UnitAngle>, Duration) -> NativeSwiftValue).self, valueABIs: abis)))
         config = try unsafe makeConfig.unsafeInvoke(Self.changeThreshold, Self.updateInterval)
@@ -92,8 +91,7 @@ package final class CoreDeviceHinge {
             as: ((NativeSwiftValue) async throws(Failure) -> NativeSwiftValue).self, valueABIs: abis)))
         self.monitor = { config in try await unsafe monitor.unsafeInvoke(on: motion, config) }
         let data = try await runtime.resolve(.swift(.type("Foundation.Data")))
-        // Data is @frozen; Device Hub passes its two words in integer registers.
-        let dataABI = try NativeType.structure(named: data.name, fields: [.uint64, .uint64])
+        let dataABI = try NativeType.dataABI(data)
         prepareVendorSend = { implementation in
             let send = try await implementation.type.resolve(.swift(.method("CoreDevice.HIDVendorDefined.send(usagePage:usage:version:data:)",
                 as: ((UInt16, UInt16, UInt32, Data) throws(Failure) -> Void).self, valueABIs: [data: dataABI])))

@@ -21,7 +21,7 @@ package struct KeyboardBindings {
             throw SimDriveError(.keyboardReport, "UniversalHIDKit did not report a key press.")
         }
         let descriptorType = try await runtime.resolve(.swift(.type("CoreDevice.HIDServiceDescriptor")))
-        let descriptorABIs: [NativeSwiftType: NativeType] = [descriptorType: try .opaque(named: descriptorType.name)]
+        let descriptorABIs = try NativeType.opaqueABIs(for: [descriptorType])
         let setSoftwareKeyboard = try await descriptorType.resolve(.swift(.method("setSoftwareKeyboard(_:)",
             as: ((Bool) -> Bool).self, valueABIs: descriptorABIs, receiverABI: descriptorABIs[descriptorType], receiver: .mutating)))
         let mainKeyboard = try await descriptorType.resolve(.swift(.staticMethod("mainKeyboard()",
@@ -53,9 +53,9 @@ package struct KeyboardBindings {
         try await CoreDeviceUniversalHID.load()
         let coreDeviceReport = try await runtime.prepare { try CoreDeviceUniversalHID.reportABI(runtime: $0) }
         let data = try await runtime.resolve(.swift(.type("Foundation.Data")))
-        let dataABI = try NativeType.structure(named: data.name, fields: [.uint64, .uint64])
+        let dataABI = try NativeType.dataABI(data)
         // These single-field and Data-wrapping values pass their stored words directly, as DeviceKit passes them.
-        let systemReportABI = try NativeType.structure(named: systemReport.name, fields: [.uint64, .uint64])
+        let systemReportABI = try NativeType.dataABI(systemReport)
         let systemABIs: [NativeSwiftType: NativeType] = [
             eventType: try .structure(named: eventType.name, fields: [.uint32]),
             maskType: try .structure(named: maskType.name, fields: [.uint64]),
@@ -129,6 +129,6 @@ enum CoreDeviceUniversalHID {
     /// `HIDReport` wraps the report's `Data`, whose two words its exported members pass directly. Needs ``load()`` first.
     static func reportABI(runtime: ABIRuntime) throws -> (type: NativeSwiftType, abi: NativeType) {
         let type = try runtime.resolveAndWait(.swift(.type("UniversalHID.HIDReport")), in: .path(url), loading: .loadedOnly)
-        return (type, try .structure(named: type.name, fields: [.uint64, .uint64]))
+        return (type, try .dataABI(type))
     }
 }

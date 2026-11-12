@@ -28,7 +28,7 @@ enum BootedSimulators {
     static func resolve(_ identifier: String, tools: DeveloperTools) async throws -> String {
         guard identifier == bootedAlias else {
             guard UUID(uuidString: identifier) != nil else {
-                throw UsageError("\"\(identifier)\" is neither a simulator UDID nor booted")
+                throw SimDriveError.usage("\"\(identifier)\" is neither a simulator UDID nor booted")
             }
             return identifier
         }

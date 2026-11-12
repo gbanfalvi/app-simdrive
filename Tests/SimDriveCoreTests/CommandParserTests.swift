@@ -10,16 +10,16 @@ struct CommandParserTests {
     }
 
     @Test func keyRejectsUnknownNamesAndModifiers() {
-        #expect(throws: UsageError.self) { try CommandParser.parse(["key", "nope"]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["key", "a", "--mods", "hyper"]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["key", "a", "--repeat", "0"]) }
+        expectUsageError { try CommandParser.parse(["key", "nope"]) }
+        expectUsageError { try CommandParser.parse(["key", "a", "--mods", "hyper"]) }
+        expectUsageError { try CommandParser.parse(["key", "a", "--repeat", "0"]) }
     }
 
     @Test func pointsWithADecimalPointInZeroToOneAreFractions() throws {
         #expect(try CommandParser.parse(["tap", "0.5", "1"]) == .tap(.normalized(CGPoint(x: 0.5, y: 1)), display: .automatic))
         #expect(try CommandParser.parse(["tap", "1", "1"]) == .tap(.pixels(CGPoint(x: 1, y: 1)), display: .automatic))
         #expect(try CommandParser.parse(["tap", "120", "0.5"]) == .tap(.pixels(CGPoint(x: 120, y: 0.5)), display: .automatic))
-        #expect(throws: UsageError.self) { try CommandParser.parse(["tap", "-1", "2"]) }
+        expectUsageError { try CommandParser.parse(["tap", "-1", "2"]) }
     }
 
     @Test func swipeDefaultsAndOptions() throws {
@@ -42,15 +42,15 @@ struct CommandParserTests {
         #expect(try CommandParser.parse(["button", "home"]) == .button(.home, count: 1, hold: CommandParser.defaultButtonHold))
         #expect(try CommandParser.parse(["button", "play-pause", "--repeat", "2", "--hold", "800"])
             == .button(.playPause, count: 2, hold: .milliseconds(800)))
-        #expect(throws: UsageError.self) { try CommandParser.parse(["button", "select", "--hold", "0"]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["button", "power"]) }
+        expectUsageError { try CommandParser.parse(["button", "select", "--hold", "0"]) }
+        expectUsageError { try CommandParser.parse(["button", "power"]) }
     }
 
     @Test func pasteboardReadsWithoutAnArgument() throws {
         #expect(try CommandParser.parse(["pasteboard"]) == .pasteboard(text: nil))
         #expect(try CommandParser.parse(["pasteboard", "héllo wörld"]) == .pasteboard(text: "héllo wörld"))
         #expect(try CommandParser.parse(["pasteboard", ""]) == .pasteboard(text: ""))
-        #expect(throws: UsageError.self) { try CommandParser.parse(["pasteboard", "a", "b"]) }
+        expectUsageError { try CommandParser.parse(["pasteboard", "a", "b"]) }
     }
 
     @Test func screenshotDefaultsToTheMaximumDimension() throws {
@@ -65,8 +65,8 @@ struct CommandParserTests {
         #expect(try CommandParser.parse(["tree", "--full"]) == .tree(at: nil, detail: .full))
         #expect(try CommandParser.parse(["tree", "0.5", "0.25"]) == .tree(at: .normalized(CGPoint(x: 0.5, y: 0.25)), detail: .light))
         #expect(try CommandParser.parse(["tree", "600", "400", "--full"]) == .tree(at: .pixels(CGPoint(x: 600, y: 400)), detail: .full))
-        #expect(throws: UsageError.self) { try CommandParser.parse(["tree", "0.5"]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["tree", "--flat"]) }
+        expectUsageError { try CommandParser.parse(["tree", "0.5"]) }
+        expectUsageError { try CommandParser.parse(["tree", "--flat"]) }
         #expect(try CommandParser.parse(["tree"]).isStep)
     }
 
@@ -75,9 +75,9 @@ struct CommandParserTests {
         #expect(try CommandParser.parse(["setting", "appearance"]) == .setting(SettingCatalog.appearance, value: nil))
         #expect(try CommandParser.parse(["setting", "appearance", "dark"]) == .setting(SettingCatalog.appearance, value: "dark"))
         #expect(try CommandParser.parse(["setting", "glass-tint", "1"]) == .setting(SettingCatalog.setting(named: "glass-tint"), value: 1))
-        #expect(throws: UsageError.self) { try CommandParser.parse(["setting", "voiceover", "on"]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["setting", "bold-text", "maybe"]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["setting", "bold-text", "on", "now"]) }
+        expectUsageError { try CommandParser.parse(["setting", "voiceover", "on"]) }
+        expectUsageError { try CommandParser.parse(["setting", "bold-text", "maybe"]) }
+        expectUsageError { try CommandParser.parse(["setting", "bold-text", "on", "now"]) }
     }
 
     @Test func launchPassesArgumentsAfterTheBundleIdentifier() throws {
@@ -86,16 +86,30 @@ struct CommandParserTests {
     }
 
     @Test func unknownCommandsAndOptionsFail() {
-        #expect(throws: UsageError.self) { try CommandParser.parse([]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["fly"]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["tap", "1", "1", "--force"]) }
-        #expect(throws: UsageError.self) { try CommandParser.parse(["doctor", "now"]) }
+        expectUsageError { try CommandParser.parse([]) }
+        expectUsageError { try CommandParser.parse(["fly"]) }
+        expectUsageError { try CommandParser.parse(["tap", "1", "1", "--force"]) }
+        expectUsageError { try CommandParser.parse(["doctor", "now"]) }
     }
 
     @Test func runReadsInlineSteps() throws {
         let command = try CommandParser.parse(["run", "--json", #"["tap 0.5 0.5", ["key", "tab"], ["wait", 100]]"#])
-        #expect(command == .run(steps: [["tap", "0.5", "0.5"], ["key", "tab"], ["wait", "100"]]))
+        #expect(command == .run(steps: [
+            Step(arguments: ["tap", "0.5", "0.5"], command: .tap(.normalized(CGPoint(x: 0.5, y: 0.5)), display: .automatic)),
+            Step(arguments: ["key", "tab"], command: .key(name: "tab", modifiers: [], count: 1)),
+            Step(arguments: ["wait", "100"], command: .wait(milliseconds: 100)),
+        ]))
         #expect(!command.isStep)
+    }
+
+    @Test func runChecksEveryStepBeforeRunning() {
+        expectError(.stepInvalid) { try CommandParser.parse(["run", "--json", #"["key tab", "bogus"]"#]) }
+        expectError(.stepInvalid) { try CommandParser.parse(["run", "--json", #"["stop"]"#]) }
+        expectError(.stepInvalid) { try CommandParser.parse(["run", "--json", #"[["run", "--json", "[]"]]"#]) }
+    }
+
+    @Test func usageErrorsPointToTheHelp() {
+        #expect(SimDriveError.usage("Missing command").message == "Missing command. Run `simdrive help` for usage.")
     }
 
     @Test func orientationNamesMatchTheirOutput() {

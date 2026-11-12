@@ -23,14 +23,6 @@ enum ScreenPoint: Equatable, Sendable {
     }
 }
 
-/// How much of the accessibility hierarchy `tree` returns.
-enum TreeDetail: Equatable, Sendable {
-    /// VoiceOver's elements in a flat list, with the fields that find and act on them.
-    case light
-    /// Every node, nested, with every field.
-    case full
-}
-
 enum Command: Equatable, Sendable {
     case key(name: String, modifiers: Set<KeyModifier>, count: Int)
     case type(text: String)
@@ -50,7 +42,7 @@ enum Command: Equatable, Sendable {
     case setting(Setting?, value: JSONValue?)
     case launch(bundleID: String, arguments: [String])
     case wait(milliseconds: Int)
-    case run(steps: [[String]])
+    case run(steps: [Step])
     case doctor
     case stop
     case serve
@@ -62,6 +54,12 @@ enum Command: Equatable, Sendable {
         default: true
         }
     }
+}
+
+/// A command of `run`, with the arguments that errors quote.
+struct Step: Equatable, Sendable {
+    let arguments: [String]
+    let command: Command
 }
 
 extension DeviceOrientation {

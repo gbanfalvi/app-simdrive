@@ -102,7 +102,7 @@ package final class CoreDeviceRemote {
         }
         let capability = try await runtime.resolve(.swift(.type("CoreDevice." + name)))
         let markerType = try await runtime.resolve(.swift(.type("CoreDevice.CapabilityStaticMember", genericArguments: [.type(capability)])))
-        let abis: [NativeSwiftType: NativeType] = [markerType: try .opaque(named: markerType.name)]
+        let abis = try NativeType.opaqueABIs(for: [markerType])
         let make = try await markerType.resolve(.swift(.initializer("init()", as: (() -> NativeSwiftValue).self, valueABIs: abis)))
         let marker = try unsafe make.unsafeInvoke()
         let get = try await type.resolve(.swift(.method("getImplementation(for:)",
@@ -116,7 +116,7 @@ package final class CoreDeviceRemote {
         if let cachedErrorSample { return cachedErrorSample }
         let errorType = try await runtime.resolve(.swift(.type("CoreDevice.CoreDeviceError")))
         let sample = try await errorType.resolve(.swift(.staticGetter("ioError", as: (() -> NativeSwiftValue).self,
-            valueABIs: [errorType: try .opaque(named: errorType.name)])))
+            valueABIs: try NativeType.opaqueABIs(for: [errorType]))))
         guard let failure = try unsafe sample.unsafeInvoke().withCopy({ $0 as? any Error }) else {
             throw SimDriveError(.coreDeviceErrorType, "CoreDevice's error type could not be resolved.")
         }

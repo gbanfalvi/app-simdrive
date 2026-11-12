@@ -52,8 +52,8 @@ struct ScreenMappingTests {
         #expect(ScreenMapping(isRotated: true, orientation: .portrait).digitizerEdge(.left) == .bottom)
     }
 
-    private func record(width: Int, height: Int, interface: InterfaceOrientation?) -> ScreenRecord {
+    private func record(width: Int, height: Int, interface: InterfaceOrientation?) -> ScreenshotRecord {
         let size = PixelSize(width: width, height: height)
-        return ScreenRecord(full: size, image: size, orientation: .portrait, interfaceOrientation: interface)
+        return ScreenshotRecord(full: size, image: size, orientation: .portrait, interfaceOrientation: interface)
     }
 }

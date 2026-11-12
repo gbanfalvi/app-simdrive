@@ -16,7 +16,7 @@ struct SimulatorDisplayTests {
         #expect(displays.map(\.index) == [1, 3])
         #expect(displays.map(\.role) == [SimulatorDisplay.coverRole, SimulatorDisplay.innerRole])
         #expect(displays[1].name == "LCD-1")
-        #expect(displays[1].digitizerTarget == .display(3))
+        #expect(DigitizerTarget(display: displays[1]) == .display(3))
         #expect(displays[1].nativeSize == PixelSize(width: 2007, height: 2853))
         #expect(!displays[1].nativeSize.isLandscape)
     }

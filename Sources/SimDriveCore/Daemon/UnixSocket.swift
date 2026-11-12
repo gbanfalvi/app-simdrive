@@ -2,7 +2,7 @@ import Darwin
 import Foundation
 import SimDriveNative
 
-/// Newline-terminated messages over a Unix domain stream socket.
+/// Newline-terminated messages over a Unix domain stream socket. Each connection carries one request and its reply.
 enum UnixSocket {
     private static let backlog: Int32 = 16
     /// Inline steps can make a request large; the cap stops a peer that never sends a newline.

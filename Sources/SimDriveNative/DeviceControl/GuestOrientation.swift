@@ -17,30 +17,31 @@ package struct GuestOrientationReading: Equatable, Sendable {
 @MainActor
 package final class GuestOrientation {
     private static let feature = "com.apple.coredevice.feature.remote.devicecontrol.orientation"
-    private let guest: SimulatorGuest
-    private var connection: GuestConnection
+    private let connection: GuestConnection
+    private let codec: GuestMessageCodec
 
-    private init(guest: SimulatorGuest, connection: GuestConnection) {
-        self.guest = guest
+    private init(connection: GuestConnection, codec: GuestMessageCodec) {
         self.connection = connection
+        self.codec = codec
     }
 
     /// The guest's orientation service, or nil when it has none, as on tvOS.
     package static func open(guest: SimulatorGuest) async throws -> GuestOrientation? {
         guard guest.hasService(feature) else { return nil }
-        return GuestOrientation(guest: guest, connection: try await guest.connection(to: feature))
+        return GuestOrientation(connection: try await guest.connection(to: feature), codec: guest.codec)
     }
 
+    package var hasFailed: Bool { connection.hasFailed }
+
     package func read() async throws -> GuestOrientationReading {
-        try await send(guest.codec.currentOrientationRequest())
+        try await send(codec.currentOrientationRequest())
     }
 
     package func set(_ orientation: DeviceOrientation) async throws -> GuestOrientationReading {
-        try await send(guest.codec.orientationRequest(orientation))
+        try await send(codec.orientationRequest(orientation))
     }
 
     private func send(_ request: NativeSwiftValue) async throws -> GuestOrientationReading {
-        if connection.hasFailed { connection = try await guest.connection(to: Self.feature) }
-        return try guest.codec.orientation(from: await connection.request(.orientation, request))
+        try codec.orientation(from: await connection.request(.orientation, request))
     }
 }

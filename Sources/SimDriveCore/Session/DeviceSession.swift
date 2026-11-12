@@ -2,49 +2,36 @@ import AppKit
 import Foundation
 import SimDriveNative
 
-/// One booted simulator's services, opened on first use. Inputs are released after a short idle period: an attached
-/// keyboard changes how the guest behaves, and while simdrive holds the digitizer, the guest drops other clients' touches.
+/// One booted simulator's services, opened on first use. Each command runs here and returns its JSON result.
 @MainActor
 final class DeviceSession {
-    private enum Timing {
-        static let keyGap: Duration = .milliseconds(40)
-        /// Presses closer together than this can read as one double or long press.
-        static let repeatGap: Duration = .milliseconds(150)
-        static let inputIdleRelease: Duration = .seconds(30)
-    }
-
     private let udid: String
     private let device: SimulatorDevice
     private let tools: DeveloperTools
-    private let guest: SimulatorGuest
-    private let screens: ScreenTargets
-    private let accessibility: AccessibilityTree
+    private let inputs: DeviceInputs
+    private let screens: Screens
+    private let accessibility: DeviceAccessibility
     private let settings: DeviceSettings
     private let orientation: LazyCapability<GuestOrientation>
     private let pasteboard: LazyCapability<CoreDevicePasteboard>
     private let hinge: LazyCapability<Hinge>
-    private var keyboardBindings: KeyboardBindings?
-    private var keyboard: GuestKeyboard?
-    private var touchscreen: GuestTouchscreen?
-    private var buttons: GuestButtons?
-    private var inputRelease: Task<Void, Never>?
 
     private init(udid: String, device: SimulatorDevice, tools: DeveloperTools, guest: SimulatorGuest) {
         self.udid = udid
         self.device = device
         self.tools = tools
-        self.guest = guest
         let coreDevice = LazyCapability { try await CoreDeviceRemote.open(device: device) }
-        let orientation = LazyCapability { try await GuestOrientation.open(guest: guest) }
-        let hinge = LazyCapability<Hinge> {
+        let orientation = LazyCapability(isUsable: { !$0.hasFailed }) { try await GuestOrientation.open(guest: guest) }
+        let hinge = LazyCapability<Hinge>(close: { $0.stop() }) {
             guard let remote = try await coreDevice.value() else { return nil }
             return try await Hinge.open(remote: remote)
         }
         pasteboard = LazyCapability { try await CoreDevicePasteboard.open(guest: guest, remote: { try await coreDevice.value() }) }
         self.orientation = orientation
         self.hinge = hinge
-        screens = ScreenTargets(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
-        accessibility = AccessibilityTree(device: device, screens: screens)
+        inputs = DeviceInputs(guest: guest)
+        screens = Screens(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
+        accessibility = DeviceAccessibility(device: device, screens: screens)
         settings = DeviceSettings(udid: udid, device: device, tools: tools)
     }
 
@@ -75,9 +62,9 @@ final class DeviceSession {
         case .posture(nil):
             return try await readPosture()
         case .orientation(let orientation?):
-            return try await setOrientation(orientation)
+            return try await connectedOrientation().set(orientation).json
         case .orientation(nil):
-            return try await readOrientation()
+            return try await connectedOrientation().read().json
         case .pasteboard(let text?):
             return try await writePasteboard(text)
         case .pasteboard(nil):
@@ -99,7 +86,7 @@ final class DeviceSession {
             return try await launch(bundleID, arguments: arguments)
         case .wait(let milliseconds):
             try await Task.sleep(for: .milliseconds(milliseconds))
-            return ["waited": .number(Double(milliseconds))]
+            return ["waited": JSONValue(milliseconds)]
         case .run(let steps):
             return try await run(steps, workingDirectory: workingDirectory)
         case .doctor:
@@ -109,38 +96,23 @@ final class DeviceSession {
         }
     }
 
-    /// Closes every input connection, so the guest no longer counts a hardware keyboard and takes other clients' touches.
-    /// The next command opens them again.
+    /// Releases the inputs, as after an idle period; the next command opens them again.
     func releaseInputs() async {
-        inputRelease?.cancel()
-        inputRelease = nil
-        try? await keyboard?.close()
-        await touchscreen?.close()
-        await buttons?.close()
-        keyboard = nil
-        touchscreen = nil
-        buttons = nil
+        await inputs.release()
     }
 
     func close() async {
-        await releaseInputs()
-        hinge.existing?.stop()
+        await inputs.release()
+        await hinge.close()
     }
 
     // MARK: Keyboard
 
     private func pressKey(_ name: String, modifiers: Set<KeyModifier>, count: Int) async throws -> JSONValue {
         guard let stroke = KeyMap.stroke(named: name) else { throw SimDriveError(.unknownKey, "Unknown key \(name).") }
-        var flags = NSEvent.ModifierFlags(modifiers.map(\.flag))
-        if stroke.needsShift { flags.insert(.shift) }
-        let keyboard = try await connectedKeyboard()
-        for index in 0..<count {
-            if index > 0 { await pause(Timing.repeatGap) }
-            try await keyboard.press(keyCode: stroke.keyCode, flags: flags)
-        }
-        scheduleInputRelease()
+        try await inputs.press(stroke, modifiers: NSEvent.ModifierFlags(modifiers.map(\.flag)), count: count)
         return ["key": .string(name), "modifiers": .array(modifiers.map(\.rawValue).sorted().map(JSONValue.string)),
-                "count": .number(Double(count))]
+                "count": JSONValue(count)]
     }
 
     /// Types US-layout characters; other text goes through the pasteboard.
@@ -151,133 +123,66 @@ final class DeviceSession {
             }
             return stroke
         }
-        let keyboard = try await connectedKeyboard()
-        for stroke in strokes {
-            try await keyboard.press(keyCode: stroke.keyCode, flags: stroke.needsShift ? .shift : [])
-            await pause(Timing.keyGap)
-        }
-        scheduleInputRelease()
-        return ["characters": .number(Double(text.count))]
-    }
-
-    private func connectedKeyboard() async throws -> GuestKeyboard {
-        if let keyboard, !keyboard.hasFailed { return keyboard }
-        let opened = try await GuestKeyboard.open(guest: guest, bindings: try await preparedKeyboardBindings())
-        keyboard = opened
-        return opened
-    }
-
-    private func preparedKeyboardBindings() async throws -> KeyboardBindings {
-        if let keyboardBindings { return keyboardBindings }
-        let prepared = try await KeyboardBindings()
-        keyboardBindings = prepared
-        return prepared
+        try await inputs.type(strokes)
+        return ["characters": JSONValue(text.count)]
     }
 
     // MARK: Touches and buttons
 
     private func tap(_ point: ScreenPoint, display: DisplaySelector) async throws -> JSONValue {
-        let target = try await screens.target(display, usesPixels: point.usesPixels)
-        try await connectedTouchscreen().tap(at: target.digitizerPoint(point), target: target.digitizerTarget)
-        scheduleInputRelease()
-        return ["display": JSONValue(target.display?.index), "point": target.json(point)]
+        let screen = try await screens.touchscreen(display, usesPixels: point.usesPixels)
+        try await inputs.tap(at: screen.digitizerPoint(point), on: screen.digitizerTarget)
+        return ["display": JSONValue(screen.display?.index), "point": screen.json(point)]
     }
 
     private func swipe(from start: ScreenPoint, to end: ScreenPoint, duration: Duration, edge: ScreenEdge?,
                        display: DisplaySelector) async throws -> JSONValue {
-        let target = try await screens.target(display, usesPixels: start.usesPixels || end.usesPixels)
-        try await connectedTouchscreen().drag(from: target.digitizerPoint(start), to: target.digitizerPoint(end),
-            duration: duration, edge: edge.map(target.mapping.digitizerEdge), target: target.digitizerTarget)
-        scheduleInputRelease()
-        return ["display": JSONValue(target.display?.index), "from": target.json(start), "to": target.json(end),
+        let screen = try await screens.touchscreen(display, usesPixels: start.usesPixels || end.usesPixels)
+        try await inputs.drag(from: screen.digitizerPoint(start), to: screen.digitizerPoint(end), duration: duration,
+                              edge: edge.map(screen.mapping.digitizerEdge), on: screen.digitizerTarget)
+        return ["display": JSONValue(screen.display?.index), "from": screen.json(start), "to": screen.json(end),
                 "edge": JSONValue(edge?.rawValue)]
     }
 
     private func press(_ button: HardwareButton, count: Int, hold: Duration) async throws -> JSONValue {
-        let buttons = try await connectedButtons()
-        for index in 0..<count {
-            if index > 0 { await pause(Timing.repeatGap) }
-            try await buttons.press(button, hold: hold)
-        }
+        try await inputs.press(button, count: count, hold: hold)
         if button == .home { screens.forgetScreenshots() }
-        scheduleInputRelease()
-        return ["button": .string(button.rawValue), "count": .number(Double(count))]
-    }
-
-    private func connectedTouchscreen() async throws -> GuestTouchscreen {
-        if let touchscreen, !touchscreen.hasFailed { return touchscreen }
-        let opened = try await GuestTouchscreen.open(guest: guest)
-        touchscreen = opened
-        return opened
-    }
-
-    private func connectedButtons() async throws -> GuestButtons {
-        if let buttons, !buttons.hasFailed { return buttons }
-        let opened = try await GuestButtons.open(guest: guest)
-        buttons = opened
-        return opened
+        return ["button": .string(button.rawValue), "count": JSONValue(count)]
     }
 
     // MARK: Orientation, pasteboard and posture
 
-    private func readOrientation() async throws -> JSONValue {
-        Self.json(try await connectedOrientation().read())
-    }
-
-    private func setOrientation(_ target: DeviceOrientation) async throws -> JSONValue {
-        Self.json(try await connectedOrientation().set(target))
-    }
-
     private func connectedOrientation() async throws -> GuestOrientation {
-        guard let control = try await orientation.value() else {
-            throw SimDriveError(.orientationUnsupported, "\(device.name) cannot rotate.")
-        }
-        return control
-    }
-
-    private static func json(_ reading: GuestOrientationReading) -> JSONValue {
-        ["orientation": JSONValue(reading.orientation?.name),
-         "physical": .string(DeviceOrientation(rawValue: reading.physical)?.name ?? reading.physical)]
+        try await orientation.required(orThrow: SimDriveError(.orientationUnsupported, "\(device.name) cannot rotate."))
     }
 
     private func readPasteboard() async throws -> JSONValue {
-        let items = try await connectedPasteboard().read()
-        return ["items": .array(items.map { ["types": .array($0.types.map(JSONValue.string)), "text": JSONValue($0.text)] })]
+        ["items": .array(try await connectedPasteboard().read().map(\.json))]
     }
 
     private func writePasteboard(_ text: String) async throws -> JSONValue {
         try await connectedPasteboard().write(text: text)
-        return ["characters": .number(Double(text.count))]
+        return ["characters": JSONValue(text.count)]
     }
 
     private func connectedPasteboard() async throws -> CoreDevicePasteboard {
-        guard let pasteboard = try await pasteboard.value() else {
-            throw SimDriveError(.pasteboardUnsupported, "\(device.name) has no pasteboard.")
-        }
-        return pasteboard
+        try await pasteboard.required(orThrow: SimDriveError(.pasteboardUnsupported, "\(device.name) has no pasteboard."))
     }
 
     private func readPosture() async throws -> JSONValue {
         let hinge = try await connectedHinge()
         try await hinge.waitForReading()
-        return Self.json(hinge)
+        return hinge.json
     }
 
     private func setPosture(_ posture: DevicePosture) async throws -> JSONValue {
         let hinge = try await connectedHinge()
         try await hinge.set(posture)
-        return Self.json(hinge)
+        return hinge.json
     }
 
     private func connectedHinge() async throws -> Hinge {
-        guard let hinge = try await hinge.value() else {
-            throw SimDriveError(.postureUnsupported, "\(device.name) has no hinge.")
-        }
-        return hinge
-    }
-
-    private static func json(_ hinge: Hinge) -> JSONValue {
-        ["angle": JSONValue(hinge.angle), "posture": JSONValue(hinge.posture?.rawValue)]
+        try await hinge.required(orThrow: SimDriveError(.postureUnsupported, "\(device.name) has no hinge."))
     }
 
     // MARK: Apps, steps and diagnostics
@@ -286,23 +191,17 @@ final class DeviceSession {
         // Restarts a running app, so it starts from its launch screen with these arguments.
         let result = try await tools.simctl(["launch", "--terminate-running-process", udid, bundleID] + arguments)
         screens.forgetScreenshots()
+        // simctl prints `<bundle-id>: <pid>`.
         let pid = result.standardOutput.split(separator: ":").last.flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
         return ["bundleID": .string(bundleID), "pid": JSONValue(pid)]
     }
 
-    private func run(_ steps: [[String]], workingDirectory: String) async throws -> JSONValue {
-        let commands = try steps.enumerated().map { index, step in
-            let command: Command
-            do { command = try CommandParser.parse(step) } catch {
-                throw SimDriveError(.stepInvalid, "Step \(index + 1) (\(step.joined(separator: " "))): \(error.localizedDescription)")
-            }
-            guard command.isStep else { throw SimDriveError(.stepInvalid, "Step \(index + 1) cannot be \(step.first ?? "")") }
-            return command
-        }
+    private func run(_ steps: [Step], workingDirectory: String) async throws -> JSONValue {
         var results: [JSONValue] = []
-        for (index, command) in commands.enumerated() {
-            do { results.append(try await execute(command, workingDirectory: workingDirectory)) } catch {
-                throw SimDriveError(.stepFailed, "Step \(index + 1) (\(steps[index].joined(separator: " "))) failed after \(index) completed: \(error.localizedDescription)")
+        for (index, step) in steps.enumerated() {
+            do { results.append(try await execute(step.command, workingDirectory: workingDirectory)) } catch {
+                throw SimDriveError(.stepFailed, "Step \(index + 1) (\(step.arguments.joined(separator: " "))) failed after \(index) "
+                                    + "completed: \(error.localizedDescription)")
             }
         }
         return ["steps": .array(results)]
@@ -314,19 +213,18 @@ final class DeviceSession {
             "state": JSONValue(device.state), "deviceType": JSONValue(device.deviceTypeIdentifier),
         ]
         report["orientation"] = await Self.check {
-            guard try await self.orientation.value() != nil else { return "unsupported" }
-            return .string(try await self.screens.currentOrientation().name)
+            (try await self.screens.deviceOrientation()?.name).map(JSONValue.string) ?? .unsupported
         }
-        report["pasteboard"] = await Self.check { try await self.pasteboard.value() == nil ? "unsupported" : "ready" }
+        report["pasteboard"] = await Self.check { try await self.pasteboard.value() == nil ? .unsupported : "ready" }
         report["keyboard"] = await Self.check {
-            _ = try await self.preparedKeyboardBindings()
+            try await self.inputs.prepareKeyboard()
             return "ready"
         }
         report["displays"] = await Self.check { try await self.screens.displaysJSON() }
         report["accessibility"] = await Self.check { try await self.accessibility.doctorJSON() }
         report["appearance"] = await Self.check { try await self.settings.value(of: SettingCatalog.appearance) }
         report["posture"] = await Self.check {
-            guard try await self.hinge.value() != nil else { return "unsupported" }
+            guard try await self.hinge.value() != nil else { return .unsupported }
             return try await self.readPosture()
         }
         return .object(report)
@@ -334,20 +232,6 @@ final class DeviceSession {
 
     private static func check(_ probe: () async throws -> JSONValue) async -> JSONValue {
         do { return try await probe() } catch { return ["error": .string(error.localizedDescription)] }
-    }
-
-    private func scheduleInputRelease() {
-        inputRelease?.cancel()
-        inputRelease = Task { [weak self] in
-            try? await Task.sleep(for: Timing.inputIdleRelease)
-            guard !Task.isCancelled else { return }
-            await self?.releaseInputs()
-        }
-    }
-
-    /// Sleeps without throwing, so a sequence of presses always completes.
-    private func pause(_ duration: Duration) async {
-        try? await Task.sleep(for: duration)
     }
 
     private static func absolutePath(_ path: String, in workingDirectory: String) -> String {

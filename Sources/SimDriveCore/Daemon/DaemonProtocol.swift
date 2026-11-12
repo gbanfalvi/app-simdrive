@@ -1,7 +1,8 @@
 import Foundation
 import SimDriveNative
 
-/// Identifies the running executable, so a client replaces a daemon from an older build.
+/// Identifies the running executable, so a client replaces a daemon from an older build. Every build rewrites the
+/// binary, changing its modification time, which is cheaper to read than a hash.
 enum BuildStamp {
     static let current: String = {
         guard let path = Bundle.main.executablePath,
@@ -31,7 +32,6 @@ struct CommandResponse: Codable, Sendable {
     }
 
     static func failure(_ error: any Error) -> CommandResponse {
-        let code = (error as? SimDriveError)?.code ?? (error is UsageError ? .usage : nil)
-        return CommandResponse(ok: false, result: nil, error: error.localizedDescription, code: code?.rawValue)
+        CommandResponse(ok: false, result: nil, error: error.localizedDescription, code: (error as? SimDriveError)?.code.rawValue)
     }
 }

@@ -11,7 +11,7 @@ struct ScreenMapping: Equatable, Sendable {
     let orientation: DeviceOrientation
 
     /// A screenshot of a panel, rotated by the interface's orientation at capture, or by the device's when unknown.
-    init(screenshot: ScreenRecord, panelIsLandscape: Bool, deviceOrientation: DeviceOrientation) {
+    init(screenshot: ScreenshotRecord, panelIsLandscape: Bool, deviceOrientation: DeviceOrientation) {
         self.init(isRotated: screenshot.full.isLandscape != panelIsLandscape,
                   orientation: screenshot.interfaceOrientation?.deviceOrientation ?? deviceOrientation)
     }

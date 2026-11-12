@@ -1,25 +1,10 @@
 import ABIBridge
 import Darwin
 import Foundation
-import Synchronization
 import XPC
 
 /// How long a guest service may take to reply or to take the messages sent to it.
 let guestServiceLimit: Duration = .seconds(10)
-
-/// Delays that the guest's input services need.
-enum GuestInputTiming {
-    /// The guest matches a new input service shortly after it appears, and drops events sent before.
-    static let settle: Duration = .milliseconds(400)
-    /// The guest drops the events of a connection that ends before it has activated them. A Duo's panels need
-    /// longer than 500 ms.
-    static let drain: Duration = .milliseconds(1000)
-}
-
-/// Sleeps without throwing, so a held key, touch or button is always released.
-func pause(_ duration: Duration) async {
-    try? await Task.sleep(for: duration)
-}
 
 /// Reaches a simulator's guest services through the Mach services its `SimDevice` looks up, as CoreDevice's
 /// simulator plugin does, so no CoreDevice record is needed.
@@ -171,32 +156,5 @@ final class GuestConnection {
         let reason = unsafe xpc_dictionary_get_string(event, XPC_ERROR_KEY_DESCRIPTION).map { unsafe String(cString: $0) }
         return SimDriveError(.guestConnection,
             "The connection to the guest's \(feature) service ended: \(reason ?? "libxpc gave no reason").")
-    }
-}
-
-/// Resumes a continuation once, from whichever producer finishes first.
-private final class SingleResumption<Value: Sendable>: Sendable {
-    private let continuation: Mutex<CheckedContinuation<Value, any Error>?>
-
-    init(_ continuation: CheckedContinuation<Value, any Error>) {
-        self.continuation = Mutex(continuation)
-    }
-
-    func resume(with result: Result<Value, any Error>) {
-        continuation.withLock { $0.take() }?.resume(with: result)
-    }
-}
-
-/// Waits until `start` calls its completion, or throws `timeout` after `limit`. The work itself is not stopped.
-@MainActor
-private func waitForCompletion(within limit: Duration, timeout: SimDriveError,
-                               _ start: (@escaping @Sendable () -> Void) -> Void) async throws {
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
-        let resumption = SingleResumption(continuation)
-        start { resumption.resume(with: .success(())) }
-        Task {
-            try? await Task.sleep(for: limit)
-            resumption.resume(with: .failure(timeout))
-        }
     }
 }

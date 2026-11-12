@@ -1,20 +1,21 @@
 import Foundation
+import SimDriveNative
 
 /// Step files: a JSON array whose elements are argument arrays or command strings.
 enum Steps {
     static func parse(_ data: Data) throws -> [[String]] {
         guard let values = try? JSONDecoder().decode([JSONValue].self, from: data) else {
-            throw UsageError("Steps must be a JSON array")
+            throw SimDriveError.usage("Steps must be a JSON array")
         }
         return try values.enumerated().map { index, value in
             switch value {
             case .string(let line): return try tokenize(line)
             case .array(let elements):
                 return try elements.map { element in
-                    guard let argument = element.argument else { throw UsageError("Step \(index + 1) has a non-scalar argument") }
+                    guard let argument = element.argument else { throw SimDriveError.usage("Step \(index + 1) has a non-scalar argument") }
                     return argument
                 }
-            default: throw UsageError("Step \(index + 1) is neither a string nor an array")
+            default: throw SimDriveError.usage("Step \(index + 1) is neither a string nor an array")
             }
         }
     }
@@ -40,7 +41,7 @@ enum Steps {
                 hasToken = true
             }
         }
-        guard quote == nil else { throw UsageError("Unterminated quote in \"\(line)\"") }
+        guard quote == nil else { throw SimDriveError.usage("Unterminated quote in \"\(line)\"") }
         if hasToken { tokens.append(current) }
         return tokens
     }

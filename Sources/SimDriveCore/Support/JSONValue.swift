@@ -63,6 +63,9 @@ extension JSONValue: ExpressibleByStringLiteral, ExpressibleByIntegerLiteral, Ex
     init(_ value: String?) { self = value.map(JSONValue.string) ?? .null }
     init(_ value: Double?) { self = value.map(JSONValue.number) ?? .null }
     init(_ value: Int?) { self = value.map { .number(Double($0)) } ?? .null }
+
+    /// What a check or setting reads on a device that lacks it.
+    static let unsupported: JSONValue = "unsupported"
 }
 
 extension JSONEncoder {

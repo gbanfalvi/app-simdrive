@@ -2,7 +2,7 @@ import ABIBridge
 import AppKit
 
 /// One item of a pasteboard: its types, and its text when it has any.
-package struct PasteboardItemContents: Equatable, Sendable {
+package struct PasteboardItem: Equatable, Sendable {
     package let types: [String]
     package let text: String?
 }
@@ -33,13 +33,13 @@ package final class CoreDevicePasteboard {
     private init<Failure: Error>(runtime: ABIRuntime, implementation: NativeSwiftValue, failure: Failure) async throws {
         let snapshotType = try await runtime.resolve(.swift(.type("CoreDeviceUtilities.PasteboardSnapshot")))
         let policyType = try await runtime.resolve(.swift(.type("CoreDeviceUtilities.PasteboardDataInclusionPolicy")))
-        let abis = try Dictionary(uniqueKeysWithValues: [snapshotType, policyType].map { ($0, try NativeType.opaque(named: $0.name)) })
+        let abis = try NativeType.opaqueABIs(for: [snapshotType, policyType])
         // Every type's data, so that neither side keeps promises the other must resolve.
         let policy = try policyType.makeEnumCase(named: "allResolved")
         let capture = try await snapshotType.resolve(.swift(.initializer("init(from:dataPolicy:)",
             as: ((NSPasteboard, NativeSwiftValue) async throws(Failure) -> NativeSwiftValue).self, valueABIs: abis)))
         let write = try await snapshotType.resolve(.swift(.method("write(to:)",
-            as: ((NSPasteboard) throws(Failure) -> Int).self, valueABIs: abis, receiverABI: .opaque(named: snapshotType.name))))
+            as: ((NSPasteboard) throws(Failure) -> Int).self, valueABIs: abis, receiverABI: abis[snapshotType])))
         let current = try await implementation.type.resolve(.swift(.method(
             "CoreDevice.PasteboardProtocol.currentPasteboardSnapshot(pasteboardName:dataPolicy:)",
             as: ((String, NativeSwiftValue) async throws(Failure) -> NativeSwiftValue).self, valueABIs: abis)))
@@ -54,13 +54,13 @@ package final class CoreDevicePasteboard {
         self.replace = { snapshot in _ = try await unsafe replace.unsafeInvoke(on: implementation, name, snapshot) }
     }
 
-    package func read() async throws -> [PasteboardItemContents] {
+    package func read() async throws -> [PasteboardItem] {
         let snapshot = try await current()
         let relay = Self.makeRelay()
         defer { relay.releaseGlobally() }
         try write(snapshot, relay)
         return (relay.pasteboardItems ?? []).map { item in
-            PasteboardItemContents(types: item.types.map(\.rawValue), text: item.string(forType: .string))
+            PasteboardItem(types: item.types.map(\.rawValue), text: item.string(forType: .string))
         }
     }
 

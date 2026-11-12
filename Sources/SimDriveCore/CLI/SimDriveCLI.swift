@@ -49,14 +49,12 @@ package enum SimDriveCLI {
                                                    tools: tools)
             }
             let session = try await DeviceSession.open(udid: udid, tools: tools)
-            do {
-                let result = try await session.execute(command, workingDirectory: workingDirectory)
-                await session.close()
-                return .success(result)
-            } catch {
-                await session.close()
-                throw error
+            let response: CommandResponse
+            do { response = .success(try await session.execute(command, workingDirectory: workingDirectory)) } catch {
+                response = .failure(error)
             }
+            await session.close()
+            return response
         }
     }
 

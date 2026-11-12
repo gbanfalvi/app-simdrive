@@ -23,10 +23,10 @@ Reinstall after changing the skill here; the repo copy is the source.
 
 ### Adding a capability
 
-1. Driver in `SimDriveNative`: a type with `static func open(...) async throws -> Self?`, returning nil when the device lacks it, and methods in domain terms.
-2. Session method in `Sources/SimDriveCore/Session/DeviceSession.swift`, opening the driver lazily through `LazyCapability`.
+1. Driver in `SimDriveNative`, in the folder of its kind (`Input/`, `DeviceControl/`, `Accessibility/`): a type with `static func open(...) async throws -> Self?`, returning nil when the device lacks it, and methods in domain terms.
+2. Session method in `Sources/SimDriveCore/Session/DeviceSession.swift`, opening the driver lazily through `LazyCapability`. Logic beyond calling the driver goes in a type in the Core folder of the same name, as `Screens/` and `Accessibility/` do.
 3. A `Command` case, its parsing in `CommandParser`, and a line in the usage text.
-4. Error codes as `ErrorCode` constants.
+4. Its JSON in `Sources/SimDriveCore/Commands/CommandResults.swift`, and error codes as `ErrorCode` constants.
 5. Parser tests, plus tests for any pure logic.
 6. The README's command table and JSON results, and the skill.
 
@@ -34,7 +34,7 @@ A device setting is one row in `Sources/SimDriveCore/Settings/SettingCatalog.swi
 
 ### Verifying
 
-- Check behavior end to end on a simulator with a probe app that logs the events it receives; a command that returns `ok` may still have been dropped by the guest.
+- Check behavior end to end with `Evaluation/matrix.py <udid>` after `swift build -c release`; a command that returns `ok` may still have been dropped by the guest. On iPhones it installs the probe app in `Evaluation/Probe`, which logs the events it receives. `--only tree,tap` runs some sections, and `--timing --label <name>` times common commands into `.build/evaluation`; `SIMDRIVE=<path>` compares another build.
 - Use simulators you created; leave the user's other simulators, and their state, alone.
 - Never write the Mac clipboard, and only write a simulator's pasteboard with the user's consent: a syncing host such as DeviceHub copies it to the Mac clipboard.
 - Stop the daemons you started: `simdrive <udid> stop`.

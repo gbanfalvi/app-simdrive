@@ -1,14 +1,6 @@
 import Foundation
 import SimDriveNative
 
-struct UsageError: LocalizedError, Equatable, Sendable {
-    let message: String
-
-    init(_ message: String) { self.message = message }
-
-    var errorDescription: String? { "\(message). Run `simdrive help` for usage." }
-}
-
 enum CommandParser {
     static let defaultMaxDimension = 1024
     static let defaultSwipeDuration: Duration = .milliseconds(300)
@@ -18,14 +10,15 @@ enum CommandParser {
     ]
 
     static func parse(_ arguments: [String]) throws -> Command {
-        guard let name = arguments.first else { throw UsageError("Missing command") }
+        guard let name = arguments.first else { throw SimDriveError.usage("Missing command") }
         let rest = Array(arguments.dropFirst())
         switch name {
         case "key":
             let list = try ArgumentList(rest, options: ["mods", "repeat"])
             let key = try list.single("a key name")
             guard KeyMap.stroke(named: key) != nil else {
-                throw UsageError("Unknown key \"\(key)\"; use a US-layout character or one of \(KeyMap.keyNames.joined(separator: ", "))")
+                throw SimDriveError.usage(
+                    "Unknown key \"\(key)\"; use a US-layout character or one of \(KeyMap.keyNames.joined(separator: ", "))")
             }
             return .key(name: key, modifiers: try modifiers(list.option("mods")), count: try list.positiveInteger("repeat") ?? 1)
         case "type":
@@ -44,18 +37,21 @@ enum CommandParser {
             let list = try ArgumentList(rest, options: ["repeat", "hold"])
             let value = try list.single("a button")
             guard let button = HardwareButton(rawValue: value) else {
-                throw UsageError("Unknown button \"\(value)\"; use \(HardwareButton.allCases.map(\.rawValue).joined(separator: ", "))")
+                throw SimDriveError.usage(
+                    "Unknown button \"\(value)\"; use \(HardwareButton.allCases.map(\.rawValue).joined(separator: ", "))")
             }
             let hold = try list.positiveInteger("hold").map { Duration.milliseconds($0) } ?? defaultButtonHold
             return .button(button, count: try list.positiveInteger("repeat") ?? 1, hold: hold)
         case "posture":
             guard let value = try ArgumentList(rest).optionalSingle() else { return .posture(nil) }
-            guard let posture = postureNames[value] else { throw UsageError("Unknown posture \"\(value)\"; use closed, half or open") }
+            guard let posture = postureNames[value] else {
+                throw SimDriveError.usage("Unknown posture \"\(value)\"; use closed, half or open")
+            }
             return .posture(posture)
         case "orientation":
             guard let value = try ArgumentList(rest).optionalSingle() else { return .orientation(nil) }
             guard let orientation = DeviceOrientation(name: value) else {
-                throw UsageError("Unknown orientation \"\(value)\"; use portrait, landscape-left, landscape-right or upside-down")
+                throw SimDriveError.usage("Unknown orientation \"\(value)\"; use portrait, landscape-left, landscape-right or upside-down")
             }
             return .orientation(orientation)
         case "pasteboard":
@@ -63,7 +59,7 @@ enum CommandParser {
         case "screenshot":
             let list = try ArgumentList(rest, options: ["display", "max-dim"])
             let maxDimension = try list.integer("max-dim") ?? defaultMaxDimension
-            guard maxDimension >= 0 else { throw UsageError("--max-dim must not be negative") }
+            guard maxDimension >= 0 else { throw SimDriveError.usage("--max-dim must not be negative") }
             return .screenshot(path: try list.single("an output path"), display: try display(list.option("display")),
                                maxDimension: maxDimension)
         case "tree":
@@ -71,32 +67,37 @@ enum CommandParser {
             let detail: TreeDetail = list.flag("full") ? .full : .light
             let values = list.positionals
             guard !values.isEmpty else { return .tree(at: nil, detail: detail) }
-            guard values.count == 2 else { throw UsageError("Expected x and y, or nothing") }
+            guard values.count == 2 else { throw SimDriveError.usage("Expected x and y, or nothing") }
             return .tree(at: try point(values[0], values[1]), detail: detail)
         case "setting":
             let values = try ArgumentList(rest).positionals
             guard let name = values.first else { return .setting(nil, value: nil) }
-            guard values.count <= 2 else { throw UsageError("Expected a setting and at most one value") }
+            guard values.count <= 2 else { throw SimDriveError.usage("Expected a setting and at most one value") }
             guard let setting = SettingCatalog.setting(named: name) else {
-                throw UsageError("Unknown setting \"\(name)\"; use \(SettingCatalog.all.map(\.name).joined(separator: ", "))")
+                throw SimDriveError.usage("Unknown setting \"\(name)\"; use \(SettingCatalog.all.map(\.name).joined(separator: ", "))")
             }
             guard values.count == 2 else { return .setting(setting, value: nil) }
-            guard let value = setting.value(parsing: values[1]) else { throw UsageError("\(name) takes \(setting.valueDescription)") }
+            guard let value = setting.value(fromArgument: values[1]) else {
+                throw SimDriveError.usage("\(name) takes \(setting.valueDescription)")
+            }
             return .setting(setting, value: value)
         case "launch":
             let list = try ArgumentList(rest)
-            guard let bundleID = list.positionals.first else { throw UsageError("launch needs a bundle identifier") }
+            guard let bundleID = list.positionals.first else { throw SimDriveError.usage("launch needs a bundle identifier") }
             return .launch(bundleID: bundleID, arguments: Array(list.positionals.dropFirst()))
         case "wait":
             guard let milliseconds = Int(try ArgumentList(rest).single("milliseconds")), milliseconds >= 0 else {
-                throw UsageError("wait needs milliseconds")
+                throw SimDriveError.usage("wait needs milliseconds")
             }
             return .wait(milliseconds: milliseconds)
         case "run":
             let list = try ArgumentList(rest, options: ["json"])
-            if let json = list.option("json") { return .run(steps: try Steps.parse(Data(json.utf8))) }
-            let path = try list.single("a steps file")
-            return .run(steps: try Steps.parse(try Data(contentsOf: URL(fileURLWithPath: path))))
+            let data = if let json = list.option("json") {
+                Data(json.utf8)
+            } else {
+                try Data(contentsOf: URL(fileURLWithPath: try list.single("a steps file")))
+            }
+            return .run(steps: try steps(Steps.parse(data)))
         case "doctor":
             try ArgumentList(rest).none()
             return .doctor
@@ -107,31 +108,47 @@ enum CommandParser {
             try ArgumentList(rest).none()
             return .serve
         default:
-            throw UsageError("Unknown command \"\(name)\"")
+            throw SimDriveError.usage("Unknown command \"\(name)\"")
+        }
+    }
+
+    /// Every step is checked before any runs.
+    private static func steps(_ argumentLists: [[String]]) throws -> [Step] {
+        try argumentLists.enumerated().map { index, arguments in
+            let command: Command
+            do { command = try parse(arguments) } catch {
+                throw SimDriveError(.stepInvalid, "Step \(index + 1) (\(arguments.joined(separator: " "))): \(error.localizedDescription)")
+            }
+            guard command.isStep else { throw SimDriveError(.stepInvalid, "Step \(index + 1) cannot be \(arguments.first ?? "")") }
+            return Step(arguments: arguments, command: command)
         }
     }
 
     private static func point(_ x: String, _ y: String) throws -> ScreenPoint {
-        guard let point = ScreenPoint(x: x, y: y) else { throw UsageError("\(x) \(y) is not a point") }
+        guard let point = ScreenPoint(x: x, y: y) else { throw SimDriveError.usage("\(x) \(y) is not a point") }
         return point
     }
 
     private static func display(_ value: String?) throws -> DisplaySelector {
         guard let value else { return .automatic }
-        guard let display = DisplaySelector(name: value) else { throw UsageError("Unknown display \"\(value)\"; use cover, inner or an index") }
+        guard let display = DisplaySelector(name: value) else {
+            throw SimDriveError.usage("Unknown display \"\(value)\"; use cover, inner or an index")
+        }
         return display
     }
 
     private static func edge(_ value: String?) throws -> ScreenEdge? {
         guard let value else { return nil }
-        guard let edge = ScreenEdge(rawValue: value) else { throw UsageError("Unknown edge \"\(value)\"; use top, bottom, left or right") }
+        guard let edge = ScreenEdge(rawValue: value) else {
+            throw SimDriveError.usage("Unknown edge \"\(value)\"; use top, bottom, left or right")
+        }
         return edge
     }
 
     private static func modifiers(_ value: String?) throws -> Set<KeyModifier> {
         guard let value else { return [] }
         return Set(try value.split(separator: ",").map { name in
-            guard let modifier = KeyModifier(name: String(name)) else { throw UsageError("Unknown modifier \"\(name)\"") }
+            guard let modifier = KeyModifier(name: String(name)) else { throw SimDriveError.usage("Unknown modifier \"\(name)\"") }
             return modifier
         })
     }
@@ -192,11 +209,11 @@ struct ArgumentList {
             } else if flagNames.contains(name) {
                 flags.insert(name)
             } else if optionNames.contains(name) {
-                guard index < arguments.count else { throw UsageError("--\(name) needs a value") }
+                guard index < arguments.count else { throw SimDriveError.usage("--\(name) needs a value") }
                 options[name] = arguments[index]
                 index += 1
             } else {
-                throw UsageError("Unknown option --\(name)")
+                throw SimDriveError.usage("Unknown option --\(name)")
             }
         }
     }
@@ -207,32 +224,32 @@ struct ArgumentList {
 
     func integer(_ name: String) throws -> Int? {
         guard let value = options[name] else { return nil }
-        guard let number = Int(value) else { throw UsageError("--\(name) needs an integer") }
+        guard let number = Int(value) else { throw SimDriveError.usage("--\(name) needs an integer") }
         return number
     }
 
     func positiveInteger(_ name: String) throws -> Int? {
         guard let number = try integer(name) else { return nil }
-        guard number > 0 else { throw UsageError("--\(name) must be positive") }
+        guard number > 0 else { throw SimDriveError.usage("--\(name) must be positive") }
         return number
     }
 
     func single(_ description: String) throws -> String {
-        guard positionals.count == 1 else { throw UsageError("Expected \(description)") }
+        guard positionals.count == 1 else { throw SimDriveError.usage("Expected \(description)") }
         return positionals[0]
     }
 
     func optionalSingle() throws -> String? {
-        guard positionals.count <= 1 else { throw UsageError("Expected at most one argument") }
+        guard positionals.count <= 1 else { throw SimDriveError.usage("Expected at most one argument") }
         return positionals.first
     }
 
     func exactly(_ count: Int, _ description: String) throws -> [String] {
-        guard positionals.count == count else { throw UsageError("Expected \(description)") }
+        guard positionals.count == count else { throw SimDriveError.usage("Expected \(description)") }
         return positionals
     }
 
     func none() throws {
-        guard positionals.isEmpty else { throw UsageError("Unexpected argument \(positionals[0])") }
+        guard positionals.isEmpty else { throw SimDriveError.usage("Unexpected argument \(positionals[0])") }
     }
 }
