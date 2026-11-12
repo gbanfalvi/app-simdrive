@@ -95,6 +95,43 @@ struct AccessibilityLayoutTests {
         #expect(first["label"] == "Play")
     }
 
+    @Test func lightTreesListVoiceOverElementsFlat() {
+        var title = AccessibilityElement()
+        title.label = "Title"
+        var cell = AccessibilityElement()
+        cell.type = .cell
+        cell.label = "Row"
+        cell.isVoiceOverElement = true
+        cell.frame = CGRect(x: 0, y: 600, width: 402, height: 44)
+        cell.children = [title]
+        var list = AccessibilityElement()
+        list.type = .table
+        list.frame = CGRect(x: 0, y: 100, width: 402, height: 400)
+        list.children = [cell]
+        var play = AccessibilityElement()
+        play.label = "Play"
+        play.isVoiceOverElement = true
+        play.frame = CGRect(x: 100.5, y: 437, width: 201, height: 87.4)
+        var root = AccessibilityElement()
+        root.children = [list, play]
+        #expect(phone.elements(root) == [["type": "cell", "label": "Row", "point": ["x": 0.5, "y": 0.7117], "offscreen": true],
+                                         ["label": "Play", "point": ["x": 0.5, "y": 0.55]]])
+    }
+
+    @Test func lightElementsLeaveOutWhatTheirTypeOrPlaceholderRepeat() {
+        var field = AccessibilityElement()
+        field.type = .textField
+        field.value = "Email"
+        field.placeholder = "Email"
+        var button = AccessibilityElement()
+        button.type = .button
+        button.traits = [.button, .selected]
+        button.hint = "Plays the song"
+        button.className = "UIButton"
+        #expect(phone.summary(field) == ["type": "textField", "placeholder": "Email", "point": ["x": 0, "y": 0]])
+        #expect(phone.summary(button) == ["type": "button", "traits": ["selected"], "point": ["x": 0, "y": 0]])
+    }
+
     private static func offscreenLabels(_ json: JSONValue) -> [String] {
         guard case .object(let fields) = json else { return [] }
         let children: [String] = if case .array(let children)? = fields["children"] { children.flatMap(offscreenLabels) } else { [] }

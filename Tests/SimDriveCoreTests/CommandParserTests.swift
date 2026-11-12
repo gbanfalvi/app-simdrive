@@ -61,9 +61,10 @@ struct CommandParserTests {
     }
 
     @Test func treeReadsTheWholeHierarchyOrOnePoint() throws {
-        #expect(try CommandParser.parse(["tree"]) == .tree(at: nil))
-        #expect(try CommandParser.parse(["tree", "0.5", "0.25"]) == .tree(at: .normalized(CGPoint(x: 0.5, y: 0.25))))
-        #expect(try CommandParser.parse(["tree", "600", "400"]) == .tree(at: .pixels(CGPoint(x: 600, y: 400))))
+        #expect(try CommandParser.parse(["tree"]) == .tree(at: nil, detail: .light))
+        #expect(try CommandParser.parse(["tree", "--full"]) == .tree(at: nil, detail: .full))
+        #expect(try CommandParser.parse(["tree", "0.5", "0.25"]) == .tree(at: .normalized(CGPoint(x: 0.5, y: 0.25)), detail: .light))
+        #expect(try CommandParser.parse(["tree", "600", "400", "--full"]) == .tree(at: .pixels(CGPoint(x: 600, y: 400)), detail: .full))
         #expect(throws: UsageError.self) { try CommandParser.parse(["tree", "0.5"]) }
         #expect(throws: UsageError.self) { try CommandParser.parse(["tree", "--flat"]) }
         #expect(try CommandParser.parse(["tree"]).isStep)

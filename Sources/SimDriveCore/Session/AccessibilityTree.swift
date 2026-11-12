@@ -14,16 +14,21 @@ final class AccessibilityTree {
         accessibility = LazyCapability { try await SimulatorAccessibility.open(device: device) }
     }
 
-    func tree() async throws -> JSONValue {
+    func tree(detail: TreeDetail) async throws -> JSONValue {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)
         let snapshot = try await accessibility.snapshot()
         let layout = AccessibilityLayout(screenSize: snapshot.application.screenSize, screen: screen)
-        return ["app": Self.json(snapshot.application), "display": JSONValue(screen.display?.index), "root": layout.json(snapshot.element)]
+        let app = Self.json(snapshot.application)
+        let display = JSONValue(screen.display?.index)
+        switch detail {
+        case .light: return ["app": app, "display": display, "elements": layout.elements(snapshot.element)]
+        case .full: return ["app": app, "display": display, "root": layout.json(snapshot.element)]
+        }
     }
 
-    /// The element VoiceOver finds at a point, with its descendants.
-    func element(at point: ScreenPoint) async throws -> JSONValue {
+    /// The element VoiceOver finds at a point, with its descendants when full.
+    func element(at point: ScreenPoint, detail: TreeDetail) async throws -> JSONValue {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: point.usesPixels)
         let layout = AccessibilityLayout(screenSize: try await accessibility.application().screenSize, screen: screen)
@@ -31,8 +36,12 @@ final class AccessibilityTree {
         guard let snapshot = try await accessibility.snapshot(at: layout.panelPoint(fraction), display: screen.display?.index ?? 0) else {
             throw SimDriveError(.noElement, "No accessibility element is at \(fraction.x), \(fraction.y).")
         }
+        let element = switch detail {
+        case .light: layout.summary(snapshot.element)
+        case .full: layout.json(snapshot.element)
+        }
         return ["app": Self.json(snapshot.application), "display": JSONValue(screen.display?.index), "point": screen.json(point),
-                "element": layout.json(snapshot.element)]
+                "element": element]
     }
 
     /// The frontmost app, or "unsupported".
@@ -84,12 +93,54 @@ struct AccessibilityLayout: Equatable, Sendable {
 
     /// Defaults, nil and empty values are left out.
     func json(_ element: AccessibilityElement) -> JSONValue {
-        json(element, visibleFrame: CGRect(origin: .zero, size: interfaceSize))
+        json(element, visibleFrame: screenFrame)
+    }
+
+    /// VoiceOver's elements in hierarchy order, as `summary` describes them.
+    func elements(_ root: AccessibilityElement) -> JSONValue {
+        var elements: [JSONValue] = []
+        collect(root, visibleFrame: screenFrame, into: &elements)
+        return .array(elements)
+    }
+
+    /// The fields that find and act on an element.
+    func summary(_ element: AccessibilityElement) -> JSONValue {
+        summary(element, visibleFrame: screenFrame)
+    }
+
+    private var screenFrame: CGRect { CGRect(origin: .zero, size: interfaceSize) }
+
+    private func collect(_ element: AccessibilityElement, visibleFrame: CGRect, into elements: inout [JSONValue]) {
+        guard !element.isVoiceOverElement else {
+            elements.append(summary(element, visibleFrame: visibleFrame))
+            return
+        }
+        let childrenFrame = childrenFrame(of: element, in: visibleFrame)
+        for child in element.children {
+            collect(child, visibleFrame: childrenFrame, into: &elements)
+        }
+    }
+
+    /// Leaves out the value while it repeats the placeholder, as an empty text field's does, and the trait `type` names.
+    private func summary(_ element: AccessibilityElement, visibleFrame: CGRect) -> JSONValue {
+        let type = element.type.map { "\($0)" }
+        var fields: [String: JSONValue] = ["point": json(point(of: element))]
+        fields["type"] = type.map(JSONValue.string)
+        fields["label"] = element.label.map(JSONValue.string)
+        fields["value"] = element.value.flatMap { $0 == element.placeholder ? nil : .string($0) }
+        fields["identifier"] = element.identifier.map(JSONValue.string)
+        fields["placeholder"] = element.placeholder.map(JSONValue.string)
+        fields["traits"] = Self.list(AccessibilityTrait.allCases.filter { element.traits.contains($0) && "\($0)" != type }
+            .map { .string("\($0)") })
+        fields["offscreen"] = isOffscreen(element, in: visibleFrame) ? true : nil
+        fields["focused"] = element.isFocused ? true : nil
+        fields["expanded"] = element.isExpanded.map(JSONValue.bool)
+        return .object(fields)
     }
 
     /// `visibleFrame` is the part of the screen that the element's scrolling ancestors show.
     private func json(_ element: AccessibilityElement, visibleFrame: CGRect) -> JSONValue {
-        var fields: [String: JSONValue] = ["frame": json(element.frame), "point": json(element.activationPoint ?? element.frame.center)]
+        var fields: [String: JSONValue] = ["frame": json(element.frame), "point": json(point(of: element))]
         fields["type"] = element.type.map { .string("\($0)") }
         fields["label"] = element.label.map(JSONValue.string)
         fields["value"] = element.value.map(JSONValue.string)
@@ -98,7 +149,7 @@ struct AccessibilityLayout: Equatable, Sendable {
         fields["placeholder"] = element.placeholder.map(JSONValue.string)
         fields["traits"] = Self.list(AccessibilityTrait.allCases.filter(element.traits.contains).map { .string("\($0)") })
         fields["voiceOver"] = element.isVoiceOverElement ? true : nil
-        fields["offscreen"] = element.isVoiceOverElement && !visibleFrame.intersects(element.frame) ? true : nil
+        fields["offscreen"] = isOffscreen(element, in: visibleFrame) ? true : nil
         fields["focused"] = element.isFocused ? true : nil
         fields["expanded"] = element.isExpanded.map(JSONValue.bool)
         fields["headingLevel"] = element.headingLevel.map { .number(Double($0)) }
@@ -119,9 +170,21 @@ struct AccessibilityLayout: Equatable, Sendable {
         }
         fields["class"] = element.className.map(JSONValue.string)
         fields["viewController"] = element.viewController.map(JSONValue.string)
-        let childrenFrame = element.type.map(Self.scrollingTypes.contains) == true ? visibleFrame.intersection(element.frame) : visibleFrame
+        let childrenFrame = childrenFrame(of: element, in: visibleFrame)
         fields["children"] = Self.list(element.children.map { json($0, visibleFrame: childrenFrame) })
         return .object(fields)
+    }
+
+    private func point(of element: AccessibilityElement) -> CGPoint {
+        element.activationPoint ?? element.frame.center
+    }
+
+    private func isOffscreen(_ element: AccessibilityElement, in visibleFrame: CGRect) -> Bool {
+        element.isVoiceOverElement && !visibleFrame.intersects(element.frame)
+    }
+
+    private func childrenFrame(of element: AccessibilityElement, in visibleFrame: CGRect) -> CGRect {
+        element.type.map(Self.scrollingTypes.contains) == true ? visibleFrame.intersection(element.frame) : visibleFrame
     }
 
     private func json(_ point: CGPoint) -> JSONValue {

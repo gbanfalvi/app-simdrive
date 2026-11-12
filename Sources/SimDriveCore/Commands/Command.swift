@@ -23,6 +23,14 @@ enum ScreenPoint: Equatable, Sendable {
     }
 }
 
+/// How much of the accessibility hierarchy `tree` returns.
+enum TreeDetail: Equatable, Sendable {
+    /// VoiceOver's elements in a flat list, with the fields that find and act on them.
+    case light
+    /// Every node, nested, with every field.
+    case full
+}
+
 enum Command: Equatable, Sendable {
     case key(name: String, modifiers: Set<KeyModifier>, count: Int)
     case type(text: String)
@@ -37,7 +45,7 @@ enum Command: Equatable, Sendable {
     case pasteboard(text: String?)
     case screenshot(path: String, display: DisplaySelector, maxDimension: Int)
     /// Reads the frontmost app's accessibility hierarchy, or the element at a point.
-    case tree(at: ScreenPoint?)
+    case tree(at: ScreenPoint?, detail: TreeDetail)
     /// Lists every setting without one, reads it without a value, or changes it.
     case setting(Setting?, value: JSONValue?)
     case launch(bundleID: String, arguments: [String])

@@ -31,7 +31,7 @@ simdrive <udid|booted> <command>
 | `orientation [portrait\|landscape-left\|landscape-right\|upside-down]` | Sets or reads the device orientation |
 | `pasteboard [text]` | Reads the device's pasteboard items (types and text), or replaces it with text |
 | `screenshot <path.png> [--display D] [--max-dim N]` | Captures a screen, downscaled to 1024 px by default; the original is kept as `<path>.full.png` |
-| `tree [<x> <y>]` | Reads the frontmost app's accessibility hierarchy, or the element at a point |
+| `tree [<x> <y>] [--full]` | Lists the frontmost app's VoiceOver elements, or reads the element at a point; `--full` returns every node and field |
 | `setting [<name> [<value>]]` | Lists every setting, or reads or changes one |
 | `launch <bundle-id> [args...]` | Relaunches an app |
 | `wait <ms>` | Pauses, for `run` |
@@ -57,7 +57,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `orientation` | `{"orientation", "physical"}`: the interface's orientation, and the device's own, which may be `faceUp`, `faceDown` or `unknown` |
 | `pasteboard` | Reading: `{"items": [{"types": [UTIs], "text"}]}`. Writing: `{"characters"}` |
 | `screenshot` | `{"path", "width", "height", "fullPath", "fullWidth", "fullHeight", "display", "orientation"}`; `orientation` is null on devices that cannot rotate |
-| `tree` | `{"app": {"name", "pid"}, "display", "root"}`. With a point: `{"app", "display", "point", "element"}`. Elements are described under [Accessibility](#accessibility) |
+| `tree` | `{"app": {"name", "pid"}, "display", "elements": [element]}`, or `"root"` with `--full`. With a point: `{"app", "display", "point", "element"}`. Elements are described under [Accessibility](#accessibility) |
 | `setting` | Listing: `{"settings": {name: value}}`. Otherwise `{"setting", "value"}`, the value read back after a change |
 | `launch` | `{"bundleID", "pid"}` |
 | `wait` | `{"waited": milliseconds}` |
@@ -89,14 +89,16 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 
 ### Accessibility
 
-`tree` reads the frontmost app's accessibility hierarchy from the Mac through AccessibilityPlatformTranslation, as Simulator and idb do; nothing is installed in the guest. It returns XCUITest's snapshot of the app, so it lists every view and SwiftUI accessibility node, including the cells and labels inside controls that VoiceOver reads as one element. Each element has:
+`tree` reads the frontmost app's accessibility hierarchy from the Mac through AccessibilityPlatformTranslation, as Simulator and idb do; nothing is installed in the guest. By default it lists what VoiceOver stops on, in hierarchy order, with what finds and acts on each element: `point`, `type`, `label`, `value`, `identifier`, `placeholder`, `traits`, `offscreen`, `focused` and `expanded`. Light elements leave out `value` while it repeats the placeholder, as an empty text field's does, and the trait `type` already names. It is a quarter of the full output's size or less.
+
+`tree --full` returns XCUITest's whole snapshot of the app, nested, for debugging and accessibility audits. It lists every view and SwiftUI accessibility node, including the cells and labels inside controls that VoiceOver reads as one element. Each element has:
 
 - `point`, where VoiceOver taps it, or its center when that lies outside it, and `frame`, its bounds, as fractions of the screen; `tap` takes `point` as it is.
 - `voiceOver: true` when VoiceOver stops on it: an accessibility element outside other elements. VoiceOver skips its descendants. `offscreen: true` marks such an element outside the screen or its scroll view, which VoiceOver scrolls to.
 - `type`, XCUIElement's element type, such as `button`, `cell` or `staticText`, and `traits`, UIKit's public accessibility traits, such as `button`, `selected`, `notEnabled`, `adjustable`, `header` and `toggleButton`.
 - When set: `label`, `value`, `hint`, `identifier`, `placeholder`, `headingLevel`, `expanded`, `containerType`, `language`, `inputLabels` (Voice Control's names), `customActions`, `customContent` (`{"label", "value", "important"}`), `url`, `range` (an adjustable element's `{"min", "max", "value"}`), `focused` (the focus engine's focus, as on tvOS), `class`, `viewController` and `children`.
 
-`tree <x> <y>` returns the element VoiceOver finds at a point, with its descendants, or fails with `no-element`. On a foldable, both refer to the panel in use.
+`tree <x> <y>` returns the element VoiceOver finds at a point, with its descendants under `--full`, or fails with `no-element`. On a foldable, both refer to the panel in use.
 
 ### Settings
 

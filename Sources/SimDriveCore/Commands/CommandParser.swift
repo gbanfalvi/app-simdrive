@@ -67,10 +67,12 @@ enum CommandParser {
             return .screenshot(path: try list.single("an output path"), display: try display(list.option("display")),
                                maxDimension: maxDimension)
         case "tree":
-            let values = try ArgumentList(rest).positionals
-            guard !values.isEmpty else { return .tree(at: nil) }
+            let list = try ArgumentList(rest, flags: ["full"])
+            let detail: TreeDetail = list.flag("full") ? .full : .light
+            let values = list.positionals
+            guard !values.isEmpty else { return .tree(at: nil, detail: detail) }
             guard values.count == 2 else { throw UsageError("Expected x and y, or nothing") }
-            return .tree(at: try point(values[0], values[1]))
+            return .tree(at: try point(values[0], values[1]), detail: detail)
         case "setting":
             let values = try ArgumentList(rest).positionals
             guard let name = values.first else { return .setting(nil, value: nil) }
@@ -153,7 +155,8 @@ enum CommandParser {
           orientation [portrait|landscape-left|landscape-right|upside-down]
           pasteboard [text]                   reads the device's pasteboard, or replaces it with text
           screenshot <path.png> [--display D] [--max-dim N]   default 1024; 0 keeps full resolution
-          tree [<x> <y>]                      the frontmost app's accessibility hierarchy, or the element at a point
+          tree [<x> <y>] [--full]             the frontmost app's VoiceOver elements, or the element at a point;
+                                              --full adds every node and field, nested
           setting [<name> [<value>]]          lists every setting, or reads or changes one, such as appearance dark
           launch <bundle-id> [args...]
           wait <ms>
@@ -167,12 +170,13 @@ enum CommandParser {
         """
 }
 
-/// Positional arguments and `--name value` options, with `--` ending options.
+/// Positional arguments, `--name value` options and `--name` flags, with `--` ending options.
 struct ArgumentList {
     private(set) var positionals: [String] = []
     private var options: [String: String] = [:]
+    private var flags: Set<String> = []
 
-    init(_ arguments: [String], options optionNames: Set<String> = []) throws {
+    init(_ arguments: [String], options optionNames: Set<String> = [], flags flagNames: Set<String> = []) throws {
         var index = 0
         var optionsEnded = false
         while index < arguments.count {
@@ -185,6 +189,8 @@ struct ArgumentList {
             let name = String(token.dropFirst(2))
             if name.isEmpty {
                 optionsEnded = true
+            } else if flagNames.contains(name) {
+                flags.insert(name)
             } else if optionNames.contains(name) {
                 guard index < arguments.count else { throw UsageError("--\(name) needs a value") }
                 options[name] = arguments[index]
@@ -196,6 +202,8 @@ struct ArgumentList {
     }
 
     func option(_ name: String) -> String? { options[name] }
+
+    func flag(_ name: String) -> Bool { flags.contains(name) }
 
     func integer(_ name: String) throws -> Int? {
         guard let value = options[name] else { return nil }
