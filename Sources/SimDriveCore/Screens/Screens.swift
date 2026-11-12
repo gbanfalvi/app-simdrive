@@ -7,6 +7,8 @@ import SimDriveNative
 final class Screens {
     /// A calibration screenshot keeps its full resolution.
     private static let fullResolution = 0
+    /// The screen ID CoreSimulator gives a single-display device's screen.
+    private static let mainScreenID = 1
 
     private let udid: String
     private let device: SimulatorDevice
@@ -83,14 +85,19 @@ final class Screens {
         return try await control.read().orientation ?? .portrait
     }
 
-    /// Captures a screen and records it with the interface orientation, which `simctl` reads in parallel.
+    /// Captures a screen and records it with the interface orientation.
     private func capture(_ display: SimulatorDisplay?, to path: String, maxDimension: Int,
                          orientation: DeviceOrientation) async throws -> (shot: Screenshot, record: ScreenshotRecord) {
-        async let interfaceOrientation = Screenshots.interfaceOrientation(udid: udid, display: display?.index, tools: tools)
+        let interfaceOrientation = await interfaceOrientation(of: display)
         let shot = try await Screenshots.capture(udid: udid, display: display?.index, to: path, maxDimension: maxDimension, tools: tools)
-        let record = ScreenshotRecord(shot, orientation: orientation, interfaceOrientation: await interfaceOrientation)
+        let record = ScreenshotRecord(shot, orientation: orientation, interfaceOrientation: interfaceOrientation)
         store.save(record, for: DigitizerTarget(display: display))
         return (shot, record)
+    }
+
+    /// The interface orientation `simctl` rotates a screen's screenshots by; nil when CoreSimulator reports none.
+    private func interfaceOrientation(of display: SimulatorDisplay?) async -> InterfaceOrientation? {
+        try? await device.interfaceOrientations()[display?.index ?? Self.mainScreenID]
     }
 
     /// The displays of a multi-display device, or none for a single display.
@@ -110,7 +117,7 @@ final class Screens {
         if store.record(for: .mainScreen) == nil {
             let size = try Screenshots.size(of: path)
             store.save(ScreenshotRecord(full: size, image: size, orientation: try await deviceOrientation() ?? .portrait,
-                                        interfaceOrientation: await Screenshots.interfaceOrientation(udid: udid, display: nil, tools: tools)),
+                                        interfaceOrientation: await interfaceOrientation(of: nil)),
                        for: .mainScreen)
         }
         return []

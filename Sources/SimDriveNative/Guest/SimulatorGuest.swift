@@ -136,7 +136,7 @@ final class GuestConnection {
         do {
             try await waitForCompletion(within: guestServiceLimit,
                 timeout: SimDriveError(.guestServiceTimeout, "The guest's \(feature) service did not take its messages.")) { done in
-                xpc_connection_send_barrier(connection) { done() }
+                xpc_connection_send_barrier(connection) { done(()) }
             }
         } catch {
             if failure == nil { failure = error }

@@ -44,4 +44,6 @@ extension ErrorCode {
     static let accessibilityTimeout = ErrorCode(rawValue: "accessibility-timeout")
     static let accessibilityTranslation = ErrorCode(rawValue: "accessibility-translation")
     static let guestNotification = ErrorCode(rawValue: "guest-notification")
+    static let screenAdapter = ErrorCode(rawValue: "screen-adapter")
+    static let screenAdapterTimeout = ErrorCode(rawValue: "screen-adapter-timeout")
 }

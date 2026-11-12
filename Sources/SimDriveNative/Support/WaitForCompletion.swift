@@ -2,10 +2,11 @@ import Synchronization
 
 /// Waits until `start` calls its completion, or throws `timeout` after `limit`. The work itself is not stopped.
 @MainActor
-func waitForCompletion(within limit: Duration, timeout: SimDriveError, _ start: (@escaping @Sendable () -> Void) -> Void) async throws {
-    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, any Error>) in
+func waitForCompletion<Value: Sendable>(within limit: Duration, timeout: SimDriveError,
+                                        _ start: (@escaping @Sendable (Value) -> Void) -> Void) async throws -> Value {
+    try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Value, any Error>) in
         let resumption = SingleResumption(continuation)
-        start { resumption.resume(with: .success(())) }
+        start { resumption.resume(with: .success($0)) }
         Task {
             try? await Task.sleep(for: limit)
             resumption.resume(with: .failure(timeout))

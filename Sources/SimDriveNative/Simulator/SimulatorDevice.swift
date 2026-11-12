@@ -86,6 +86,12 @@ package final class SimulatorDevice {
         }
     }
 
+    /// Each connected screen's interface orientation by screen ID, as `simctl io enumerate` lists them; screens without
+    /// one are left out.
+    package func interfaceOrientations() async throws -> [Int: InterfaceOrientation] {
+        try await ScreenAdapter(device: device).interfaceOrientations()
+    }
+
     /// A sender of the guest's accessibility requests, or nil when CoreSimulator cannot send them.
     func accessibilityChannel(timeout: DispatchTimeInterval) -> AccessibilityChannel? {
         guard device.responds(to: AccessibilityChannel.selector) else { return nil }

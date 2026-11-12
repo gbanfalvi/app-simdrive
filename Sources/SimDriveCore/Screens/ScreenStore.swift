@@ -7,7 +7,7 @@ struct ScreenshotRecord: Codable, Equatable, Sendable {
     /// The image the caller reads, which may be downscaled.
     let image: PixelSize
     let orientation: DeviceOrientation
-    /// The interface's orientation at capture, which the screenshot is rotated by; nil when `simctl` reports none.
+    /// The interface's orientation at capture, which the screenshot is rotated by; nil when CoreSimulator reports none.
     let interfaceOrientation: InterfaceOrientation?
 }
 
