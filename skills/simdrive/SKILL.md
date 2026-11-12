@@ -15,7 +15,7 @@ Each call prints one JSON line: `{"ok":true,"result":…}`, or `{"ok":false,"err
 2. Check it: `simdrive <udid> doctor` reports the displays, orientation, pasteboard, hinge and frontmost app.
 3. Look: `simdrive <udid> screenshot /tmp/s.png`, then read the image. `simdrive <udid> tree` lists what VoiceOver stops on, with labels, types and tap points, which finds controls faster and cheaper than reading pixels.
 4. Act: tap an element's `point` from `tree`, pixels of the screenshot (`tap 120 340`) or fractions (`tap 0.5 0.25`). On an Apple TV, move focus with `button up|down|left|right` and activate with `button select`; `tree` marks the focused element `focused`.
-5. Screenshot again to confirm. Wait about 1 s after launches and transitions, since the guest ignores input while they animate; on tvOS check that the app is frontmost after `launch`.
+5. Screenshot again to confirm. `launch` returns once the app is frontmost; wait about 1 s after other transitions, since the guest ignores input while they animate.
 
 ## Commands
 
@@ -41,7 +41,7 @@ $S <udid> tree 0.5 0.25                # the element at a point
 $S <udid> setting                      # every setting's value
 $S <udid> setting appearance dark      # also text-size accessibility-large, reduce-motion on, bold-text on, glass-tint 0.8…
 $S <udid> launch com.example.app -someArgument
-echo '["launch com.example.app", "wait 1500", "key tab", "screenshot /tmp/a.png"]' | $S <udid> run -
+echo '["launch com.example.app", "key tab", "wait 1000", "screenshot /tmp/a.png"]' | $S <udid> run -
 ```
 
 ## Rules
@@ -53,7 +53,7 @@ echo '["launch com.example.app", "wait 1500", "key tab", "screenshot /tmp/a.png"
 - `tree` points are fractions of the screen, ready for `tap`; scroll to reach `offscreen` elements. Use `tree --full` only to debug or audit accessibility, since it is several times larger. Custom views marked as accessibility elements hide their subviews from both.
 - Settings apply to the whole simulator and persist. Note each value before changing it (`setting <name>`), and set it back when done.
 - The first call per device starts a daemon (2–8 s); later calls are fast. Until 30 s after the last input, the guest drops a person's clicks in DeviceHub or Simulator.app; `simdrive <udid> stop` releases the input services at once.
-- Errors carry a `code`, such as `no-screenshot`, `stale-screenshot`, `unsupported-character`, `no-touchscreen`, `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `no-element`, `accessibility-timeout`, `setting-unsupported`, `ambiguous-device` or `step-failed`. Fix the cause the message names, then retry.
+- Errors carry a `code`, such as `no-screenshot`, `stale-screenshot`, `unsupported-character`, `no-touchscreen`, `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `no-element`, `accessibility-timeout`, `setting-unsupported`, `launch-not-frontmost`, `ambiguous-device` or `step-failed`. Fix the cause the message names, then retry.
 
 ## Missing capabilities
 

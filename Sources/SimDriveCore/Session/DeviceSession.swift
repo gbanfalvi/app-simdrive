@@ -5,6 +5,10 @@ import SimDriveNative
 /// One booted simulator's services, opened on first use. Each command runs here and returns its JSON result.
 @MainActor
 final class DeviceSession {
+    /// How long an app may take to come to the front after `simctl launch`, which returns seconds before it does. A
+    /// freshly booted, busy simulator takes tens of seconds.
+    private static let launchLimit: Duration = .seconds(30)
+
     private let udid: String
     private let device: SimulatorDevice
     private let tools: DeveloperTools
@@ -193,6 +197,10 @@ final class DeviceSession {
         screens.forgetScreenshots()
         // simctl prints `<bundle-id>: <pid>`.
         let pid = result.standardOutput.split(separator: ":").last.flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        if let pid, !(await accessibility.becomesFrontmost(pid, within: Self.launchLimit)) {
+            throw SimDriveError(.launchNotFrontmost, "\(bundleID) launched as pid \(pid) but did not come to the front within "
+                                + "\(Self.launchLimit.components.seconds) s; take a screenshot to see what is in front.")
+        }
         return ["bundleID": .string(bundleID), "pid": JSONValue(pid)]
     }
 

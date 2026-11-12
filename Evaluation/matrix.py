@@ -15,10 +15,6 @@ BUILD_PROBE = os.path.join(REPO, 'Evaluation', 'build-probe.sh')
 BUNDLE = 'com.simdrive.axprobe'
 TV_SETTINGS_BUNDLE = 'com.apple.TVSettings'
 COMMAND_TIMEOUT = 180
-# `launch` returns when the process starts; on iOS 27 the app finishes launching about 1.6 s later, and keys sent
-# before then reach SpringBoard.
-LAUNCH_SETTLE = 3
-LAUNCH_SETTLE_MILLISECONDS = LAUNCH_SETTLE * 1000
 TREE_ATTEMPTS = 5
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -125,9 +121,7 @@ def tap_point(node):
 
 
 def launch_probe():
-    response = sd('launch', BUNDLE)
-    time.sleep(LAUNCH_SETTLE)
-    return response
+    return sd('launch', BUNDLE)
 
 
 def install_probe():
@@ -139,7 +133,6 @@ def install_probe():
     mark = log.mark()
     response = sd('launch', BUNDLE, '-probeArg', 'matrix')
     check('launch', response.get('ok') and log.wait(mark, r'ARGS .*-probeArg matrix', 6), brief(response))
-    time.sleep(LAUNCH_SETTLE)
 
 
 # MARK: Every device
@@ -385,7 +378,7 @@ def button_checks():
 
 def misc_checks(is_foldable):
     shot = output_path('run')
-    steps = json.dumps([f'launch {BUNDLE}', f'wait {LAUNCH_SETTLE_MILLISECONDS}', 'key b', f'screenshot {shot}'])
+    steps = json.dumps([f'launch {BUNDLE}', 'key b', f'screenshot {shot}'])
     mark = log.mark()
     response = sd('run', '-', stdin=steps)
     check('run', response.get('ok') and log.wait(mark, r'KEY code=5 ') and os.path.exists(shot), brief(response)[:200])
@@ -492,7 +485,6 @@ def posture_checks(doctor):
 def tv_checks():
     # The home screen may have one focusable app; Settings has a list.
     sd('launch', TV_SETTINGS_BUNDLE)
-    time.sleep(LAUNCH_SETTLE)
     for _ in range(TREE_ATTEMPTS):
         light = sd('tree')
         if light.get('code') != 'accessibility-translation':
@@ -550,7 +542,6 @@ def timing(is_touch):
 
     def relaunch():
         sd('launch', app)
-        time.sleep(LAUNCH_SETTLE)
 
     sd('doctor')
     cases = [

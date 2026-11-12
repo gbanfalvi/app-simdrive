@@ -33,7 +33,7 @@ simdrive <udid|booted> <command>
 | `screenshot <path.png> [--display D] [--max-dim N]` | Captures a screen, downscaled to 1024 px by default; the original is kept as `<path>.full.png` |
 | `tree [<x> <y>] [--full]` | Lists the frontmost app's VoiceOver elements, or reads the element at a point; `--full` returns every node and field |
 | `setting [<name> [<value>]]` | Lists every setting, or reads or changes one |
-| `launch <bundle-id> [args...]` | Relaunches an app |
+| `launch <bundle-id> [args...]` | Relaunches an app and waits until it is frontmost |
 | `wait <ms>` | Pauses, for `run` |
 | `run <steps.json\|->` | Runs a JSON array of commands, such as `["tap 0.5 0.5", ["key", "tab"]]`, stopping at the first failure |
 | `doctor` | Reports the developer directory, displays, orientation, pasteboard, hinge, keyboard, frontmost app and appearance |

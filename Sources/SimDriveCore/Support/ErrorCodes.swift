@@ -7,6 +7,7 @@ extension ErrorCode {
     static let notADeviceCommand = ErrorCode(rawValue: "not-a-device-command")
     static let developerDirectory = ErrorCode(rawValue: "developer-directory")
     static let simctl = ErrorCode(rawValue: "simctl")
+    static let launchNotFrontmost = ErrorCode(rawValue: "launch-not-frontmost")
     static let unknownKey = ErrorCode(rawValue: "unknown-key")
     static let unsupportedCharacter = ErrorCode(rawValue: "unsupported-character")
     static let noTouchscreen = ErrorCode(rawValue: "no-touchscreen")

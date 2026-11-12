@@ -4,6 +4,8 @@ import SimDriveNative
 /// The frontmost app's accessibility hierarchy, placed in the screen fractions that `tap` takes.
 @MainActor
 final class DeviceAccessibility {
+    private static let frontmostPollInterval: Duration = .milliseconds(100)
+
     private let device: SimulatorDevice
     private let screens: Screens
     private let accessibility: LazyCapability<SimulatorAccessibility>
@@ -43,6 +45,21 @@ final class DeviceAccessibility {
         }
         return ["app": snapshot.application.json, "display": JSONValue(screen.display?.index), "point": screen.json(point),
                 "element": element]
+    }
+
+    /// Whether the app of `pid` comes to the front within `limit`; true when accessibility cannot tell.
+    func becomesFrontmost(_ pid: Int, within limit: Duration) async -> Bool {
+        guard let accessibility = try? await accessibility.value() else { return true }
+        let deadline = ContinuousClock.now + limit
+        repeat {
+            // A launching app answers with nothing at first.
+            if let application = try? await accessibility.application() {
+                guard let frontmost = application.pid else { return true }
+                if Int(frontmost) == pid { return true }
+            }
+            try? await Task.sleep(for: Self.frontmostPollInterval)
+        } while ContinuousClock.now < deadline
+        return false
     }
 
     /// The frontmost app, or "unsupported".
