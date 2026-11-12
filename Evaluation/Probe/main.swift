@@ -1,10 +1,12 @@
 import Accessibility
 import AVFoundation
+import os
 import SwiftUI
 import UIKit
 
 enum Log {
     static let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("probe.log")
+    static let unified = Logger(subsystem: "simdrive.probe", category: "probe")
 
     static func write(_ line: String) {
         let stamped = "\(Date().timeIntervalSince1970) \(line)\n"
@@ -133,7 +135,12 @@ final class ProbeViewController: UIViewController {
         play.accessibilityLanguage = "en-US"
         play.accessibilityCustomActions = [UIAccessibilityCustomAction(name: "Delete") { _ in true },
                                            UIAccessibilityCustomAction(name: "Share") { _ in true }]
-        play.addAction(UIAction { _ in Log.write("TAP play") }, for: .touchUpInside)
+        play.addAction(UIAction { _ in
+            Log.write("TAP play")
+            Log.unified.log("TAP play")
+            Log.unified.error("TAP play error")
+            print("TAP play stdout")
+        }, for: .touchUpInside)
 
         let card = UIStackView(arrangedSubviews: [Self.label("Title"), Self.label("Subtitle")])
         card.axis = .vertical
@@ -296,7 +303,13 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         self.window = window
     }
 
-    func sceneDidBecomeActive(_ scene: UIScene) { Log.write("SCENE active") }
+    func sceneDidBecomeActive(_ scene: UIScene) {
+        Log.write("SCENE active")
+        // After `launch` sees the app in front.
+        if ProcessInfo.processInfo.arguments.contains("-probeCrash") {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 2) { fatalError("probe crash") }
+        }
+    }
     func sceneWillResignActive(_ scene: UIScene) { Log.write("SCENE inactive") }
     func sceneDidEnterBackground(_ scene: UIScene) { Log.write("SCENE background") }
     func sceneWillEnterForeground(_ scene: UIScene) { Log.write("SCENE foreground") }

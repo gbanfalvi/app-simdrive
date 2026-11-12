@@ -21,6 +21,26 @@ extension Hinge {
     }
 }
 
+extension CrashSummary {
+    var json: JSONValue {
+        ["process": .string(process), "pid": JSONValue(pid), "time": .string(time), "exception": .string(exception),
+         "reason": JSONValue(reason), "frames": .array(frames.map(JSONValue.string)), "path": .string(path)]
+    }
+}
+
+extension LogDigest.Entry {
+    /// Leaves out the default level, a single repeat and the fields the read filtered on.
+    var json: JSONValue {
+        var fields: [String: JSONValue] = ["ms": JSONValue(milliseconds), "message": .string(message)]
+        if level != .default { fields["level"] = .string(level.name) }
+        if let process { fields["process"] = .string(process) }
+        if let subsystem { fields["subsystem"] = .string(subsystem) }
+        if let category { fields["category"] = .string(category) }
+        if repeats > 1 { fields["repeats"] = JSONValue(repeats) }
+        return .object(fields)
+    }
+}
+
 extension PasteboardItem {
     var json: JSONValue {
         ["types": .array(types.map(JSONValue.string)), "text": JSONValue(text)]

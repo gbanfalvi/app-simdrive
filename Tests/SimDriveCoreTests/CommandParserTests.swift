@@ -1,4 +1,5 @@
 import CoreGraphics
+import Foundation
 import SimDriveNative
 import Testing
 @testable import SimDriveCore
@@ -98,8 +99,62 @@ struct CommandParserTests {
             Step(arguments: ["tap", "0.5", "0.5"], command: .tap(.normalized(CGPoint(x: 0.5, y: 0.5)), display: .automatic)),
             Step(arguments: ["key", "tab"], command: .key(name: "tab", modifiers: [], count: 1)),
             Step(arguments: ["wait", "100"], command: .wait(milliseconds: 100)),
-        ]))
+        ], attachesLogs: false))
         #expect(!command.isStep)
+        #expect(try CommandParser.parse(["run", "--logs", "--json", #"["wait 1"]"#])
+            == .run(steps: [Step(arguments: ["wait", "1"], command: .wait(milliseconds: 1))], attachesLogs: true))
+    }
+
+    @Test func logsDefaultsToTheLaunchedAppSinceTheCursor() throws {
+        #expect(try CommandParser.parse(["logs"]) == .logs(LogQuery()))
+        #expect(try CommandParser.parse(["logs"]).isStep)
+    }
+
+    @Test func logsReadsEveryOption() throws {
+        let command = try CommandParser.parse([
+            "logs", "--app", "com.example", "--subsystem", "net", "--category", "http", "--level", "error", "--grep", "fail(ed)?",
+            "--predicate", "eventMessage CONTAINS \"x\"", "--source", "log,crash", "--since", "30s", "--cursor", "watcher", "--peek",
+            "--until", "done", "--timeout", "800", "--limit", "0", "--width", "80", "--system",
+        ])
+        var expected = LogQuery()
+        expected.scope = .app(bundleID: "com.example")
+        expected.subsystem = "net"
+        expected.category = "http"
+        expected.level = .error
+        expected.grep = "fail(ed)?"
+        expected.predicate = "eventMessage CONTAINS \"x\""
+        expected.includesSystem = true
+        expected.sources = [.log, .crash]
+        expected.since = .ago(30)
+        expected.cursor = "watcher"
+        expected.peek = true
+        expected.until = "done"
+        expected.timeout = .milliseconds(800)
+        expected.limit = 0
+        expected.width = 80
+        #expect(command == .logs(expected))
+    }
+
+    @Test func logsScopesAndStarts() throws {
+        #expect(try CommandParser.parse(["logs", "--all"]) == .logs(LogQuery(scope: .all)))
+        #expect(try CommandParser.parse(["logs", "--pid", "42"]) == .logs(LogQuery(scope: .pid(42))))
+        #expect(try CommandParser.parse(["logs", "--process", "SpringBoard"]) == .logs(LogQuery(scope: .process("SpringBoard"))))
+        #expect(try CommandParser.parse(["logs", "--since", "launch"]) == .logs(LogQuery(since: .launch)))
+        #expect(try CommandParser.parse(["logs", "--since", "2m"]) == .logs(LogQuery(since: .ago(120))))
+        #expect(try CommandParser.parse(["logs", "--since", "2026-11-12T15:18:01Z"])
+            == .logs(LogQuery(since: .date(Date(timeIntervalSince1970: 1_794_496_681)))))
+    }
+
+    @Test func logsRejectsConflictsAndBadValues() {
+        expectUsageError { try CommandParser.parse(["logs", "--all", "--app", "com.example"]) }
+        expectUsageError { try CommandParser.parse(["logs", "--level", "verbose"]) }
+        expectUsageError { try CommandParser.parse(["logs", "--grep", "("]) }
+        expectUsageError { try CommandParser.parse(["logs", "--source", "syslog"]) }
+        expectUsageError { try CommandParser.parse(["logs", "--since", "yesterday"]) }
+        expectUsageError { try CommandParser.parse(["logs", "--until", "x", "--source", "stdout"]) }
+        expectUsageError { try CommandParser.parse(["logs", "--timeout", "100"]) }
+        expectUsageError { try CommandParser.parse(["logs", "--limit", "-1"]) }
+        expectUsageError { try CommandParser.parse(["logs", "now"]) }
     }
 
     @Test func runChecksEveryStepBeforeRunning() {

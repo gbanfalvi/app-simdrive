@@ -23,6 +23,8 @@ struct DeveloperTools: Sendable {
     private static let coreSimulatorSimctl = "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl"
     private static let developerDirectoryOverride = "SIMDRIVE_DEVELOPER_DIR"
     private static let developerDirectoryVariable = "DEVELOPER_DIR"
+    /// simctl passes these variables, without the prefix, to the processes it starts.
+    private static let childEnvironmentPrefix = "SIMCTL_CHILD_"
 
     let developerDirectory: String
     private let simctlCommand: [String]
@@ -55,17 +57,27 @@ struct DeveloperTools: Sendable {
         return environment
     }
 
-    /// Runs `simctl` and returns its result, whether or not it succeeded.
-    func simctlResult(_ arguments: [String]) async throws -> ToolResult {
+    /// Runs `simctl` and returns its result, whether or not it succeeded. `childEnvironment` reaches what it launches.
+    func simctlResult(_ arguments: [String], childEnvironment: [String: String] = [:]) async throws -> ToolResult {
         var environment = ProcessInfo.processInfo.environment
         environment[Self.developerDirectoryVariable] = developerDirectory
+        for (name, value) in childEnvironment {
+            environment[Self.childEnvironmentPrefix + name] = value
+        }
         return try await Self.run(simctlCommand + arguments, environment: environment)
+    }
+
+    /// Starts `simctl`, whose standard output then arrives line by line.
+    func simctlLines(_ arguments: [String]) throws -> ToolLines {
+        var environment = ProcessInfo.processInfo.environment
+        environment[Self.developerDirectoryVariable] = developerDirectory
+        return try ToolLines(simctlCommand + arguments, environment: environment)
     }
 
     /// Runs `simctl` and throws its diagnostics when it fails.
     @discardableResult
-    func simctl(_ arguments: [String]) async throws -> ToolResult {
-        let result = try await simctlResult(arguments)
+    func simctl(_ arguments: [String], childEnvironment: [String: String] = [:]) async throws -> ToolResult {
+        let result = try await simctlResult(arguments, childEnvironment: childEnvironment)
         guard result.succeeded else {
             throw SimDriveError(.simctl, "simctl \(arguments.first ?? "") failed: \(result.diagnostics)")
         }
@@ -105,4 +117,48 @@ struct DeveloperTools: Sendable {
         return ToolResult(status: process.terminationStatus, standardOutput: String(decoding: outputData, as: UTF8.self),
                           standardError: String(decoding: errorData, as: UTF8.self))
     }
+}
+
+/// A running tool's standard output, line by line, until the tool exits or is stopped.
+final class ToolLines: @unchecked Sendable {
+    private static let newline = UInt8(ascii: "\n")
+
+    let lines: AsyncStream<String>
+    private let process = Process()
+
+    fileprivate init(_ command: [String], environment: [String: String]) throws {
+        let (lines, continuation) = AsyncStream.makeStream(of: String.self)
+        self.lines = lines
+        process.executableURL = URL(fileURLWithPath: command[0])
+        process.arguments = Array(command.dropFirst())
+        process.environment = environment
+        process.standardInput = FileHandle.nullDevice
+        process.standardError = FileHandle.nullDevice
+        let output = Pipe()
+        process.standardOutput = output
+        // The handler runs on one queue at a time, so it alone touches `pending`.
+        nonisolated(unsafe) var pending = Data()
+        output.fileHandleForReading.readabilityHandler = { handle in
+            let data = handle.availableData
+            guard !data.isEmpty else {
+                handle.readabilityHandler = nil
+                if !pending.isEmpty { continuation.yield(String(decoding: pending, as: UTF8.self)) }
+                continuation.finish()
+                return
+            }
+            pending.append(data)
+            while let end = pending.firstIndex(of: Self.newline) {
+                continuation.yield(String(decoding: pending[pending.startIndex..<end], as: UTF8.self))
+                pending.removeSubrange(pending.startIndex...end)
+            }
+        }
+        try process.run()
+    }
+
+    /// Interrupts rather than terminates, since `simctl spawn` passes only an interrupt on to the guest's process.
+    func stop() {
+        if process.isRunning { process.interrupt() }
+    }
+
+    deinit { stop() }
 }

@@ -16,6 +16,7 @@ final class DeviceSession {
     private let screens: Screens
     private let accessibility: DeviceAccessibility
     private let settings: DeviceSettings
+    private let logs: DeviceLogs
     private let orientation: LazyCapability<GuestOrientation>
     private let pasteboard: LazyCapability<CoreDevicePasteboard>
     private let hinge: LazyCapability<Hinge>
@@ -37,6 +38,7 @@ final class DeviceSession {
         screens = Screens(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
         accessibility = DeviceAccessibility(device: device, screens: screens)
         settings = DeviceSettings(udid: udid, device: device, tools: tools)
+        logs = DeviceLogs(udid: udid, tools: tools)
     }
 
     static func open(udid: String, tools: DeveloperTools) async throws -> DeviceSession {
@@ -91,8 +93,10 @@ final class DeviceSession {
         case .wait(let milliseconds):
             try await Task.sleep(for: .milliseconds(milliseconds))
             return ["waited": JSONValue(milliseconds)]
-        case .run(let steps):
-            return try await run(steps, workingDirectory: workingDirectory)
+        case .logs(let query):
+            return try await logs.read(query)
+        case .run(let steps, let attachesLogs):
+            return try await run(steps, attachesLogs: attachesLogs, workingDirectory: workingDirectory)
         case .doctor:
             return await doctor()
         case .stop, .serve:
@@ -192,11 +196,15 @@ final class DeviceSession {
     // MARK: Apps, steps and diagnostics
 
     private func launch(_ bundleID: String, arguments: [String]) async throws -> JSONValue {
+        let output = logs.prepareLaunch(dataDirectory: device.dataDirectory)
+        let launchedAt = Date.now
         // Restarts a running app, so it starts from its launch screen with these arguments.
-        let result = try await tools.simctl(["launch", "--terminate-running-process", udid, bundleID] + arguments)
+        let result = try await tools.simctl(["launch", "--terminate-running-process"] + output.launchOptions + [udid, bundleID] + arguments,
+                                            childEnvironment: AppOutput.environment)
         screens.forgetScreenshots()
         // simctl prints `<bundle-id>: <pid>`.
         let pid = result.standardOutput.split(separator: ":").last.flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+        logs.recordLaunch(bundleID: bundleID, pid: pid, at: launchedAt, output: output)
         if let pid, !(await accessibility.becomesFrontmost(pid, within: Self.launchLimit)) {
             throw SimDriveError(.launchNotFrontmost, "\(bundleID) launched as pid \(pid) but did not come to the front within "
                                 + "\(Self.launchLimit.components.seconds) s; take a screenshot to see what is in front.")
@@ -204,15 +212,28 @@ final class DeviceSession {
         return ["bundleID": .string(bundleID), "pid": JSONValue(pid)]
     }
 
-    private func run(_ steps: [Step], workingDirectory: String) async throws -> JSONValue {
+    private func run(_ steps: [Step], attachesLogs: Bool, workingDirectory: String) async throws -> JSONValue {
         var results: [JSONValue] = []
+        var starts: [Date] = []
         for (index, step) in steps.enumerated() {
-            do { results.append(try await execute(step.command, workingDirectory: workingDirectory)) } catch {
+            let previousStart = starts.last
+            starts.append(.now)
+            do {
+                if case .logs(let query) = step.command {
+                    results.append(try await logs.read(query, previousStepStart: previousStart))
+                } else {
+                    results.append(try await execute(step.command, workingDirectory: workingDirectory))
+                }
+            } catch {
                 throw SimDriveError(.stepFailed, "Step \(index + 1) (\(step.arguments.joined(separator: " "))) failed after \(index) "
                                     + "completed: \(error.localizedDescription)")
             }
         }
-        return ["steps": .array(results)]
+        guard attachesLogs else { return ["steps": .array(results)] }
+        // The steps have run, so a failed read reports itself beside their results.
+        do { return ["steps": .array(try await logs.attach(to: results, stepStarts: starts))] } catch {
+            return ["steps": .array(results), "logsError": .string(error.localizedDescription)]
+        }
     }
 
     private func doctor() async -> JSONValue {

@@ -2,7 +2,7 @@
 
 ## Unit tests
 
-`swift test` covers pure logic: parsing, step lists, key maps, screen mapping, display listings, the setting catalog, JSON, accessibility element decoding and `LazyCapability`. None needs a simulator. Anything that touches a guest is checked by the matrix instead.
+`swift test` covers pure logic: parsing, step lists, key maps, screen mapping, display listings, the setting catalog, JSON, accessibility element decoding, `LazyCapability`, log queries and digests, and crash report summaries from an inline report. None needs a simulator. Anything that touches a guest is checked by the matrix instead.
 
 ## The evaluation matrix
 
@@ -17,7 +17,7 @@ Evaluation/matrix.py <udid> --timing --label base   # time common commands into 
 SIMDRIVE=/path/to/other/simdrive Evaluation/matrix.py <udid> --timing --label other
 ```
 
-- **iPhones and iPads** install the probe app and check the tree, light tree, taps, keys, typing, orientation with hit tests and taps in each landscape, buttons (home, lock and unlock, Siri, volume), edge swipes, `run`, settings as the app sees them, and the pasteboard.
+- **iPhones and iPads** install the probe app and check the tree, light tree, taps, keys, typing, orientation with hit tests and taps in each landscape, buttons (home, lock and unlock, Siri, volume), edge swipes, `run`, settings as the app sees them, the pasteboard, and logs: a tap's entries and stdout, the cursor, `run --logs`, `--until` inside and beside `run`, `log-timeout`, and a crash's stderr and summary. The crash section ends by relaunching the probe.
 - **Foldables** replace the orientation and button sections with every posture, checking that screenshots and trees follow the expected panel.
 - **Apple TV** has no probe; it drives Settings and checks focus movement, hit tests and the expected `no-touchscreen`, `orientation-unsupported` and `setting-unsupported` errors.
 - Settings are read at the start and restored when the run completes, and the run's daemon is stopped. An interrupted run restores nothing.
@@ -40,10 +40,12 @@ It appends lines to `Documents/probe.log` in its data container:
 | `ORIENT interface=…` | The interface rotates, as a `UIInterfaceOrientation` raw value |
 | `SCENE active\|inactive\|background\|foreground` | The scene's state changes |
 | `ARGS …` | At launch, with its arguments |
-| `TAP play` | The Play button fires |
+| `TAP play` | The Play button fires; it also logs `TAP play` and `TAP play error` to the unified log (subsystem `simdrive.probe`) and prints `TAP play stdout` |
 | `VOLUME …` | The output volume changes, which the simulator never reports |
 
 The log outlives runs. The matrix notes its line count before each action and matches only later lines.
+
+Launched with `-probeCrash`, the probe calls `fatalError("probe crash")` 2 s after its scene becomes active. ReportCrash reports a repeat of the same crash only by updating the earlier report, so the matrix falls back to `logs --since 24h` when no new report arrives within 90 s.
 
 `ORIENT` uses UIKit's numbering, so device `landscape-left` logs 3 and `landscape-right` 4: the reverse of CoreSimulator's `uiOrientation` for the same rotation.
 

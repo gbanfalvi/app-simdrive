@@ -42,7 +42,9 @@ enum Command: Equatable, Sendable {
     case setting(Setting?, value: JSONValue?)
     case launch(bundleID: String, arguments: [String])
     case wait(milliseconds: Int)
-    case run(steps: [Step])
+    case logs(LogQuery)
+    /// With `attachesLogs`, each step's result lists the entries logged while it ran.
+    case run(steps: [Step], attachesLogs: Bool)
     case doctor
     case stop
     case serve

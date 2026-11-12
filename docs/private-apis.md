@@ -7,7 +7,7 @@ What simdrive calls, and what was learned about it, on Xcode 27.0 and 27.2. Name
 Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 
 - `SimServiceContext +sharedServiceContextForDeveloperDir:error:`, then `-defaultDeviceSetWithError:`, then `devicesByUDID` (`[UUID: SimDevice]`). One context per developer directory.
-- `SimDevice` getters: `name`, `stateString` (`Booted`), `runtimeIdentifier` (`com.apple.CoreSimulator.SimRuntime.iOS-18-3`), `deviceTypeIdentifier`, `lastBootedAt`.
+- `SimDevice` getters: `name`, `stateString` (`Booted`), `runtimeIdentifier` (`com.apple.CoreSimulator.SimRuntime.iOS-18-3`), `deviceTypeIdentifier`, `lastBootedAt`, `dataPath` (the host directory holding the guest's `/tmp`, `/var` and home directories).
 - `-lookup:error:` returns a caller-owned Mach send right to a guest service, or 0 or `UInt32.max` when there is none. Probing for a service means looking it up and deallocating the right.
 - `-postDarwinNotification:error:` posts in the guest, as `notifyutil -p` there would.
 - `-sendAccessibilityRequestAsync:completionQueue:completionHandler:` carries AXPTranslator's requests to the guest.
@@ -121,6 +121,13 @@ Loaded from `/System/Library/PrivateFrameworks/AccessibilityPlatformTranslation.
 - `simctl spawn <udid> defaults export <domain> -` prints a property list; `defaults write <domain> <key> -int|-float|-string <value>` writes.
 - Accessibility keys live in `com.apple.Accessibility`; the Liquid Glass tint is `UIViewGlassTintAmount` in `com.apple.UIKit`, a 32-bit float that defaults to 0.5 while unset, announced by `UIViewGlassTintAmountUpdateNotification`.
 - Accessibility notifications are `com.apple.accessibility.<name>`; most have a `com.apple.accessibility.cache.<name>` counterpart. The pairs are in [`SettingCatalog.swift`](../Sources/SimDriveCore/Settings/SettingCatalog.swift); [AGENTS.md](../AGENTS.md) describes how to find new ones.
+
+## Logs and crash reports
+
+- `simctl spawn <udid> log show --style ndjson --start @<seconds>` and `log stream --style ndjson --type log --level <level> --timeout <seconds>`, with `--info` and `--debug` for `show`. Lines are JSON objects; simdrive reads those whose `eventType` is `logEvent`, using `timestamp` (`2026-11-12 16:05:29.405902+0000`), `messageType`, `eventMessage`, `subsystem`, `category`, `processImagePath`, `processID` and `senderImagePath`, the library that logged.
+- Crash reports are `~/Library/Logs/DiagnosticReports/*.ips`: one JSON header line, then a JSON body. A simulator's have `coalitionName` `com.apple.CoreSimulator.SimDevice.<UDID>`, which matches them to the device.
+- Body fields used: `procName`, `pid`, `captureTime` (`2026-11-12 13:54:50.9488 +0000`), `exception` (`type`, `signal`), `asi` (an image's strings), `faultingThread`, `threads[].frames` (`imageIndex`, `symbol`, `symbolLocation`, `imageOffset`), `lastExceptionBacktrace` and `usedImages[].name`.
+- A report's extended attributes include `Signature`, by which ReportCrash recognizes a repeated crash.
 
 ## Finding more
 

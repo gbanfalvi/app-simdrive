@@ -47,6 +47,17 @@ Observed on Xcode 27.0 and 27.2 with iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad 
 - `non-blinking-cursor` needs iOS 18; `glass-tint` needs iOS 26.
 - `prefer-cross-fade` has an effect only while `reduce-motion` is on.
 
+## Logs
+
+- `log show --start @<seconds>` rejects fractional seconds, so simdrive starts at the whole second and filters the rest itself.
+- `log stream` prints a `Filtering the log data…` header once attached. Ending `simctl spawn` with SIGTERM leaves the guest's `log stream` running; SIGINT ends both.
+- `simctl launch --stdout` and `--stderr` paths resolve in the guest: `/tmp` is the device's own, so a host `/tmp` path fails silently.
+- Without `NSUnbufferedIO=YES`, a Swift app's `print` output stays buffered until exit.
+- About 98% of an app process's entries come from system libraries under `/System/`, `/usr/` or the runtime root.
+- Values not logged as public read `<private>`.
+- ReportCrash writes a crash report about 45 s after the crash, and only one per distinct crash: a repeat with the same signature updates the earlier report's modification time instead. It also rewrites older reports, so a modification time alone does not date a crash.
+- A Swift `fatalError` message is not in simulator crash reports' `asi`; it appears on stderr.
+
 ## Hosts
 
 - simdrive works with DeviceHub or NeoSimulator showing the device, or with neither.

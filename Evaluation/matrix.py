@@ -270,6 +270,63 @@ def tap_checks(full):
     time.sleep(1)
 
 
+def messages(result):
+    return [entry.get('message') for entry in result.get('entries', result.get('logs', []))]
+
+
+def poll_logs(arguments, found, timeout):
+    deadline = time.time() + timeout
+    while True:
+        response = sd('logs', '--peek', *arguments)
+        if found(response.get('result', {})) or time.time() > deadline:
+            return response
+        time.sleep(2)
+
+
+def logs_checks(full):
+    x, y = tap_point(element(full, 'Play'))
+    launch_probe()
+    sd('logs')
+    sd('tap', x, y)
+    time.sleep(1)
+    response = sd('logs')
+    result = response.get('result', {})
+    levels = {entry.get('message'): entry.get('level', 'default') for entry in result.get('entries', [])}
+    check('logs (tap)', levels.get('TAP play') == 'default' and levels.get('TAP play error') == 'error', brief(response))
+    check('logs stdout', 'TAP play stdout' in result.get('stdout', []), str(result.get('stdout')))
+    check('logs leaves out system chatter', len(result.get('entries', [])) < 10, f"{len(result.get('entries', []))} entries")
+    response = sd('logs')
+    check('logs moves its cursor', response.get('ok') and 'TAP play' not in messages(response['result']), brief(response))
+
+    steps = sd('run', '-', '--logs', stdin=json.dumps([f'tap {x} {y}', 'logs --until "TAP play error"', 'wait 100']))
+    results = steps.get('result', {}).get('steps', [{}, {}])
+    check('run --logs attributes the tap', 'TAP play' in messages({'logs': results[0].get('logs', [])}), brief(steps))
+    check('logs --until in run', messages(results[1])[-1:] == ['TAP play error'], brief(steps))
+
+    waiter = subprocess.Popen([SIMDRIVE, udid, 'logs', '--until', 'TAP play$', '--since', '0s', '--source', 'log', '--peek',
+                               '--timeout', '20000'], stdout=subprocess.PIPE, text=True)
+    time.sleep(6)
+    sd('tap', x, y)
+    output, _ = waiter.communicate(timeout=COMMAND_TIMEOUT)
+    waited = json.loads(output.strip().splitlines()[-1]) if output.strip() else {}
+    check('logs --until alongside a tap', waited.get('ok') and messages(waited['result'])[-1:] == ['TAP play'], output[-300:])
+    response = sd('logs', '--until', 'never logged', '--since', '0s', '--source', 'log', '--timeout', '1000')
+    check('logs --until (expect log-timeout)', response.get('code') == 'log-timeout', brief(response))
+
+    sd('launch', BUNDLE, '-probeCrash')
+    response = poll_logs(['--source', 'stdout'], lambda result: any('Fatal error: probe crash' in line for line in result.get('stderr', [])), 15)
+    check('logs stderr (fatal error)', response.get('ok') and 'probe crash' in json.dumps(response['result'].get('stderr')), brief(response))
+    # ReportCrash writes the report up to a minute later, and only touches the earlier report of a repeated crash.
+    response = poll_logs(['--source', 'crash'], lambda result: result.get('crashes'), 90)
+    note = ''
+    if not response.get('result', {}).get('crashes'):
+        response = sd('logs', '--peek', '--source', 'crash', '--since', '24h')
+        note = 'repeated crash, read from the earlier report; '
+    crashes = response.get('result', {}).get('crashes', [])
+    check('logs crash summary', any('sceneDidBecomeActive' in ' '.join(crash['frames']) for crash in crashes), note + brief(response))
+    launch_probe()
+
+
 KEYS = [
     (('key', 'a'), r'KEY code=4 chars=97 mods=$', 1),
     (('key', 'f', '--mods', 'cmd,shift'), r'KEY code=9 .*mods=shift,cmd', 1),
@@ -589,13 +646,15 @@ def main():
         if want('tv'):
             tv_checks()
     else:
-        full = tree_checks() if want('tree') or want('tap') or want('keys') or args.pasteboard else None
+        full = tree_checks() if want('tree') or want('tap') or want('keys') or want('logs') or args.pasteboard else None
         if full and args.pasteboard:
             pasteboard_write_checks(full)
         if full and want('tap'):
             tap_checks(full)
         if full and want('keys'):
             key_checks(full)
+        if full and want('logs'):
+            logs_checks(full)
         if want('misc'):
             misc_checks(is_foldable)
         if is_foldable and want('posture'):

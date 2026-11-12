@@ -11,6 +11,7 @@ package final class SimulatorDevice {
 
     private static let bootedState = "Booted"
     private static let lastBootedAtKey = "lastBootedAt"
+    private static let dataPathKey = "dataPath"
     private static let tvOSRuntimePrefix = "com.apple.CoreSimulator.SimRuntime.tvOS-"
     private static var contexts: [String: NSObject] = [:]
 
@@ -45,6 +46,12 @@ package final class SimulatorDevice {
     /// An Apple TV takes its remote's buttons, not touches.
     package var hasTouchscreen: Bool { !(string(forKey: "runtimeIdentifier")?.hasPrefix(Self.tvOSRuntimePrefix) ?? false) }
     package var majorOSVersion: Int? { string(forKey: "runtimeIdentifier").flatMap(Self.majorOSVersion(ofRuntime:)) }
+    /// The host directory holding the guest's own `/tmp`, `/var` and home directories.
+    package var dataDirectory: URL? {
+        guard device.responds(to: NSSelectorFromString(Self.dataPathKey)) else { return nil }
+        let value = device.value(forKey: Self.dataPathKey)
+        return value as? URL ?? (value as? String).map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
     package var lastBootedAt: Date? {
         guard device.responds(to: NSSelectorFromString(Self.lastBootedAtKey)) else { return nil }
         return device.value(forKey: Self.lastBootedAtKey) as? Date

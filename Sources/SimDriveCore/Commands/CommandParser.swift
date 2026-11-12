@@ -8,6 +8,12 @@ enum CommandParser {
     private static let postureNames: [String: DevicePosture] = [
         "closed": .closed, "half": .partiallyOpen, "partially-open": .partiallyOpen, "partiallyOpen": .partiallyOpen, "open": .open,
     ]
+    private static let logScopeOptions = ["app", "process", "pid"]
+    private static let logOptions: Set<String> = Set(logScopeOptions).union([
+        "subsystem", "category", "level", "grep", "predicate", "source", "since", "cursor", "until", "timeout", "limit", "width",
+    ])
+    private static let launchStart = "launch"
+    private static let durationUnits: [Character: TimeInterval] = ["s": 1, "m": 60, "h": 3600]
 
     static func parse(_ arguments: [String]) throws -> Command {
         guard let name = arguments.first else { throw SimDriveError.usage("Missing command") }
@@ -90,14 +96,16 @@ enum CommandParser {
                 throw SimDriveError.usage("wait needs milliseconds")
             }
             return .wait(milliseconds: milliseconds)
+        case "logs":
+            return .logs(try logQuery(rest))
         case "run":
-            let list = try ArgumentList(rest, options: ["json"])
+            let list = try ArgumentList(rest, options: ["json"], flags: ["logs"])
             let data = if let json = list.option("json") {
                 Data(json.utf8)
             } else {
                 try Data(contentsOf: URL(fileURLWithPath: try list.single("a steps file")))
             }
-            return .run(steps: try steps(Steps.parse(data)))
+            return .run(steps: try steps(Steps.parse(data)), attachesLogs: list.flag("logs"))
         case "doctor":
             try ArgumentList(rest).none()
             return .doctor
@@ -122,6 +130,77 @@ enum CommandParser {
             guard command.isStep else { throw SimDriveError(.stepInvalid, "Step \(index + 1) cannot be \(arguments.first ?? "")") }
             return Step(arguments: arguments, command: command)
         }
+    }
+
+    private static func logQuery(_ arguments: [String]) throws -> LogQuery {
+        let list = try ArgumentList(arguments, options: logOptions, flags: ["all", "peek", "system"])
+        try list.none()
+        guard logScopeOptions.filter({ list.option($0) != nil }).count + (list.flag("all") ? 1 : 0) <= 1 else {
+            throw SimDriveError.usage("Use one of --app, --process, --pid and --all")
+        }
+        var query = LogQuery()
+        if let bundleID = list.option("app") { query.scope = .app(bundleID: bundleID) }
+        if let name = list.option("process") { query.scope = .process(name) }
+        if let pid = try list.positiveInteger("pid") { query.scope = .pid(pid) }
+        if list.flag("all") { query.scope = .all }
+        query.subsystem = list.option("subsystem")
+        query.category = list.option("category")
+        if let value = list.option("level") {
+            guard let level = LogLevel(name: value) else {
+                throw SimDriveError.usage("Unknown level \"\(value)\"; use \(LogLevel.allCases.map(\.name).joined(separator: ", "))")
+            }
+            query.level = level
+        }
+        query.grep = try regularExpression(list.option("grep"), option: "grep")
+        query.until = try regularExpression(list.option("until"), option: "until")
+        query.predicate = list.option("predicate")
+        query.includesSystem = list.flag("system")
+        if let value = list.option("source") { query.sources = try logSources(value) }
+        if let value = list.option("since") { query.since = try logStart(value) }
+        if let cursor = list.option("cursor") { query.cursor = cursor }
+        query.peek = list.flag("peek")
+        if let milliseconds = try list.positiveInteger("timeout") { query.timeout = .milliseconds(milliseconds) }
+        if let limit = try list.integer("limit") {
+            guard limit >= 0 else { throw SimDriveError.usage("--limit must not be negative") }
+            query.limit = limit
+        }
+        if let width = try list.integer("width") {
+            guard width >= 0 else { throw SimDriveError.usage("--width must not be negative") }
+            query.width = width
+        }
+        guard query.until == nil || query.sources.contains(.log) else { throw SimDriveError.usage("--until needs the log source") }
+        guard list.option("timeout") == nil || query.until != nil else { throw SimDriveError.usage("--timeout needs --until") }
+        return query
+    }
+
+    private static func regularExpression(_ value: String?, option: String) throws -> String? {
+        guard let value else { return nil }
+        guard (try? NSRegularExpression(pattern: value)) != nil else {
+            throw SimDriveError.usage("--\(option) \"\(value)\" is not a regular expression")
+        }
+        return value
+    }
+
+    private static func logSources(_ value: String) throws -> Set<LogQuery.Source> {
+        let sources = Set(try value.split(separator: ",").map { name in
+            guard let source = LogQuery.Source(rawValue: String(name)) else {
+                throw SimDriveError.usage("Unknown source \"\(name)\"; use \(LogQuery.Source.allCases.map(\.rawValue).joined(separator: ", "))")
+            }
+            return source
+        })
+        guard !sources.isEmpty else { throw SimDriveError.usage("--source needs at least one source") }
+        return sources
+    }
+
+    private static func logStart(_ value: String) throws -> LogQuery.Start {
+        if value == launchStart { return .launch }
+        if let unit = value.last, let seconds = durationUnits[unit], let amount = Double(value.dropLast()), amount >= 0 {
+            return .ago(amount * seconds)
+        }
+        for style in [Date.ISO8601FormatStyle(includingFractionalSeconds: true), Date.ISO8601FormatStyle()] {
+            if let date = try? style.parse(value) { return .date(date) }
+        }
+        throw SimDriveError.usage("--since takes launch, an ISO 8601 time, or a duration ago such as 30s, 5m or 1h")
     }
 
     private static func point(_ x: String, _ y: String) throws -> ScreenPoint {
@@ -154,8 +233,8 @@ enum CommandParser {
     }
 
     static let usage = """
-        simdrive: drive a booted simulator's keyboard, touchscreen, buttons and hinge, read its accessibility and change
-        its settings. Prints one JSON object.
+        simdrive: drive a booted simulator's keyboard, touchscreen, buttons and hinge, read its accessibility and logs,
+        and change its settings. Prints one JSON object.
 
         usage: simdrive list
                simdrive <udid|booted> <command> [--no-daemon]
@@ -177,7 +256,16 @@ enum CommandParser {
           setting [<name> [<value>]]          lists every setting, or reads or changes one, such as appearance dark
           launch <bundle-id> [args...]
           wait <ms>
-          run <steps.json|->                  a JSON array of commands: ["tap 0.5 0.5", ["key", "tab"]]
+          logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until <regex> [--timeout ms]]
+               [--limit N] [--width N]        the launched app's log entries, stdout, stderr and crashes since the
+                                              cursor's last read; --until waits for a matching entry, 5000 ms by default
+               scope: --app <bundle-id> | --process <name> | --pid <n> | --all
+               filters: --level debug|info|default|error|fault --subsystem S --category C --grep <regex>
+                        --predicate <NSPredicate> --source log,stdout,crash
+                        --system keeps an app's system-library entries below error level
+               S: launch, an ISO 8601 time, or a duration ago such as 30s; --limit 50 and --width 240 by default
+          run <steps.json|-> [--logs]         a JSON array of commands: ["tap 0.5 0.5", ["key", "tab"]];
+                                              --logs adds each step's log entries to its result
           doctor
           stop                                ends the device's daemon
 

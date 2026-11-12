@@ -7,7 +7,7 @@ Each module uses only the one below it.
 | Module | Role |
 | --- | --- |
 | `simdrive` | The executable; calls `SimDriveCLI.run`. |
-| `SimDriveCore` | Command parsing, the per-device session, screen geometry, settings, the daemon and its client. |
+| `SimDriveCore` | Command parsing, the per-device session, screen geometry, settings, device logs, the daemon and its client. |
 | `SimDriveNative` | Drivers for CoreSimulator, the guest's Mach services, CoreDevice and AccessibilityPlatformTranslation. Its API is `package`, so nothing private-framework-shaped leaks out of the package. |
 
 Native types speak in domain terms (`tap(at:target:)`, `set(_ posture:)`), and Core never sees an XPC object, a Swift mangled name or an Objective-C selector. Native files named `Guest*` reach the guest's Mach services directly; `CoreDevice*` files go through CoreDevice.
@@ -19,12 +19,15 @@ flowchart LR
   Shell["Agent shell"] --> CLI["SimDriveCLI"]
   CLI -->|"JSON line over a Unix socket"| Daemon["DaemonServer, one per UDID"]
   CLI -.->|"--no-daemon"| Session
+  CLI -->|"top-level logs"| Logs
   Daemon --> Session["DeviceSession"]
   Session --> Inputs["DeviceInputs"]
   Session --> Screens["Screens"]
   Session --> AX["DeviceAccessibility"]
   Session --> Settings["DeviceSettings"]
   Session --> Hinge["Hinge"]
+  Session --> Logs["DeviceLogs"]
+  Logs --> LogTool["simctl spawn log, launch output files, DiagnosticReports"]
   AX --> Screens
   Inputs --> Guest["Guest Mach services"]
   Screens --> Simctl["simctl io screenshot"]
@@ -36,7 +39,7 @@ flowchart LR
 
 1. `SimDriveCLI` resolves the developer directory and the UDID (`booted` means the only booted simulator), parses the command, and sends the raw arguments to the device's daemon, starting it if needed.
 2. `run` steps from a file or standard input are inlined as `--json` first, since the daemon shares neither the client's directory nor its input. Relative paths resolve against the client's working directory, which every request carries.
-3. `DaemonServer` handles one request at a time. The main actor would otherwise interleave two requests' awaits, and the guest's input services expect their messages in order.
+3. `DaemonServer` handles one request at a time. The main actor would otherwise interleave two requests' awaits, and the guest's input services expect their messages in order. A top-level `logs` therefore runs in the client's process, so `logs --until` can wait while other calls drive the device; inside `run`, it runs in the daemon.
 4. `DeviceSession.execute` dispatches the command to a helper and returns its JSON. The CLI prints one line, `{"ok":true,"result":…}` or `{"ok":false,"error":…,"code":…}`.
 
 ## Daemon lifecycle
@@ -56,6 +59,9 @@ All live in `/tmp/simdrive-<uid>/`, mode 0700. `$TMPDIR` is not used: a Unix soc
 | `<udid>.log` | The daemon's log. |
 | `<udid>.screens.json` | The device's displays and each screen's last screenshot record, so one-shot runs and the daemon share calibration. Discarded when the boot date changes. |
 | `<udid>.calibration.png` | The full-resolution screenshot taken when fractions need a screen size and none is recorded. |
+| `<udid>.logs.json` | The app `launch` last started (bundle ID, pid, launch time, executable, output files) and each log cursor's position. `launch` replaces it. |
+
+The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.stderr.txt` in the device's own `tmp` directory, under its data path, since the guest resolves `simctl launch`'s paths in its filesystem.
 
 ## Capabilities
 
@@ -73,6 +79,7 @@ All live in `/tmp/simdrive-<uid>/`, mode 0700. `$TMPDIR` is not used: a Unix soc
 | Accessibility | `AXPTranslator` on the Mac, requests carried by `SimDevice` | — |
 | Screenshots, launch, `simctl ui` settings | CoreSimulator's own `simctl` binary | `simctl ui` on tvOS |
 | Preference settings | `simctl spawn defaults`, then `SimDevice postDarwinNotification:error:` | — |
+| Logs | `simctl spawn log show` and `log stream`, files from `simctl launch --stdout --stderr`, and `~/Library/Logs/DiagnosticReports` | — |
 
 Guest services are reached the way CoreDevice's simulator plugin reaches them: `SimDevice lookup:error:` returns a Mach send right, which `xpc_endpoint_create_mach_port_4sim` and `xpc_connection_enable_sim2host_4sim` turn into an XPC connection. No CoreDevice record is needed. CoreDevice capabilities need the simulator's CoreDevice record, found by UDID in `DeviceManager.devices`, whose keys are not the UDID.
 
@@ -84,4 +91,4 @@ Objective-C private API (CoreSimulator, AXPTranslator) goes through `NSSelectorF
 
 ## Release
 
-Tags `v0.0.1` and `v0.0.2` on GitHub. The package's only product is the `simdrive` executable; consumers run it with `swift run simdrive`. Exposing `SimDriveCore` as a library would freeze an API that changes with each Xcode.
+Tags `v0.0.1` to `v0.0.3` on GitHub. The package's only product is the `simdrive` executable; consumers run it with `swift run simdrive`. Exposing `SimDriveCore` as a library would freeze an API that changes with each Xcode.

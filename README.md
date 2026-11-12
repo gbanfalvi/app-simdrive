@@ -1,6 +1,6 @@
 # simdrive
 
-Drives a booted iOS or tvOS simulator's hardware keyboard, touchscreen, buttons, Apple TV Remote, orientation, pasteboard and foldable hinge from the command line, without Simulator.app or DeviceHub. It also reads the frontmost app's accessibility hierarchy and changes appearance, text size, Liquid Glass and accessibility settings. Every call prints one JSON line, so LLM agents can use it directly.
+Drives a booted iOS or tvOS simulator's hardware keyboard, touchscreen, buttons, Apple TV Remote, orientation, pasteboard and foldable hinge from the command line, without Simulator.app or DeviceHub. It also reads the frontmost app's accessibility hierarchy and the launched app's logs, output and crashes, and changes appearance, text size, Liquid Glass and accessibility settings. Every call prints one JSON line, so LLM agents can use it directly.
 
 ## Build
 
@@ -33,9 +33,10 @@ simdrive <udid|booted> <command>
 | `screenshot <path.png> [--display D] [--max-dim N]` | Captures a screen, downscaled to 1024 px by default; the original is kept as `<path>.full.png` |
 | `tree [<x> <y>] [--full]` | Lists the frontmost app's VoiceOver elements, or reads the element at a point; `--full` returns every node and field |
 | `setting [<name> [<value>]]` | Lists every setting, or reads or changes one |
-| `launch <bundle-id> [args...]` | Relaunches an app and waits until it is frontmost |
+| `launch <bundle-id> [args...]` | Relaunches an app, capturing its stdout and stderr, and waits until it is frontmost |
+| `logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until regex [--timeout ms]] [--limit N] [--width N]` | Reads the launched app's new log entries, output and crashes, or waits for an entry; see [Logs](#logs) |
 | `wait <ms>` | Pauses, for `run` |
-| `run <steps.json\|->` | Runs a JSON array of commands, such as `["tap 0.5 0.5", ["key", "tab"]]`, stopping at the first failure |
+| `run <steps.json\|-> [--logs]` | Runs a JSON array of commands, such as `["tap 0.5 0.5", ["key", "tab"]]`, stopping at the first failure; `--logs` adds each step's log entries |
 | `doctor` | Reports the developer directory, displays, orientation, pasteboard, hinge, keyboard, frontmost app and appearance |
 | `stop` | Ends the device's daemon and releases its input services |
 
@@ -60,8 +61,9 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `tree` | `{"app": {"name", "pid"}, "display", "elements": [element]}`, or `"root"` with `--full`. With a point: `{"app", "display", "point", "element"}`. Elements are described under [Accessibility](#accessibility) |
 | `setting` | Listing: `{"settings": {name: value}}`. Otherwise `{"setting", "value"}`, the value read back after a change |
 | `launch` | `{"bundleID", "pid"}` |
+| `logs` | `{"since", "entries": [entry], "stdout": [lines], "stderr": [lines], "crashes": [crash], "dropped"}`, each source's key only when read. An entry is `{"ms", "message", "level", "process", "subsystem", "category", "repeats"}`, described under [Logs](#logs); a crash is `{"process", "pid", "time", "exception", "reason", "frames", "path"}` |
 | `wait` | `{"waited": milliseconds}` |
-| `run` | `{"steps": [each step's result]}` |
+| `run` | `{"steps": [each step's result]}`; with `--logs`, each step also has `"logs": [entry]`, and a failed read adds `"logsError"` |
 | `doctor` | `{"developerDirectory", "device", "state", "deviceType", "displays", "orientation", "pasteboard", "keyboard", "posture", "accessibility", "appearance"}`; `accessibility` is the frontmost app's `{"name", "pid"}`, and a failed check is `{"error"}` |
 | `stop` | `{"stopped": whether a daemon ran}` |
 
@@ -126,9 +128,23 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 
 The first three go through `simctl ui`, which tvOS lacks: there they read `unsupported`, and changing them fails with `setting-unsupported`, as do settings on systems older than they are. The others are guest preferences followed by the Darwin notifications that UIKit and the accessibility cache listen for; iOS 17 and 18 apps miss some changes without the cache's. VoiceOver, Zoom, AssistiveTouch, Switch Control and Full Keyboard Access are left out: they take over input, or do not start from a preference.
 
+### Logs
+
+`logs` returns what the app reported since the last `logs` call: unified log entries, its stdout and stderr, and crash reports. Each cursor (`--cursor NAME`, `default` otherwise) remembers where its last read ended, and `--peek` leaves it in place. `launch` resets every cursor, so the first read covers the app's launch. `--since` reads from `launch`, an ISO 8601 time or a duration ago such as `30s`, `5m` or `1h`. Without a cursor or launch, a read covers the last minute.
+
+- Scope: the app `launch` last started by default, or `--app <bundle-id>`, `--process <name>`, `--pid <n>` or `--all`. Without a launch, a scope is required.
+- Filters: `--level debug|info|default|error|fault` is the lowest level shown, `default` by default. `--subsystem`, `--category` and `--predicate <NSPredicate>` narrow the query, and `--grep <regex>` the messages and lines. `--source log,stdout,crash` picks sources; `stdout` covers stderr too.
+- System libraries log most of an app process's entries. App scopes leave out their entries below `error`; `--system` keeps them.
+- Entries: `ms` is the time after `since`. `level` is left out at `default`, `process` unless `--all`, `subsystem` and `category` when filtered, and `repeats` unless consecutive entries repeat. `--limit` keeps the newest 50 entries and lines (0 for all), `--width` cuts messages at 240 characters (0 for full), and `dropped` counts what they left out.
+- `--until <regex>` waits for a matching entry, up to `--timeout`, 5000 ms by default, and fails with `log-timeout` otherwise. It includes entries logged since the cursor, so it does not miss one that arrives before it starts; `--since 0s` waits only for new entries. Inside `run`, it starts at the previous step's start, so `["tap 0.5 0.5", "logs --until loaded"]` catches what the tap logged.
+- `run --logs` reads the log once after the steps and gives each step the entries logged while it ran.
+- Crashes come from `~/Library/Logs/DiagnosticReports`, matched to the device. ReportCrash writes a report up to a minute after the crash and only one per distinct crash: a repeat of the same crash leaves no new report. `reason` is usually null on simulators; a Swift `fatalError` message appears on stderr.
+
+The log reads go through `simctl spawn log`, and stdout and stderr through `simctl launch --stdout --stderr` into files in the device's `tmp` directory. Apps unbuffer their output through `NSUnbufferedIO`. A top-level `logs` runs in its own process, so it can wait while other calls drive the device; inside `run`, the steps after it wait for it. The unified log redacts dynamic values as `<private>` unless the app marks them public.
+
 ### Daemon
 
-The first command for a device starts a daemon that keeps the private-framework bindings loaded: the first call takes 2–8 s, later ones tens of milliseconds. The daemon releases its keyboard, touch and button services 30 s after the last input and exits after 10 idle minutes. A rebuilt binary or a different developer directory replaces it. Sockets and logs live in `/tmp/simdrive-<uid>/`. `--no-daemon` runs a command in-process.
+The first command for a device starts a daemon that keeps the private-framework bindings loaded: the first call takes 2–8 s, later ones tens of milliseconds. The daemon releases its keyboard, touch and button services 30 s after the last input and exits after 10 idle minutes. A rebuilt binary or a different developer directory replaces it. Sockets, daemon logs and log cursors live in `/tmp/simdrive-<uid>/`. `--no-daemon` runs a command in-process.
 
 The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR`, then `xcode-select -p`.
 
@@ -143,6 +159,7 @@ The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR
 - `tree` shows only what the app exposes to accessibility. A custom view marked as an accessibility element hides its subviews from the snapshot too; UIKit controls and cells list theirs.
 - `offscreen` compares frames with the screen and scroll views, so an element covered by another, such as one behind a sheet, does not count as offscreen. The app's own visibility check hit-tests every element and times out on large screens.
 - For a minute after a simulator's first boot, `tree` may fail with `accessibility-timeout`; retry.
+- `logs` captures stdout and stderr only from apps started with `launch`. A repeat of the same crash brings no new crash report, and the unified log shows values the app did not log as public as `<private>`.
 - Built on CoreSimulator, CoreDevice, UniversalHIDKit and AccessibilityPlatformTranslation private API, so Xcode and macOS updates may break it. Tested with Xcode 27.0 and 27.2 on iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad iOS 26.5 and 27.0, iPhone Duo iOS 27.2 and Apple TV 4K tvOS simulators.
 
 ## Follow-up

@@ -78,6 +78,19 @@ The Mac clipboard is never touched: simdrive converts through a uniquely named `
 
 UniversalHIDKit's observer reads the key from the key code alone, not from the event's characters, so `type` maps each character to a US key code and shift. Anything else goes through the pasteboard and `key v --mods cmd`, rather than guessing at other layouts.
 
+## Logs as digests behind a cursor
+
+Agents otherwise run `simctl spawn log stream` in the background and read the whole output, mostly system noise, or `log show` with a guessed window. `logs` returns only what is new and relevant, in one call.
+
+- **A cursor, not a window.** Each read starts where the cursor's last one ended, so nothing repeats or slips between reads. Named cursors let independent watchers share a device; `--peek` rereads.
+- **The launched app by default.** `launch` records the app, so a bare `logs` needs no predicate. Its executable comes from the bundle's `CFBundleExecutable`, read once and cached.
+- **Compact entries.** Relative `ms`, fields left out when filtered or default, consecutive repeats merged, a limit and a width, and `dropped` to say what was cut. System libraries write about 98% of an app process's entries, so app scopes keep theirs only from `error` up.
+- **`--until` without a race.** It attaches `log stream` first, then reads the history since the cursor, so an entry logged before the call, or while it attaches, still counts. `log show` alone would poll; `log stream` alone would miss what came before.
+- **Outside the daemon.** The daemon serializes requests, so a waiting `logs` there would hold back input. Top-level `logs` runs in the client; inside `run`, it waits on purpose, starting at the previous step's start.
+- **`run --logs` reads once.** One `log show` after the steps, split by each step's start, costs less than a read per step.
+- **stdout and stderr from `launch`.** Apps' `print` and Swift runtime errors never reach the unified log. `simctl launch --stdout --stderr` captures them, with `NSUnbufferedIO` so lines arrive as printed.
+- **Crash summaries, not reports.** A report is hundreds of lines of JSON; the summary keeps the exception and the top 10 frames, preferring the last exception's backtrace, with the report's path for more.
+
 ## Posture waits for the hinge
 
 `posture` sends the target angle, waits for the reported angle to fall in the posture's range, then waits until it holds still for 400 ms, so the next screenshot shows the finished layout. The hinge settles near the requested angle, not on it, hence ranges.

@@ -43,6 +43,10 @@ package enum SimDriveCLI {
             exit(EXIT_SUCCESS)
         case .stop:
             return try await DaemonClient.stop(udid: udid, tools: tools)
+        case .logs(let query):
+            // Needs only simctl, so it neither waits behind the daemon's queue nor holds it while it waits.
+            try StatePaths.prepare()
+            return .success(try await DeviceLogs(udid: udid, tools: tools).read(query))
         default:
             guard runsInProcess else {
                 return try await DaemonClient.send(udid: udid, arguments: commandArguments, workingDirectory: workingDirectory,
@@ -60,11 +64,16 @@ package enum SimDriveCLI {
 
     /// Replaces a steps file or standard input with its contents, since the daemon does not share this directory or input.
     private static func inlineSteps(_ arguments: [String]) throws -> [String] {
-        guard arguments.first == runCommand, arguments.count == 2 else { return arguments }
-        let source = arguments[1]
+        guard arguments.first == runCommand, !arguments.contains(inlineStepsOption),
+              let index = arguments.indices.dropFirst().first(where: { !arguments[$0].hasPrefix("--") }) else {
+            return arguments
+        }
+        let source = arguments[index]
         let data = source == standardInputPath
             ? FileHandle.standardInput.readDataToEndOfFile()
             : try Data(contentsOf: URL(fileURLWithPath: source))
-        return [runCommand, inlineStepsOption, String(decoding: data, as: UTF8.self)]
+        var inlined = arguments
+        inlined.replaceSubrange(index...index, with: [inlineStepsOption, String(decoding: data, as: UTF8.self)])
+        return inlined
     }
 }
