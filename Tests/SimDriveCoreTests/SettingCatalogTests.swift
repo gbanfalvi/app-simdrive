@@ -72,6 +72,12 @@ struct SettingCatalogTests {
         #expect(notifications == ["com.apple.accessibility.reduce.motion.status", "com.apple.accessibility.cache.reduce.motion"])
     }
 
+    @Test func onlyFullKeyboardAccessStartsAService() throws {
+        let fullKeyboardAccess = try #require(SettingCatalog.setting(named: "full-keyboard-access"))
+        #expect(fullKeyboardAccess.service == "com.apple.fullkeyboardaccess")
+        #expect(SettingCatalog.all.filter { $0.service != nil } == [fullKeyboardAccess])
+    }
+
     @Test func newerSettingsAreAvailableFromTheirOSVersion() throws {
         let tint = try #require(Self.glassTint)
         #expect(!tint.isAvailable(onOSVersion: 18))

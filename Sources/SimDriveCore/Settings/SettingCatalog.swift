@@ -29,12 +29,15 @@ struct Setting: Equatable, Sendable {
     let kind: Kind
     let storage: Storage
     let minimumOSVersion: Int?
+    /// The guest's on-demand launchd daemon that Settings starts when the setting turns on; the setting needs it.
+    let service: String?
 
-    init(name: String, kind: Kind, storage: Storage, minimumOSVersion: Int? = nil) {
+    init(name: String, kind: Kind, storage: Storage, minimumOSVersion: Int? = nil, service: String? = nil) {
         self.name = name
         self.kind = kind
         self.storage = storage
         self.minimumOSVersion = minimumOSVersion
+        self.service = service
     }
 
     /// True when the OS version is unknown.
@@ -109,6 +112,7 @@ enum SettingCatalog {
     private static let defaultGlassTint = 0.5
     private static let nonBlinkingCursorOSVersion = 18
     private static let glassOSVersion = 26
+    private static let fullKeyboardAccessService = "com.apple.fullkeyboardaccess"
     private static let textSizes = [
         "extra-small", "small", "medium", "large", "extra-large", "extra-extra-large", "extra-extra-extra-large",
         "accessibility-medium", "accessibility-large", "accessibility-extra-large", "accessibility-extra-extra-large",
@@ -116,6 +120,10 @@ enum SettingCatalog {
     ]
 
     static let appearance = Setting(name: "appearance", kind: .choice(["light", "dark"]), storage: .interface(option: "appearance"))
+
+    /// Not a setting of its own: Settings turns it on before starting a setting's service, so running apps answer that service.
+    static let applicationAccessibility = accessibilityToggle("application-accessibility", key: "ApplicationAccessibilityEnabled",
+                                                              notification: "application.status", cache: "app.ax")
 
     static let all: [Setting] = [
         appearance,
@@ -145,6 +153,8 @@ enum SettingCatalog {
                             defaultValue: true),
         accessibilityToggle("non-blinking-cursor", key: "PrefersNonBlinkingCursorIndicator", notification: "non.blinking.cursor.status",
                             cache: "non.blinking.cursor.status", minimumOSVersion: nonBlinkingCursorOSVersion),
+        accessibilityToggle("full-keyboard-access", key: "FullKeyboardAccessEnabled", notification: "fullkeyboardaccess.status",
+                            cache: "full.keyboard.access", service: fullKeyboardAccessService),
         Setting(name: "glass-tint", kind: .number(0...1), storage: .preference(domain: uiKit, key: "UIViewGlassTintAmount",
             defaultValue: .number(defaultGlassTint), notifications: ["UIViewGlassTintAmountUpdateNotification"]),
             minimumOSVersion: glassOSVersion),
@@ -156,10 +166,11 @@ enum SettingCatalog {
 
     /// Apps on iOS 17 and 18 reread some settings only once their `cache` notification arrives.
     private static func accessibilityToggle(_ name: String, key: String, notification: String, cache: String? = nil,
-                                            defaultValue: Bool = false, minimumOSVersion: Int? = nil) -> Setting {
+                                            defaultValue: Bool = false, minimumOSVersion: Int? = nil,
+                                            service: String? = nil) -> Setting {
         let notifications = [notificationPrefix + notification] + (cache.map { [cacheNotificationPrefix + $0] } ?? [])
         let storage = Setting.Storage.preference(domain: accessibility, key: key, defaultValue: .bool(defaultValue),
                                                  notifications: notifications)
-        return Setting(name: name, kind: .toggle, storage: storage, minimumOSVersion: minimumOSVersion)
+        return Setting(name: name, kind: .toggle, storage: storage, minimumOSVersion: minimumOSVersion, service: service)
     }
 }

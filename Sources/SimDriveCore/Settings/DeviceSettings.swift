@@ -29,17 +29,18 @@ final class DeviceSettings {
 
     /// Writes the value, tells running apps, and reads it back.
     func set(_ setting: Setting, to value: JSONValue) async throws -> JSONValue {
-        guard setting.isAvailable(onOSVersion: device.majorOSVersion) else { throw unsupported(setting) }
+        guard isAvailable(setting) else { throw unsupported(setting) }
         switch setting.storage {
         case .interface(let option):
             guard try await Self.interfaceReading(option, udid: udid, tools: tools) != Self.unsupportedReading else {
                 throw unsupported(setting)
             }
             try await tools.simctl(["ui", udid, option, setting.interfaceArgument(for: value)])
-        case .preference(let domain, let key, _, let notifications):
-            try await preferences.write(setting.preferenceValue(for: value), forKey: key, in: domain)
-            for notification in notifications {
-                try device.postDarwinNotification(notification)
+        case .preference:
+            try await writePreference(value, of: setting)
+            if let service = setting.service, value == true {
+                try await writePreference(true, of: SettingCatalog.applicationAccessibility)
+                try await start(service)
             }
         }
         return try await read(setting)
@@ -52,8 +53,7 @@ final class DeviceSettings {
     /// Each preference domain is exported once, and every read runs concurrently.
     private func values(of settings: [Setting]) async throws -> [String: JSONValue] {
         let (udid, tools, preferences) = (udid, tools, preferences)
-        let version = device.majorOSVersion
-        let available = settings.filter { $0.isAvailable(onOSVersion: version) }
+        let available = settings.filter(isAvailable)
         var keysByDomain: [String: [(setting: Setting, key: String)]] = [:]
         for setting in available {
             if case .preference(let domain, let key, _, _) = setting.storage { keysByDomain[domain, default: []].append((setting, key)) }
@@ -72,7 +72,7 @@ final class DeviceSettings {
                     return Dictionary(uniqueKeysWithValues: keys.map { ($0.setting.name, $0.setting.value(fromPreference: stored[$0.key])) })
                 }
             }
-            var values = Dictionary(uniqueKeysWithValues: settings.filter { !$0.isAvailable(onOSVersion: version) }.map {
+            var values = Dictionary(uniqueKeysWithValues: settings.filter { !available.contains($0) }.map {
                 ($0.name, JSONValue.unsupported)
             })
             for try await part in group {
@@ -80,6 +80,23 @@ final class DeviceSettings {
             }
             return values
         }
+    }
+
+    private func writePreference(_ value: JSONValue, of setting: Setting) async throws {
+        guard case .preference(let domain, let key, _, let notifications) = setting.storage else { return }
+        try await preferences.write(setting.preferenceValue(for: value), forKey: key, in: domain)
+        for notification in notifications {
+            try device.postDarwinNotification(notification)
+        }
+    }
+
+    private func isAvailable(_ setting: Setting) -> Bool {
+        setting.isAvailable(onOSVersion: device.majorOSVersion) && setting.service.map(device.hasLaunchDaemon) ?? true
+    }
+
+    /// The guest's launchd domain belongs to the host user, who runs the simulator.
+    private func start(_ service: String) async throws {
+        try await tools.simctl(["spawn", udid, "launchctl", "kickstart", "user/\(getuid())/\(service)"])
     }
 
     private func unsupported(_ setting: Setting) -> SimDriveError {

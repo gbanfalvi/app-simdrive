@@ -41,6 +41,7 @@ $S <udid> tree --full                  # every node and field, nested: frames, h
 $S <udid> tree 0.5 0.25                # the element at a point
 $S <udid> setting                      # every setting's value
 $S <udid> setting appearance dark      # also text-size accessibility-large, reduce-motion on, bold-text on, glass-tint 0.8…
+$S <udid> setting full-keyboard-access on   # then key tab, key tab --mods shift, key space move and use its focus ring
 $S <udid> launch com.example.app -someArgument   # captures its stdout and stderr, and resets the log cursors
 $S <udid> logs                         # the launched app's entries, stdout, stderr and crashes since the last logs
 $S <udid> logs --level error --grep timeout --source log   # also --subsystem, --category, --predicate, --level debug

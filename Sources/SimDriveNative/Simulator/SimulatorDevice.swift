@@ -13,6 +13,9 @@ package final class SimulatorDevice {
     private static let lastBootedAtKey = "lastBootedAt"
     private static let dataPathKey = "dataPath"
     private static let tvOSRuntimePrefix = "com.apple.CoreSimulator.SimRuntime.tvOS-"
+    private static let runtimeKey = "runtime"
+    private static let runtimeRootKey = "root"
+    private static let launchDaemonsPath = "System/Library/LaunchDaemons"
     private static var contexts: [String: NSObject] = [:]
 
     let udid: String
@@ -72,6 +75,15 @@ package final class SimulatorDevice {
             throw SimDriveError(.guestLookup, "The guest has no \(name) service: \(error?.localizedDescription ?? "no reason given")")
         }
         return port
+    }
+
+    /// Whether the runtime ships the launchd daemon `label`, running or not.
+    package func hasLaunchDaemon(_ label: String) -> Bool {
+        guard device.responds(to: NSSelectorFromString(Self.runtimeKey)),
+              let root = (device.value(forKey: Self.runtimeKey) as? NSObject)?.value(forKey: Self.runtimeRootKey) as? String else {
+            return false
+        }
+        return FileManager.default.fileExists(atPath: "\(root)/\(Self.launchDaemonsPath)/\(label).plist")
     }
 
     func hasService(_ name: String) -> Bool {

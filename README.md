@@ -124,9 +124,10 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 | `autoplay-video-previews` | toggle, on by default | `isVideoAutoplayEnabled` |
 | `autoplay-animated-images` | toggle, on by default | `AccessibilitySettings.animatedImagesEnabled`, `accessibilityPlayAnimatedImages` |
 | `non-blinking-cursor` | toggle, iOS 18 and later | `AccessibilitySettings.prefersNonBlinkingTextInsertionIndicator` |
+| `full-keyboard-access` | toggle, iOS only | Full Keyboard Access: `key tab` and the arrows then move its focus ring |
 | `glass-tint` | 0 to 1, 0.5 by default, iOS 26 and later | Settings' Liquid Glass Tint Amount slider |
 
-The first three go through `simctl ui`, which tvOS lacks: there they read `unsupported`, and changing them fails with `setting-unsupported`, as do settings on systems older than they are. The others are guest preferences followed by the Darwin notifications that UIKit and the accessibility cache listen for; iOS 17 and 18 apps miss some changes without the cache's. VoiceOver, Zoom, AssistiveTouch, Switch Control and Full Keyboard Access are left out: they take over input, or do not start from a preference.
+The first three go through `simctl ui`, which tvOS lacks: there they read `unsupported`, and changing them fails with `setting-unsupported`, as do settings on systems older than they are. The others are guest preferences followed by the Darwin notifications that UIKit and the accessibility cache listen for; iOS 17 and 18 apps miss some changes without the cache's. Turning on `full-keyboard-access` also turns on app accessibility and starts its on-demand daemon, as Settings does; turning it off leaves app accessibility on. VoiceOver, Zoom, AssistiveTouch and Switch Control are left out: they take over input, or do not start from a preference.
 
 ### Logs
 
