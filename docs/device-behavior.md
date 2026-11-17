@@ -59,6 +59,8 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 - `prefer-cross-fade` has an effect only while `reduce-motion` is on.
 - iPhone Air and iPhone Duo end boots with a failed data migration (boot status 3), though the guest runs. Seen on Air iOS 26.0 to 27.2 and Duo iOS 27.1 and 27.2, under Xcode 26.6 to 27.2. Only the Air's first boot on iOS 27.0 finished normally. `simctl bootstatus` still exits 0, printing `Data Migration Failed`.
 - On a second boot, status 3 comes 3–16 s in, before `Waiting on System App`, so `bootstatus` returns before SpringBoard is ready. Other iPhones wait for it, taking 11–17 s. Right after it returns, `tree` failed on 5 of 8 Air and Duo boots with `accessibility-timeout`, or under Xcode 27.2 with an orientation `guest-service-timeout`. That orientation timeout also failed one `screenshot`. After 90 s every command worked.
+- **Accessibility after boot.** The first read starts the guest's accessibility server: on a Duo iOS 27.2 it took 10–11 s even 14 s after `bootstatus`. Its first answer comes about 3 s in, then it answers the frontmost-app request with no app for several seconds. Reads that gave up after 3 tries failed 3 of 3 boots; retrying to a 20 s deadline, the first `tree` succeeded on 7 of 7, in 14–18 s. An iPhone 18 Pro iOS 27.2 answered the first `tree` in 8–13 s even with 3 tries.
+- **Screenshots after boot.** The first `screenshot` right after `bootstatus` took 10–14 s on a Duo iOS 27.2.
 
 ## Logs
 

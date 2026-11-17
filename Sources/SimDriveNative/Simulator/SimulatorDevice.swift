@@ -128,9 +128,9 @@ package final class SimulatorDevice {
     }
 
     /// A sender of the guest's accessibility requests, or nil when CoreSimulator cannot send them.
-    func accessibilityChannel(timeout: DispatchTimeInterval) -> AccessibilityChannel? {
+    func accessibilityChannel() -> AccessibilityChannel? {
         guard device.responds(to: AccessibilityChannel.selector) else { return nil }
-        return AccessibilityChannel(device: device, timeout: timeout)
+        return AccessibilityChannel(device: device)
     }
 
     private func string(forKey key: String) -> String? {
@@ -169,17 +169,23 @@ struct AccessibilityChannel: @unchecked Sendable {
         var value: NSObject?
     }
 
-    private let device: NSObject
-    private let timeout: DispatchTimeInterval
-    private let replies = DispatchQueue(label: "simdrive.accessibility.replies")
-
-    fileprivate init(device: NSObject, timeout: DispatchTimeInterval) {
-        self.device = device
-        self.timeout = timeout
+    /// What became of a request.
+    enum Outcome {
+        case answered(NSObject)
+        case unanswered
+        /// CoreSimulator completed without a response, as when it cannot reach the guest's accessibility service.
+        case unreachable
     }
 
-    /// The guest's reply, or nil when it does not answer in time.
-    func send(_ request: NSObject) -> NSObject? {
+    private let device: NSObject
+    private let replies = DispatchQueue(label: "simdrive.accessibility.replies")
+
+    fileprivate init(device: NSObject) {
+        self.device = device
+    }
+
+    func send(_ request: NSObject, deadline: DispatchTime) -> Outcome {
+        guard DispatchTime.now() < deadline else { return .unanswered }
         let answered = DispatchSemaphore(value: 0)
         let reply = Reply()
         let send = unsafeBitCast(device.method(for: Self.selector), to: SendFunction.self)
@@ -187,7 +193,7 @@ struct AccessibilityChannel: @unchecked Sendable {
             reply.value = response
             answered.signal()
         }
-        guard answered.wait(timeout: .now() + timeout) == .success else { return nil }
-        return reply.value
+        guard answered.wait(timeout: deadline) == .success else { return .unanswered }
+        return reply.value.map(Outcome.answered) ?? .unreachable
     }
 }

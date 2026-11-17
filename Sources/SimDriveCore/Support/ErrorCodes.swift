@@ -31,7 +31,6 @@ extension ErrorCode {
     static let splitSideUnknown = ErrorCode(rawValue: "split-side-unknown")
     static let splitDropped = ErrorCode(rawValue: "split-dropped")
     static let accessibilityUnsupported = ErrorCode(rawValue: "accessibility-unsupported")
-    static let noElement = ErrorCode(rawValue: "no-element")
     static let settingUnsupported = ErrorCode(rawValue: "setting-unsupported")
     static let guestPreferences = ErrorCode(rawValue: "guest-preferences")
     static let stepInvalid = ErrorCode(rawValue: "step-invalid")

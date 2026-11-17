@@ -29,14 +29,14 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     private typealias HitTestFunction = @convention(c) (NSObject, Selector, CGPoint, UInt32, NSString) -> NSObject?
 
     private enum Limit {
-        /// The whole hierarchy is one request, and a large app's first one takes seconds.
-        static let request: DispatchTimeInterval = .seconds(10)
+        /// For all of one read's requests and retries. A Duo's first read after boot took 13–15 s, mostly while its
+        /// accessibility server named no app; a large app's first hierarchy takes seconds.
+        static let read: DispatchTimeInterval = .seconds(20)
         /// With `children`, far above any real app's hierarchy, so no tree is cut short; they only stop a runaway one.
         static let depth = 500
         static let children = 10_000
-        /// An app answers with nothing while it launches, and sometimes at random; a guest's first request after its first
-        /// boot goes unanswered.
-        static let attempts = 3
+        /// Until the deadline: an app answers with nothing while it launches, and sometimes at random, and after a boot the
+        /// guest names no app for several seconds.
         static let retryDelay: TimeInterval = 0.5
     }
 
@@ -67,13 +67,14 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     /// The translator holds its delegate weakly.
     private let bridge: AccessibilityBridge
     private let token: NSString
+    private let read: AccessibilityRead
     /// The translator blocks while the guest answers, so it never runs on the main actor.
     private let queue = DispatchQueue(label: "simdrive.accessibility")
 
     /// The device's accessibility, or nil when CoreSimulator or macOS cannot read it.
     @MainActor
     package static func open(device: SimulatorDevice) async throws -> SimulatorAccessibility? {
-        guard let channel = device.accessibilityChannel(timeout: Limit.request) else { return nil }
+        guard let channel = device.accessibilityChannel() else { return nil }
         try await NativeFrameworks.load(NativeFrameworks.accessibilityTranslationPath)
         guard let translatorClass = NSClassFromString(Name.translator),
               let delegateProtocol = objc_getProtocol(Name.delegateProtocol),
@@ -81,13 +82,16 @@ package final class SimulatorAccessibility: @unchecked Sendable {
             return nil
         }
         class_addProtocol(AccessibilityBridge.self, delegateProtocol)
-        return SimulatorAccessibility(translator: translator, bridge: AccessibilityBridge(channel: channel), token: device.udid as NSString)
+        let read = AccessibilityRead()
+        return SimulatorAccessibility(translator: translator, bridge: AccessibilityBridge(channel: channel, read: read),
+                                      token: device.udid as NSString, read: read)
     }
 
-    private init(translator: NSObject, bridge: AccessibilityBridge, token: NSString) {
+    private init(translator: NSObject, bridge: AccessibilityBridge, token: NSString, read: AccessibilityRead) {
         self.translator = translator
         self.bridge = bridge
         self.token = token
+        self.read = read
         translator.setValue(true, forKey: "supportsDelegateTokens")
         translator.setValue(true, forKey: "accessibilityEnabled")
         translator.setValue(bridge, forKey: "bridgeTokenDelegate")
@@ -121,8 +125,10 @@ package final class SimulatorAccessibility: @unchecked Sendable {
         try await perform {
             let (application, _) = try self.frontmost()
             let hitTest = unsafeBitCast(self.translator.method(for: Call.hitTest), to: HitTestFunction.self)
+            self.read.failure = nil
             guard let translation = hitTest(self.translator, Call.hitTest, point(application.screenSize), UInt32(display),
                                             self.token) else {
+                if let failure = self.read.failure, failure != .gone { throw self.error(for: failure, "The hit test went unanswered.") }
                 return nil
             }
             let element = try self.hierarchy(of: try self.platformElement(translation), detail: detail)
@@ -133,7 +139,7 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     private func frontmost() throws -> (application: AccessibilityApplication, element: NSObject) {
         let frontmost = unsafeBitCast(translator.method(for: Call.frontmost), to: FrontmostFunction.self)
         var answered = false
-        let found = try Self.retrying { () throws -> (AccessibilityApplication, NSObject)? in
+        let found = try retrying { () throws -> (AccessibilityApplication, NSObject)? in
             guard let translation = frontmost(translator, Call.frontmost, Self.frontmostDisplayID, token) else { return nil }
             answered = true
             let element = try platformElement(translation)
@@ -147,7 +153,7 @@ package final class SimulatorAccessibility: @unchecked Sendable {
             return (application, element)
         }
         guard let found else {
-            guard answered else { throw SimDriveError(.accessibilityTimeout, "The simulator's accessibility server did not answer. \(Self.retryHint)") }
+            guard answered else { throw error(for: read.failure ?? .unanswered, "The simulator's accessibility server did not answer.") }
             throw SimDriveError(.accessibilityTranslation, "The frontmost app has no frame yet; wait for it to finish launching.")
         }
         return found
@@ -169,21 +175,29 @@ package final class SimulatorAccessibility: @unchecked Sendable {
             "maxChildren": Limit.children, "maxArrayCount": Limit.children, "traverseFromParentsToChildren": true,
         ]
         let readsCustomContent = detail == .full
-        let root = Self.retrying {
+        let root = retrying {
             element.perform(Call.processAttribute, with: Name.snapshot, with: parameters).flatMap {
                 AccessibilityElement(snapshot: $0.takeUnretainedValue()) { readsCustomContent ? customContent(of: $0) : [] }
             }
         }
-        guard let root else { throw SimDriveError(.accessibilityTimeout, "The app did not return its accessibility hierarchy. \(Self.retryHint)") }
+        guard let root else { throw error(for: read.failure ?? .unanswered, "The app did not return its accessibility hierarchy.") }
         return root
     }
 
-    private static func retrying<Result>(_ attempt: () throws -> Result?) rethrows -> Result? {
-        for remaining in (0..<Limit.attempts).reversed() {
+    private func retrying<Result>(_ attempt: () throws -> Result?) rethrows -> Result? {
+        while true {
             if let result = try attempt() { return result }
-            if remaining > 0 { Thread.sleep(forTimeInterval: Limit.retryDelay) }
+            guard read.failure == nil, DispatchTime.now() + Limit.retryDelay < read.deadline else { return nil }
+            Thread.sleep(forTimeInterval: Limit.retryDelay)
         }
-        return nil
+    }
+
+    private func error(for failure: AccessibilityRead.Failure, _ unanswered: String) -> SimDriveError {
+        switch failure {
+        case .unanswered: SimDriveError(.accessibilityTimeout, "\(unanswered) \(Self.retryHint)")
+        case .unreachable: SimDriveError(.accessibilityUnavailable, "CoreSimulator cannot reach the simulator's accessibility service. \(Self.retryHint)")
+        case .gone: SimDriveError(.noElement, "The element is gone; read the tree again.")
+        }
     }
 
     /// Snapshots leave out custom content, so each VoiceOver element is asked for its own.
@@ -203,24 +217,63 @@ package final class SimulatorAccessibility: @unchecked Sendable {
 
     private func perform<Result: Sendable>(_ work: @escaping @Sendable () throws -> Result) async throws -> Result {
         try await withCheckedThrowingContinuation { continuation in
-            queue.async { continuation.resume(with: Swift.Result { try autoreleasepool(invoking: work) }) }
+            queue.async { [read] in
+                read.start(limit: Limit.read)
+                continuation.resume(with: Swift.Result { try autoreleasepool(invoking: work) })
+            }
         }
+    }
+}
+
+/// The read in progress: its deadline, and why its last request failed. Only the accessibility queue touches it.
+private final class AccessibilityRead: @unchecked Sendable {
+    enum Failure { case unanswered, unreachable, gone }
+
+    private(set) var deadline: DispatchTime = .now()
+    var failure: Failure?
+
+    func start(limit: DispatchTimeInterval) {
+        deadline = .now() + limit
+        failure = nil
     }
 }
 
 /// The translator's delegate, which sends its requests to the guest.
 private final class AccessibilityBridge: NSObject, @unchecked Sendable {
-    private let channel: AccessibilityChannel
+    /// The translator's error for an element that is gone, or nothing accessible at a point.
+    private static let noElementError: UInt64 = 8
+    private static let errorKey = "error"
 
-    init(channel: AccessibilityChannel) {
+    private let channel: AccessibilityChannel
+    private let read: AccessibilityRead
+
+    init(channel: AccessibilityChannel, read: AccessibilityRead) {
         self.channel = channel
+        self.read = read
     }
 
     @objc(accessibilityTranslationDelegateBridgeCallbackWithToken:)
     func requestSender(token: NSString) -> Any {
-        let channel = channel
-        let send: @convention(block) (NSObject) -> NSObject? = { request in channel.send(request) }
+        let (channel, read) = (channel, read)
+        let send: @convention(block) (NSObject) -> NSObject? = { request in
+            switch channel.send(request, deadline: read.deadline) {
+            case .answered(let response):
+                if Self.error(of: response) == Self.noElementError { read.failure = .gone }
+                return response
+            case .unanswered:
+                read.failure = .unanswered
+                return nil
+            case .unreachable:
+                read.failure = .unreachable
+                return nil
+            }
+        }
         return send
+    }
+
+    private static func error(of response: NSObject) -> UInt64? {
+        guard response.responds(to: NSSelectorFromString(errorKey)) else { return nil }
+        return (response.value(forKey: errorKey) as? NSNumber)?.uint64Value
     }
 
     /// Frames stay in the guest's points.

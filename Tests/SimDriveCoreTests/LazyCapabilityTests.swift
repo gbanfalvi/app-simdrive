@@ -27,6 +27,19 @@ struct LazyCapabilityTests {
         #expect(opens == 1)
     }
 
+    @Test func callersDuringAnOpenShareIt() async throws {
+        var opens = 0
+        let capability = LazyCapability<Int> {
+            opens += 1
+            try await Task.sleep(for: .milliseconds(50))
+            return opens
+        }
+        async let first = capability.value()
+        async let second = capability.value()
+        #expect(try await [first, second] == [1, 1])
+        #expect(opens == 1)
+    }
+
     @Test func remembersThatTheDeviceLacksIt() async throws {
         var opens = 0
         let capability = LazyCapability<Int> {

@@ -18,6 +18,11 @@ final class DeviceAccessibility {
         accessibility = LazyCapability { try await SimulatorAccessibility.open(device: device) }
     }
 
+    /// Starts the guest's accessibility server, whose first read takes about 10 s, without waiting for it.
+    func prepare() {
+        Task { [accessibility] in _ = try? await accessibility.value()?.application() }
+    }
+
     func tree(detail: TreeDetail) async throws -> JSONValue {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)

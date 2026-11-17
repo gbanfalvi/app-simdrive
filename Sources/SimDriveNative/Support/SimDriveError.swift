@@ -44,6 +44,8 @@ extension ErrorCode {
     static let hingeSnapshot = ErrorCode(rawValue: "hinge-snapshot")
     static let hingePayload = ErrorCode(rawValue: "hinge-payload")
     static let accessibilityTimeout = ErrorCode(rawValue: "accessibility-timeout")
+    static let accessibilityUnavailable = ErrorCode(rawValue: "accessibility-unavailable")
+    package static let noElement = ErrorCode(rawValue: "no-element")
     static let accessibilityTranslation = ErrorCode(rawValue: "accessibility-translation")
     static let guestNotification = ErrorCode(rawValue: "guest-notification")
     static let screenAdapter = ErrorCode(rawValue: "screen-adapter")

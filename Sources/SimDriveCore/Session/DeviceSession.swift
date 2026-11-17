@@ -39,6 +39,7 @@ final class DeviceSession {
         screens = Screens(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
         accessibility = DeviceAccessibility(device: device, screens: screens)
         splitView = SplitView(screens: screens, inputs: inputs, accessibility: accessibility)
+        accessibility.prepare()
         settings = DeviceSettings(udid: udid, device: device, tools: tools)
         logs = DeviceLogs(udid: udid, tools: tools)
     }

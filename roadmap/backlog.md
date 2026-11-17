@@ -83,7 +83,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   3. Forget a failed or timed-out task, so the next command tries again.
 - **Test:** a unit test of the sharing and timeout logic, with a stub initializer. Then `doctor` and the matrix's `misc` section, to check nothing regresses.
 
-### - [ ] F7. Accessibility reads take up to a minute to fail, and fail after first boot (M)
+### - [x] F7. Accessibility reads take up to a minute to fail, and fail after first boot (M)
+
+**Result:** on a Duo iOS 27.2, the first `tree` after `bootstatus` failed 3 of 3 boots: the server names no app for several seconds, and reads stopped after 3 tries. A read now retries until one 20 s deadline across its requests, not 8 s: the first read takes 13–15 s. The first `tree` then succeeded on 7 of 7 boots, in 14–18 s. Sessions start the server with a request in the background; a `screenshot` first did not shorten the next `tree` reliably, since the screenshot takes 10–14 s itself (F14). A nil reply is `accessibility-unavailable`, and error 8 is `no-element`, neither seen in testing. `LazyCapability` now shares an open in progress, which the background request needs.
 
 - **Problems:**
   - A read retries 3 times, 0.5 s apart, with a per-request limit (`S:SimDriveNative/Accessibility/SimulatorAccessibility.swift:31-41,124-176`), and makes two requests: the frontmost app, then its snapshot. Its worst case runs to tens of seconds; NeoSimulator bounds a whole read at 5 s (`N:NeoSimulatorDeviceIO/DeviceOperationPolicy.swift:71`, `N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:455-462`).
@@ -152,6 +154,12 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Problem:** `tree` places a split app's elements from fixed origins, 0 and 0.5068, measured on Settings and the probe (Xcode 27.2). The user reports that apps built with Xcode 27.0 use the Duo's status strip differently from 27.1 and later builds, and that the strip can show on the left of a left-half app, which would move that app's origin.
 - **Do:** build the probe with Xcode 27.0; in each half, tap two points and fit its logged window fractions to the origin, as was done for 27.2. Derive the origin per build if they differ.
 - **Test:** the matrix's `tree` and `tap` sections, with the probe split left and right, under both builds.
+
+### - [ ] F14. The first `screenshot` after a boot takes 10–14 s on the Duo (S)
+
+- **Problem:** found testing F7. On a Duo iOS 27.2, `screenshot` right after `bootstatus` took 10.3–14.2 s, against under 1 s warm. Screenshots read the framebuffer in process, and read the device orientation only to record it (F9).
+- **Do:** time the framebuffer read, the display listing and the orientation read separately right after boot; skip or bound whichever waits on the guest.
+- **Test:** on a Duo you created, `screenshot` within a second of `bootstatus` returning, on three boots; then the matrix's `basics` and `orientation` sections.
 
 ## 2. Improvements to existing commands
 
