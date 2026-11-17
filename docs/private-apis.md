@@ -22,7 +22,11 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 
 ### Screenshots
 
-`simctl io <udid> screenshot --type=png [--display=N] <path>`. A multi-display device refuses without `--display` and lists its panels as `--display=N <name> (<role>) <width>x<height>`; simdrive parses that listing to find them. The Duo's cover panel has the role `primary`, the inner panel `primary-1`.
+- simdrive reads each screen's framebuffer in process. The `ioPorts` whose `portIdentifier` is `com.apple.framebuffer.display` have `SimScreen` descriptors, with the same `screenProperties` plus `powerState` (1 is on) and `framebufferSurface`, a BGRA `IOSurface` in the panel's native orientation. Copying it takes about 12 ms.
+- `simctl` turns that image counterclockwise by `uiOrientation`: 4 a quarter turn, 3 three, 2 two (unverified), others none. `maskedFramebufferSurface` rounds the corners, which `simctl` does not.
+- The surface matches `simctl` pixel for pixel on the iPad, the Apple TV and the Duo's open cover panel. It also shows the Dynamic Island and the Duo's closed-cover camera hole, which `simctl` masks, and lacks a 4×4 black square `simctl` draws in the Duo inner panel's corner.
+- Without a powered-on BGRA surface, simdrive falls back to `simctl io <udid> screenshot --type=png [--display=N] <path>`. A multi-display device refuses without `--display` and lists its panels as `--display=N <name> (<role>) <width>x<height>`; simdrive parses that listing to find them. The Duo's cover panel has the role `primary`, the inner panel `primary-1`.
+- `simctl` itself calls the `com.apple.display.captureservice` port's `SimScreenCaptureService`: `captureScreenshotFromScreen:maskPolicy:imageType:outputFile:completionQueue:completionHandler:`, with a `SimScreen`, mask 0 and type 0 for PNG, and an `NSString` path. It takes about 350 ms. Any other `outputFile`, such as an `NSFileHandle`, crashes SimRenderServer and shuts the simulator down.
 
 ## Guest services
 

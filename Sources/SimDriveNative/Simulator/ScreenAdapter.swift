@@ -48,13 +48,13 @@ struct ScreenAdapter {
         return orientations
     }
 
-    private nonisolated static func object(_ receiver: NSObject, _ getter: String) -> NSObject? {
+    nonisolated static func object(_ receiver: NSObject, _ getter: String) -> NSObject? {
         let selector = NSSelectorFromString(getter)
         guard receiver.responds(to: selector) else { return nil }
         return receiver.perform(selector)?.takeUnretainedValue() as? NSObject
     }
 
-    private nonisolated static func uint32(_ receiver: NSObject, _ getter: String) -> UInt32? {
+    nonisolated static func uint32(_ receiver: NSObject, _ getter: String) -> UInt32? {
         let selector = NSSelectorFromString(getter)
         guard receiver.responds(to: selector) else { return nil }
         return unsafeBitCast(receiver.method(for: selector), to: UInt32Getter.self)(receiver, selector)

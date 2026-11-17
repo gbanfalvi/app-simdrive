@@ -20,6 +20,7 @@ extension ErrorCode {
     static let screenshot = ErrorCode(rawValue: "screenshot")
     static let screenshotRead = ErrorCode(rawValue: "screenshot-read")
     static let screenshotScale = ErrorCode(rawValue: "screenshot-scale")
+    static let screenshotWrite = ErrorCode(rawValue: "screenshot-write")
     static let singleDisplay = ErrorCode(rawValue: "single-display")
     static let unknownDisplay = ErrorCode(rawValue: "unknown-display")
     static let orientationUnsupported = ErrorCode(rawValue: "orientation-unsupported")

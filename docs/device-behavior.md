@@ -21,12 +21,13 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 - **Connect Hardware Keyboard.** Turning it off with `SimDevice setHardwareKeyboardEnabled:false keyboardType:error:` does not stop simdrive's keys: its own main keyboard service still types. Tested on iPhone iOS 17.0 to 27.2, iPad iOS 27.2, iPhone Duo iOS 27.1 and Apple TV tvOS 26.2, with Xcode 26.6 to 27.2. The call succeeds, but no guest-side change was seen: `HardwareKeyboardLastSeen` stays 1 and the software keyboard stays hidden.
 - **Full keyboard access.** While it is on, Tab and the arrow keys move focus instead of reaching the app.
 - **Orientation.** The interface follows the device only when the foreground app supports that orientation, so it can differ from `orientation`'s reading. Face-up and face-down readings keep the last upright orientation for the interface.
+- **Dynamic Island.** Screenshots show it as a black pill, since simdrive reads the unmasked framebuffer.
 - **Upside down.** No tested device reported an upside-down interface; Face ID iPhones do not support it.
 
 ## iPhone Duo
 
 - Hardware model `v68`. Two panels: the cover panel, `simctl` role `primary`, and the inner panel, `primary-1`, display 3 on the tested device.
-- Closed, the inner panel screenshots black; `simctl`'s display power does not unfold it. Commands default to the cover panel when closed and the inner panel otherwise.
+- Closed, the inner panel's framebuffer is powered off and `simctl` screenshots it black; `simctl`'s display power does not unfold it. The closed cover panel's screenshots show its camera hole. Commands default to the cover panel when closed and the inner panel otherwise.
 - The cover panel accepts orientation changes, but its apps stay portrait.
 - The inner panel's screenshots can be rotated relative to the panel while the device reads portrait. Mapping taps by device orientation alone flipped them 180° there, which is why simdrive reads the interface orientation per screen.
 - The hinge animates toward the requested angle and settles near it, not on it.

@@ -30,7 +30,7 @@ simdrive <udid|booted> <command>
 | `posture [closed\|half\|open]` | Sets or reads a foldable's hinge; returns once the hinge settles |
 | `orientation [portrait\|landscape-left\|landscape-right\|upside-down]` | Sets or reads the device orientation |
 | `pasteboard [text]` | Reads the device's pasteboard items (types and text), or replaces it with text |
-| `screenshot <path.png> [--display D] [--max-dim N]` | Captures a screen, downscaled to 1024 px by default; the original is kept as `<path>.full.png` |
+| `screenshot <path.png> [--display D] [--max-dim N]` | Captures a screen, downscaled to 1024 px by default; the original is kept as `<path>.full.png`. The Dynamic Island shows as a black pill |
 | `tree [<x> <y>] [--full]` | Lists the frontmost app's VoiceOver elements, or reads the element at a point; `--full` returns every node and field |
 | `setting [<name> [<value>]]` | Lists every setting, or reads or changes one |
 | `launch <bundle-id> [args...]` | Relaunches an app, capturing its stdout and stderr, and waits until it is frontmost |

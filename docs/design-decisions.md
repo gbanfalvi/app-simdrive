@@ -37,12 +37,16 @@ While simdrive holds the digitizer, the guest drops touches from every other cli
 
 - A number with a decimal point in 0–1 is a fraction of the screen; anything else is a pixel of the last screenshot's image. Agents read pixels off an image and think in fractions from a tree; both work without a flag.
 - Pixel taps fail with `stale-screenshot` after rotation instead of guessing, since the image no longer matches the screen.
-- Fractions need the screen's aspect and rotation, so the first fraction with no record takes a full-resolution calibration screenshot. Records persist in `<udid>.screens.json`, keyed by digitizer target and reset on reboot.
+- Fractions need the screen's aspect and rotation, so the first fraction with no record reads them from the framebuffer, or takes a full-resolution calibration screenshot when it cannot. Records persist in `<udid>.screens.json`, keyed by digitizer target and reset on reboot.
 - `launch` and `button home` forget records: a new foreground app may rotate the interface without the device rotating.
 
 ## Interface orientation from CoreSimulator
 
 The digitizer takes points in the panel's native orientation; `simctl` screenshots follow the interface. Mapping by device orientation alone fails when the app does not rotate with the device, and flipped taps 180° on the Duo's inner panel. simdrive reads each screen's interface orientation from CoreSimulator's screen adapter when it captures, and falls back to the device orientation only when CoreSimulator reports none. Reading it in process replaced parsing `simctl io enumerate`, saving about 1 s per screenshot or calibration.
+
+## Screenshots from the framebuffer
+
+simdrive copies each screen's framebuffer surface and rotates it upright as `simctl` does, instead of spawning `simctl io screenshot`. A default screenshot fell from 760 ms to 340 ms on an iPhone and from 1.75 s to 80 ms on an iPad, and calibration needs no image. The cost is the Dynamic Island and the Duo's closed-cover camera hole, which show as black where `simctl` masks them; agents read the same app pixels either way. `simctl` remains the fallback when a screen has no readable surface.
 
 ## `simctl` directly
 

@@ -30,7 +30,7 @@ flowchart LR
   Logs --> LogTool["simctl spawn log, launch output files, DiagnosticReports"]
   AX --> Screens
   Inputs --> Guest["Guest Mach services"]
-  Screens --> Simctl["simctl io screenshot"]
+  Screens --> Simctl["framebuffer surfaces, else simctl io screenshot"]
   Screens --> Adapter["CoreSimulator screen adapter"]
   Hinge --> CoreDevice["CoreDevice RemoteDevice"]
   AX --> Translator["AXPTranslator, via SimDevice"]
@@ -58,7 +58,7 @@ All live in `/tmp/simdrive-<uid>/`, mode 0700. `$TMPDIR` is not used: a Unix soc
 | `<udid>.sock` | The daemon's socket. |
 | `<udid>.log` | The daemon's log. |
 | `<udid>.screens.json` | The device's displays and each screen's last screenshot record, so one-shot runs and the daemon share calibration. Discarded when the boot date changes. |
-| `<udid>.calibration.png` | The full-resolution screenshot taken when fractions need a screen size and none is recorded. |
+| `<udid>.calibration.png` | The full-resolution screenshot taken when fractions need a screen size, none is recorded and the framebuffer cannot be read. |
 | `<udid>.logs.json` | The app `launch` last started (bundle ID, pid, launch time, executable, output files) and each log cursor's position. `launch` replaces it. |
 
 The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.stderr.txt` in the device's own `tmp` directory, under its data path, since the guest resolves `simctl launch`'s paths in its filesystem.
@@ -74,10 +74,11 @@ The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.s
 | Buttons, Apple TV Remote | Guest `remote.hid.button`, consumer usage page | — |
 | Orientation | Guest `remote.devicecontrol.orientation` | tvOS |
 | Interface orientation | CoreSimulator's framebuffer screen adapter, in process | — |
+| Screenshots | CoreSimulator's framebuffer surfaces, in process, else `simctl` | — |
 | Pasteboard | CoreDevice `PasteboardCapability` | tvOS |
 | Hinge | CoreDevice `MonitorMotionCapability` and `VendorDefinedHIDCapability` | All but the iPhone Duo |
 | Accessibility | `AXPTranslator` on the Mac, requests carried by `SimDevice` | — |
-| Screenshots, launch, `simctl ui` settings | CoreSimulator's own `simctl` binary | `simctl ui` on tvOS |
+| Launch, `simctl ui` settings | CoreSimulator's own `simctl` binary | `simctl ui` on tvOS |
 | Preference settings | `simctl spawn defaults`, then `SimDevice postDarwinNotification:error:` | — |
 | Logs | `simctl spawn log show` and `log stream`, files from `simctl launch --stdout --stderr`, and `~/Library/Logs/DiagnosticReports` | — |
 

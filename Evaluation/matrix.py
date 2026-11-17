@@ -610,6 +610,7 @@ def timing(is_touch):
         timed('tree 0.5 0.5', lambda: sd('tree', '0.5', '0.5'), runs),
         timed('tree after launch', lambda: sd('tree'), runs, before=relaunch),
         timed('doctor', lambda: sd('doctor'), runs),
+        timed('screenshot', lambda: sd('screenshot', output_path('timing')), runs),
         timed('doctor cold', lambda: sd('doctor'), cold_runs, before=lambda: sd('stop')),
     ]
     if is_touch:

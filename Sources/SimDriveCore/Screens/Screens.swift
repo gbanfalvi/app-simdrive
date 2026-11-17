@@ -54,8 +54,7 @@ final class Screens {
             guard !usesPixels else {
                 throw SimDriveError(.noScreenshot, "Pixel coordinates refer to the last screenshot; take one, or pass fractions such as 0.5 0.5.")
             }
-            current = try await capture(display, to: StatePaths.calibration(for: udid).path, maxDimension: Self.fullResolution,
-                                        orientation: orientation).record
+            current = try await calibrate(display, orientation: orientation)
         }
         // Single touchscreens are portrait natively, and TVs landscape.
         let mapping = ScreenMapping(screenshot: current, panelIsLandscape: display?.nativeSize.isLandscape ?? !device.hasTouchscreen,
@@ -88,11 +87,25 @@ final class Screens {
     /// Captures a screen and records it with the interface orientation.
     private func capture(_ display: SimulatorDisplay?, to path: String, maxDimension: Int,
                          orientation: DeviceOrientation) async throws -> (shot: Screenshot, record: ScreenshotRecord) {
-        let interfaceOrientation = await interfaceOrientation(of: display)
-        let shot = try await Screenshots.capture(udid: udid, display: display?.index, to: path, maxDimension: maxDimension, tools: tools)
+        let frame = device.screenFrame(screenID: display?.index ?? Self.mainScreenID)
+        let interfaceOrientation = if let frame { frame.interfaceOrientation } else { await interfaceOrientation(of: display) }
+        let shot = try await Screenshots.capture(udid: udid, display: display?.index, frame: frame, to: path,
+                                                 maxDimension: maxDimension, tools: tools)
         let record = ScreenshotRecord(shot, orientation: orientation, interfaceOrientation: interfaceOrientation)
         store.save(record, for: DigitizerTarget(display: display))
         return (shot, record)
+    }
+
+    /// Records a screen's size for fractions, from its frame when there is one and with a full screenshot otherwise.
+    private func calibrate(_ display: SimulatorDisplay?, orientation: DeviceOrientation) async throws -> ScreenshotRecord {
+        guard let frame = device.screenFrame(screenID: display?.index ?? Self.mainScreenID) else {
+            return try await capture(display, to: StatePaths.calibration(for: udid).path, maxDimension: Self.fullResolution,
+                                     orientation: orientation).record
+        }
+        let size = Screenshots.size(of: frame)
+        let record = ScreenshotRecord(full: size, image: size, orientation: orientation, interfaceOrientation: frame.interfaceOrientation)
+        store.save(record, for: DigitizerTarget(display: display))
+        return record
     }
 
     /// The interface orientation `simctl` rotates a screen's screenshots by; nil when CoreSimulator reports none.

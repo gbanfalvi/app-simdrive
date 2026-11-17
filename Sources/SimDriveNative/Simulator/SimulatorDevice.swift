@@ -111,6 +111,11 @@ package final class SimulatorDevice {
         try await ScreenAdapter(device: device).interfaceOrientations()
     }
 
+    /// The current pixels of screen `screenID`, or nil when CoreSimulator does not share them.
+    package func screenFrame(screenID: Int) -> ScreenFrame? {
+        ScreenFramebuffers(device: device).frame(screenID: screenID)
+    }
+
     /// A sender of the guest's accessibility requests, or nil when CoreSimulator cannot send them.
     func accessibilityChannel(timeout: DispatchTimeInterval) -> AccessibilityChannel? {
         guard device.responds(to: AccessibilityChannel.selector) else { return nil }

@@ -127,6 +127,12 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   4. Turn `full-keyboard-access` off before the `keys` section, and restore it after.
 - **Test:** the matrix's `tree` and `keys` sections pass on an iPad and an iPhone you created, with full keyboard access on beforehand.
 
+### - [ ] F11. Taps on the Duo's inner panel land 0.046 right (S)
+
+- **Problem:** found testing I7. On a Duo iOS 27.1, open, the matrix's `tap [at 0.5,0.131]` fails: the probe logs `TOUCH began 0.546 0.131 interface=4`, outside the check's 0.03 tolerance. Play is wide enough that `TAP play` still fires. `tap --no-daemon` passes only because it checks `TAP play` alone. The build before I7 fails the same way. The screen record is 2853x2007, `landscapeLeft`. Either the mapping is off, or the probe's window does not span the panel.
+- **Do:** log the probe window's frame against the panel's points; fix the mapping in `Screens` if the window spans the panel, else make the probe report fractions of the screen.
+- **Test:** the matrix's `tap` section passes on the Duo, open and half-open, and on an iPhone.
+
 ## 2. Improvements to existing commands
 
 ### - [ ] I1. Type without per-key delays (S)
@@ -204,7 +210,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - Run the matrix's `orientation` section after an idle period.
   - Add the observed timings to `docs/device-behavior.md`, and close the open question.
 
-### - [ ] I7. Take screenshots in process (M, unverified)
+### - [x] I7. Take screenshots in process (M, unverified)
+
+**Result:** simdrive copies the screen's framebuffer surface instead of calling the capture service, which takes 350 ms. Release `--timing`: `screenshot` 763 to 337 ms on iPhone iOS 27.0, 1755 to 82 ms on iPad Air iOS 27.2; `tree after launch`, which calibrates, 836 to 427 and 1812 to 181 ms. The matrix's `basics`, `orientation`, `tap` and `posture` sections pass on iPhones iOS 26.5 and 27.0, the iPad, a Duo and an Apple TV, except F11, which predates this. Images match `simctl`'s except the Dynamic Island and the Duo's camera hole and corner (`docs/private-apis.md`). The timing case `tree 0.5 0.5` hits empty space on the iPad.
 
 - **Problem:** every screenshot spawns `simctl io screenshot` (`S:SimDriveCore/Screens/Screenshots.swift`). NeoSimulator does the same (`N:NeoSimulatorKit/Simulator/Management/DeviceToolRunner.swift:111-114`), but `simctl` itself calls a CoreSimulator capture service. Its strings include `com.apple.display.captureservice`, `SimScreenCaptureService` and "Capture port descriptor does not conform to SimScreenCaptureService".
 - **Read:**
