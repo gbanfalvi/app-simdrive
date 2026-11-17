@@ -25,7 +25,7 @@ simdrive <udid|booted> <command>
 | `key <name\|char> [--mods cmd,shift,alt,ctrl] [--repeat N]` | Hardware key press: `tab`, `return`, `escape`, `left`, `f5`, `a`, `/`… |
 | `type <text>` | Types US-layout characters; paste anything else |
 | `tap <x> <y> [--display D]` | Touch |
-| `swipe <x1> <y1> <x2> <y2> [--duration ms] [--edge top\|bottom\|left\|right] [--display D]` | Drag; `--edge` starts a system edge gesture |
+| `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top\|bottom\|left\|right] [--display D]` | Drag through the points, each segment taking equal time, so a repeated point holds; `--edge` starts a system edge gesture |
 | `button <name> [--repeat N] [--hold ms]` | Hardware or Apple TV Remote button, held 100 ms by default |
 | `posture [closed\|half\|open]` | Sets or reads a foldable's hinge; returns once the hinge settles |
 | `orientation [portrait\|landscape-left\|landscape-right\|upside-down]` | Sets or reads the device orientation |
@@ -52,7 +52,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `key` | `{"key", "modifiers": [names], "count"}` |
 | `type` | `{"characters"}` |
 | `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen |
-| `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}` |
+| `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}`, with `"via": [{"x", "y"}]` for more points |
 | `button` | `{"button", "count"}` |
 | `posture` | `{"angle": degrees, "posture": "closed", "half" or "open"}` |
 | `orientation` | `{"orientation", "physical"}`: the interface's orientation, and the device's own, which may be `faceUp`, `faceDown` or `unknown` |

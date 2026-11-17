@@ -59,8 +59,8 @@ final class DeviceSession {
             return try await type(text)
         case .tap(let point, let display):
             return try await tap(point, display: display)
-        case .swipe(let start, let end, let duration, let edge, let display):
-            return try await swipe(from: start, to: end, duration: duration, edge: edge, display: display)
+        case .swipe(let path, let duration, let edge, let display):
+            return try await swipe(through: path, duration: duration, edge: edge, display: display)
         case .button(let button, let count, let hold):
             return try await press(button, count: count, hold: hold)
         case .posture(let posture?):
@@ -143,13 +143,17 @@ final class DeviceSession {
         return ["display": JSONValue(screen.display?.index), "point": screen.json(point)]
     }
 
-    private func swipe(from start: ScreenPoint, to end: ScreenPoint, duration: Duration, edge: ScreenEdge?,
+    private func swipe(through path: [ScreenPoint], duration: Duration, edge: ScreenEdge?,
                        display: DisplaySelector) async throws -> JSONValue {
-        let screen = try await screens.touchscreen(display, usesPixels: start.usesPixels || end.usesPixels)
-        try await inputs.drag(from: screen.digitizerPoint(start), to: screen.digitizerPoint(end), duration: duration,
+        let screen = try await screens.touchscreen(display, usesPixels: path.contains { $0.usesPixels })
+        try await inputs.drag(through: path.map(screen.digitizerPoint), duration: duration,
                               edge: edge.map(screen.mapping.digitizerEdge), on: screen.digitizerTarget)
-        return ["display": JSONValue(screen.display?.index), "from": screen.json(start), "to": screen.json(end),
-                "edge": JSONValue(edge?.rawValue)]
+        var result: [String: JSONValue] = ["display": JSONValue(screen.display?.index), "from": screen.json(path[0]),
+                                           "to": screen.json(path[path.count - 1]), "edge": JSONValue(edge?.rawValue)]
+        if path.count > 2 {
+            result["via"] = .array(path.dropFirst().dropLast().map(screen.json))
+        }
+        return .object(result)
     }
 
     private func press(_ button: HardwareButton, count: Int, hold: Duration) async throws -> JSONValue {

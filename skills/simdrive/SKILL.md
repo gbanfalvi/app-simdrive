@@ -28,6 +28,7 @@ $S <udid> type "hello, world"          # US-layout characters only
 $S <udid> tap 0.5 0.5
 $S <udid> swipe 0.5 0.8 0.5 0.2 --duration 300
 $S <udid> swipe 0.5 0.999 0.5 0.5 --edge bottom   # go home from an app
+$S <udid> swipe 0.2 0.5 0.5 0.5 0.5 0.5 0.8 0.5   # more points bend the path; each segment takes equal time, so a repeated point holds
 $S <udid> button home                  # home | lock | volume-up | volume-down | siri
 $S <udid> button down --repeat 3       # Apple TV Remote: menu (Back) | select | play-pause | up | down | left | right | channel-up | channel-down; home is the TV button
 $S <udid> button select --hold 1000    # long press

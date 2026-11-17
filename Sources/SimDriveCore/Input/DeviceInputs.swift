@@ -59,8 +59,8 @@ final class DeviceInputs {
         scheduleRelease()
     }
 
-    func drag(from start: CGPoint, to end: CGPoint, duration: Duration, edge: ScreenEdge?, on target: DigitizerTarget) async throws {
-        try await Self.connected(touchscreen).drag(from: start, to: end, duration: duration, edge: edge, target: target)
+    func drag(through path: [CGPoint], duration: Duration, edge: ScreenEdge?, on target: DigitizerTarget) async throws {
+        try await Self.connected(touchscreen).drag(through: path, duration: duration, edge: edge, target: target)
         scheduleRelease()
     }
 

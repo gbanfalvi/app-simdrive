@@ -25,11 +25,20 @@ struct CommandParserTests {
 
     @Test func swipeDefaultsAndOptions() throws {
         let plain = try CommandParser.parse(["swipe", "0.5", "0.9", "0.5", "0.1"])
-        #expect(plain == .swipe(from: .normalized(CGPoint(x: 0.5, y: 0.9)), to: .normalized(CGPoint(x: 0.5, y: 0.1)),
+        #expect(plain == .swipe(path: [.normalized(CGPoint(x: 0.5, y: 0.9)), .normalized(CGPoint(x: 0.5, y: 0.1))],
                                 duration: CommandParser.defaultSwipeDuration, edge: nil, display: .automatic))
         let edge = try CommandParser.parse(["swipe", "0.5", "0.99", "0.5", "0.5", "--edge", "bottom", "--duration", "250", "--display", "cover"])
-        #expect(edge == .swipe(from: .normalized(CGPoint(x: 0.5, y: 0.99)), to: .normalized(CGPoint(x: 0.5, y: 0.5)),
+        #expect(edge == .swipe(path: [.normalized(CGPoint(x: 0.5, y: 0.99)), .normalized(CGPoint(x: 0.5, y: 0.5))],
                                duration: .milliseconds(250), edge: .bottom, display: .cover))
+    }
+
+    @Test func swipesTakeMorePointsInPairs() throws {
+        let bent = try CommandParser.parse(["swipe", "0.5", "0.99", "0.5", "0.95", "0.9", "0.95"])
+        #expect(bent == .swipe(path: [.normalized(CGPoint(x: 0.5, y: 0.99)), .normalized(CGPoint(x: 0.5, y: 0.95)),
+                                      .normalized(CGPoint(x: 0.9, y: 0.95))],
+                               duration: CommandParser.defaultSwipeDuration, edge: nil, display: .automatic))
+        #expect(throws: SimDriveError.self) { try CommandParser.parse(["swipe", "0.5", "0.99", "0.5"]) }
+        #expect(throws: SimDriveError.self) { try CommandParser.parse(["swipe", "0.5", "0.99", "0.5", "0.95", "0.9"]) }
     }
 
     @Test func postureAndOrientationReadWithoutAnArgument() throws {

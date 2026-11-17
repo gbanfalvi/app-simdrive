@@ -35,9 +35,9 @@ enum CommandParser {
             return .tap(try point(values[0], values[1]), display: try display(list.option("display")))
         case "swipe":
             let list = try ArgumentList(rest, options: ["display", "duration", "edge"])
-            let values = try list.exactly(4, "x1 y1 x2 y2")
+            let values = try list.pairs(atLeast: 2, "x1 y1 x2 y2, then optionally more x y points")
             let duration = try list.positiveInteger("duration").map { Duration.milliseconds($0) } ?? defaultSwipeDuration
-            return .swipe(from: try point(values[0], values[1]), to: try point(values[2], values[3]), duration: duration,
+            return .swipe(path: try values.map { try point($0.0, $0.1) }, duration: duration,
                           edge: try edge(list.option("edge")), display: try display(list.option("display")))
         case "button":
             let list = try ArgumentList(rest, options: ["repeat", "hold"])
@@ -243,7 +243,7 @@ enum CommandParser {
           key <name|char> [--mods cmd,shift,alt,ctrl] [--repeat N]
           type <text>                         US-layout characters only; paste anything else
           tap <x> <y> [--display D]
-          swipe <x1> <y1> <x2> <y2> [--duration ms] [--edge top|bottom|left|right] [--display D]
+          swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top|bottom|left|right] [--display D]
           button <name> [--repeat N] [--hold ms]
                  home|lock|volume-up|volume-down|siri; Apple TV Remote: menu|select|play-pause|up|down|left|right|
                  channel-up|channel-down, with home as the TV button
@@ -335,6 +335,13 @@ struct ArgumentList {
     func exactly(_ count: Int, _ description: String) throws -> [String] {
         guard positionals.count == count else { throw SimDriveError.usage("Expected \(description)") }
         return positionals
+    }
+
+    func pairs(atLeast count: Int, _ description: String) throws -> [(String, String)] {
+        guard positionals.count >= count * 2, positionals.count.isMultiple(of: 2) else {
+            throw SimDriveError.usage("Expected \(description)")
+        }
+        return stride(from: 0, to: positionals.count, by: 2).map { (positionals[$0], positionals[$0 + 1]) }
     }
 
     func none() throws {

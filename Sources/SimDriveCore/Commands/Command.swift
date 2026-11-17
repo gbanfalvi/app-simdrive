@@ -27,7 +27,8 @@ enum Command: Equatable, Sendable {
     case key(name: String, modifiers: Set<KeyModifier>, count: Int)
     case type(text: String)
     case tap(ScreenPoint, display: DisplaySelector)
-    case swipe(from: ScreenPoint, to: ScreenPoint, duration: Duration, edge: ScreenEdge?, display: DisplaySelector)
+    /// Drags through two or more points.
+    case swipe(path: [ScreenPoint], duration: Duration, edge: ScreenEdge?, display: DisplaySelector)
     case button(HardwareButton, count: Int, hold: Duration)
     /// Sets the posture, or reads the hinge without one.
     case posture(DevicePosture?)

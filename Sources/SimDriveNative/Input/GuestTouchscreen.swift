@@ -56,15 +56,20 @@ package final class GuestTouchscreen {
         try await connection.flush()
     }
 
-    package func drag(from start: CGPoint, to end: CGPoint, duration: Duration, edge: ScreenEdge?,
-                      target: DigitizerTarget) async throws {
+    /// Drags one touch through `path` over `duration`, giving each segment equal time, so a repeated point holds.
+    package func drag(through path: [CGPoint], duration: Duration, edge: ScreenEdge?, target: DigitizerTarget) async throws {
+        guard let start = path.first, let end = path.last else { return }
+        let segments = Array(zip(path, path.dropFirst()))
         let steps = max(1, Int((duration / Timing.dragStep).rounded()))
+        let segmentSteps = max(1, steps / max(1, segments.count))
         try send(start, .began, edge: edge, target: target)
-        for step in 1...steps {
-            await pause(Timing.dragStep)
-            let fraction = CGFloat(step) / CGFloat(steps)
-            let point = CGPoint(x: start.x + (end.x - start.x) * fraction, y: start.y + (end.y - start.y) * fraction)
-            try send(point, .moved, edge: edge, target: target)
+        for (from, to) in segments {
+            for step in stride(from: 1, through: segmentSteps, by: 1) {
+                await pause(Timing.dragStep)
+                let fraction = CGFloat(step) / CGFloat(segmentSteps)
+                try send(CGPoint(x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction), .moved,
+                         edge: edge, target: target)
+            }
         }
         try send(end, .ended, edge: edge, target: target)
         try await connection.flush()
