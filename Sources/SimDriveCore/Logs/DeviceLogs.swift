@@ -11,6 +11,8 @@ struct DeviceLogs {
     private static let streamBackstop: Duration = .seconds(60)
     /// Past the last entry read, so the next read starts after it.
     private static let cursorStep: TimeInterval = 0.000_001
+    /// Apps log an input's effects after the input returns: about 100 ms after a tap on the Duo.
+    private static let effectLag: TimeInterval = 0.25
     private static let infoPlist = "Info.plist"
     private static let executableKey = "CFBundleExecutable"
     private static let outputDirectory = "tmp"
@@ -99,8 +101,7 @@ struct DeviceLogs {
         let target = try await target(of: query.scope)
         let digest = try LogDigest(query: query, target: target)
         let events = try await show(query, target: target, since: first)
-        let ends = stepStarts.dropFirst() + [Date.distantFuture]
-        let attached = zip(results, zip(stepStarts, ends)).map { result, span in
+        let attached = zip(results, Self.stepSpans(starts: stepStarts)).map { result, span in
             guard case .object(var fields) = result else { return result }
             let entries = digest.entries(of: events.filter { $0.date < span.1 }, since: span.0).entries
             fields["logs"] = .array(entries.map(\.json))
@@ -114,6 +115,12 @@ struct DeviceLogs {
             }
         }
         return attached
+    }
+
+    /// Each step's entries run from its start to the next step's, both moved by `effectLag` but the first start.
+    static func stepSpans(starts: [Date]) -> [(start: Date, end: Date)] {
+        let boundaries = starts.dropFirst().map { $0.addingTimeInterval(effectLag) }
+        return zip(starts.prefix(1) + boundaries, boundaries + [Date.distantFuture]).map { (start: $0, end: $1) }
     }
 
     private func show(_ query: LogQuery, target: LogTarget, since start: Date) async throws -> [LogEvent] {

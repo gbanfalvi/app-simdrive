@@ -137,7 +137,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** log the probe window's frame against the panel's points; fix the mapping in `Screens` if the window spans the panel, else make the probe report fractions of the screen.
 - **Test:** the matrix's `tap` section passes on the Duo, open and half-open, and on an iPhone.
 
-### - [ ] F12. `run --logs` gives a tap's entries to the next step on the Duo (S)
+### - [x] F12. `run --logs` gives a tap's entries to the next step on the Duo (S)
+
+**Result:** reproduced on a Duo iOS 27.2, where the probe logged `TAP play` 100 ms into the next step. Each step's span now starts and ends 250 ms late, except the first start. The matrix's `logs` section passes 34/34 on the Duo and an iPhone 18 Pro, both iOS 27.2.
 
 - **Problem:** found testing F11. On a Duo iOS 27.1, the matrix's `run --logs attributes the tap` fails every time, before and after I7: in `["tap …", "logs --until \"TAP play error\"", "wait 100"]` the tap step gets no entries, and the `logs` step reads `TAP play` about 80 ms in. The probe logs after `tap` returns, so per-step attribution by start time misses it.
 - **Do:** check on an iPhone whether it passes there by luck; then attribute entries up to a short grace after each step ends, or let the matrix accept the entry in either step.

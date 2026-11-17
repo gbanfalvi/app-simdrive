@@ -15,6 +15,14 @@ struct LogDigestTests {
         try LogDigest(query: query, target: target)
     }
 
+    @MainActor @Test func stepsKeepEntriesLoggedJustAfterTheyEnd() {
+        let start = Date(timeIntervalSince1970: 1000)
+        let spans = DeviceLogs.stepSpans(starts: [start, start + 1, start + 3])
+        #expect(spans.map(\.start) == [start, start + 1.25, start + 3.25])
+        #expect(spans.map(\.end) == [start + 1.25, start + 3.25, .distantFuture])
+        #expect(DeviceLogs.stepSpans(starts: []).isEmpty)
+    }
+
     @Test func decodesNDJSONKeepingMicroseconds() throws {
         let line = #"{"timestamp":"2026-11-12 16:05:29.405902+0100","messageType":"Error","eventType":"logEvent","#
             + #""eventMessage":"boom","subsystem":"com.example","category":"","processImagePath":"\/a\/b\/App","processID":7}"#
