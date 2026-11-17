@@ -7,7 +7,6 @@ import SimDriveNative
 @MainActor
 final class DeviceInputs {
     private enum Timing {
-        static let keyGap: Duration = .milliseconds(40)
         /// Presses closer together than this can read as one double or long press.
         static let repeatGap: Duration = .milliseconds(150)
         static let idleRelease: Duration = .seconds(30)
@@ -46,10 +45,7 @@ final class DeviceInputs {
 
     func type(_ strokes: [KeyStroke]) async throws {
         let keyboard = try await Self.connected(keyboard)
-        for stroke in strokes {
-            try await keyboard.press(keyCode: stroke.keyCode, flags: stroke.needsShift ? .shift : [])
-            await pause(Timing.keyGap)
-        }
+        try keyboard.type(strokes.map { (keyCode: $0.keyCode, flags: $0.needsShift ? .shift : []) })
         try await keyboard.flush()
         scheduleRelease()
     }

@@ -334,6 +334,10 @@ def logs_checks(full):
     launch_probe()
 
 
+LONG_TEXT = ('The Quick brown FOX jumps over the lazy dog, 0123456789 times! ' * 4)[:200]
+# Doubled keys, Shift held across capitals and released between, and a long run.
+TYPED_TEXTS = ['aabb', 'xXxXAAbbCCd', LONG_TEXT]
+
 KEYS = [
     (('key', 'a'), r'KEY code=4 chars=97 mods=$', 1),
     (('key', 'f', '--mods', 'cmd,shift'), r'KEY code=9 .*mods=shift,cmd', 1),
@@ -368,6 +372,13 @@ def key_checks(full):
     lines = log.wait(mark, r'TEXT hello, world$', 4)
     texts = [line.split('TEXT ', 1)[1] for line in log.lines()[mark:] if 'TEXT ' in line]
     check('type', response.get('ok') and lines, f'last text {texts[-1:]!r}')
+    for text in TYPED_TEXTS:
+        clear_field()
+        mark = log.mark()
+        response = sd('type', text)
+        lines = log.wait(mark, rf'TEXT {re.escape(text)}$', 4)
+        texts = [line.split('TEXT ', 1)[1] for line in log.lines()[mark:] if 'TEXT ' in line]
+        check(f'type {text[:24]!r} ({len(text)} characters)', response.get('ok') and lines, f'last text {texts[-1:]!r}')
     response = sd('type', 'Grüße')
     check('type non-US (expect unsupported-character)', response.get('code') == 'unsupported-character', brief(response))
     clear_field()
@@ -625,6 +636,8 @@ def timing(is_touch):
         point = tap_point(header) if header else ('0.5', '0.02')
         cases += [timed('tap', lambda: sd('tap', *point), runs), timed('tap --no-daemon', lambda: sd('tap', *point, daemon=False), runs)]
         cases.append(timed('tree --no-daemon', lambda: sd('tree', daemon=False), runs))
+        cases.append(timed('type 100 characters', lambda: sd('type', LONG_TEXT[:100]), runs))
+        cases.append(timed('tap after release', lambda: sd('tap', *point), cold_runs, before=lambda: sd('stop') and sd('doctor')))
     path = os.path.join(OUTPUT, f'timing-{udid[:8]}-{args.label}.json')
     with open(path, 'w') as file:
         json.dump(dict(cases), file, indent=2)

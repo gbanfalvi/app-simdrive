@@ -165,7 +165,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 ## 2. Improvements to existing commands
 
-### - [ ] I1. Type without per-key delays (S)
+### - [x] I1. Type without per-key delays (S)
+
+**Result:** `type` sends each key's down and up with no wait, Shift only when it changes, and flushes once. 100 characters fell from 9.1 s to 0.3 s on an iPhone iOS 27.2. Doubled letters, mixed case and 200 characters type exactly on that iPhone and on a Duo iOS 27.2 (the matrix's `keys`), so no gap between identical keys was needed.
 
 - **Problem:** `type` holds each key 40 ms (`GuestKeyboard.keyHold`, `S:SimDriveNative/Input/GuestKeyboard.swift:6,33`) and waits 40 ms after it (`DeviceInputs.Timing.keyGap`, `S:SimDriveCore/Input/DeviceInputs.swift:10,50`). It also sends a Shift change before and after every shifted character. That is at least 80 ms a character, about 8 s for 100. NeoSimulator sends key-down then key-up with no delay, sends a modifier change only when Shift actually changes, and sends one release at the end (`N:NeoSimulatorPresentationAdapters/Native/NativeDeviceKeyboard.swift:154-175`).
 - **Do:**

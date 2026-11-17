@@ -35,6 +35,20 @@ package final class GuestKeyboard {
         if !flags.isEmpty { try send(.flagsChanged, keyCode: 0, flags: []) }
     }
 
+    /// Presses and releases each key in turn, changing modifiers only between keys whose modifiers differ.
+    package func type(_ keys: [(keyCode: UInt16, flags: NSEvent.ModifierFlags)]) throws {
+        var held: NSEvent.ModifierFlags = []
+        for key in keys {
+            if key.flags != held {
+                try send(.flagsChanged, keyCode: 0, flags: key.flags)
+                held = key.flags
+            }
+            try send(.keyDown, keyCode: key.keyCode, flags: key.flags)
+            try send(.keyUp, keyCode: key.keyCode, flags: key.flags)
+        }
+        if !held.isEmpty { try send(.flagsChanged, keyCode: 0, flags: []) }
+    }
+
     /// Waits until the keys sent so far have left the connection.
     package func flush() async throws {
         try await connection.flush()
