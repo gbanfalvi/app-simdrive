@@ -35,6 +35,20 @@ struct AccessibilityLayoutTests {
         #expect(json == ["frame": ["x": 0, "y": 0, "width": 1, "height": 0.1], "point": ["x": 0.6346, "y": 0.4928]])
     }
 
+    @Test func hitElementsMustHoldThePoint() {
+        var element = AccessibilityElement()
+        element.frame = CGRect(x: 100.5, y: 437, width: 201, height: 87.4)
+        #expect(phone.contains(CGPoint(x: 0.5, y: 0.55), in: element))
+        #expect(phone.contains(CGPoint(x: 0.25, y: 0.5), in: element))
+        #expect(!phone.contains(CGPoint(x: 0.1, y: 0.1), in: element))
+        #expect(landscapePhone.contains(CGPoint(x: 0.5, y: 0.2181), in: {
+            var button = AccessibilityElement()
+            button.frame = CGRect(x: 78, y: 72.66, width: 718, height: 30)
+            return button
+        }()))
+        #expect(phone.contains(CGPoint(x: 0.1, y: 0.1), in: AccessibilityElement()))
+    }
+
     @Test func pointsDefaultToTheFrameCenter() {
         var element = AccessibilityElement()
         element.frame = CGRect(x: 100.5, y: 437, width: 201, height: 87.4)

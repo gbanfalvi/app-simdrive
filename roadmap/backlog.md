@@ -24,7 +24,7 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** after the last key of `press` and of `DeviceInputs.type`, `try await connection.flush()`, as the other inputs do. Flush once per `type` command, not once per key.
 - **Test:** the matrix's `keys` section, which also checks `type`; `run` with `["type hello", "screenshot /tmp/t.png"]` shows the text.
 
-### - [ ] F2. Hit tests can return an element away from the point (S)
+### - [x] F2. Hit tests can return an element away from the point (S)
 
 - **Problem:** web content can answer a hit test with an element whose frame does not contain the point (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:1093-1097`, comment on `accessibilityElement(at:)`). `tree <x> <y>` then reports the wrong element.
 - **Read:** `S:SimDriveNative/Accessibility/SimulatorAccessibility.swift` (the hit test), `S:SimDriveCore/Accessibility/DeviceAccessibility.swift`.

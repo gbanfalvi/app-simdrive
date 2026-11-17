@@ -6,6 +6,8 @@ import SimDriveNative
 struct AccessibilityLayout: Equatable, Sendable {
     /// Four decimals place a point within a pixel of the largest screens.
     private static let precision = 10_000.0
+    /// In points, so a point on an element's edge still counts as inside it.
+    private static let hitTolerance: CGFloat = 1
     /// Elements that show their descendants only within their frame.
     private static let scrollingTypes: Set<ElementType> = [.scrollView, .table, .collectionView, .webView]
 
@@ -30,6 +32,13 @@ struct AccessibilityLayout: Equatable, Sendable {
     func panelPoint(_ fraction: CGPoint) -> CGPoint {
         let unit = mapping.digitizerPoint(fraction)
         return CGPoint(x: unit.x * panelSize.width, y: unit.y * panelSize.height)
+    }
+
+    /// Whether the element's frame holds a screen fraction. An element without a frame says nothing, so it counts.
+    func contains(_ fraction: CGPoint, in element: AccessibilityElement) -> Bool {
+        guard !element.frame.isEmpty else { return true }
+        let point = CGPoint(x: fraction.x * interfaceSize.width, y: fraction.y * interfaceSize.height)
+        return element.frame.insetBy(dx: -Self.hitTolerance, dy: -Self.hitTolerance).contains(point)
     }
 
     private var screenFrame: CGRect { CGRect(origin: .zero, size: interfaceSize) }

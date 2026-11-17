@@ -35,10 +35,13 @@ final class DeviceAccessibility {
         let screen = try await screens.screen(.automatic, usesPixels: point.usesPixels)
         let fraction = screen.normalizedPoint(point)
         let panelPoint: @Sendable (CGSize) -> CGPoint = { AccessibilityLayout(screenSize: $0, screen: screen).panelPoint(fraction) }
+        let noElement = SimDriveError(.noElement, "No accessibility element is at \(fraction.x), \(fraction.y).")
         guard let snapshot = try await accessibility.snapshot(at: panelPoint, display: screen.display?.index ?? 0, detail: detail) else {
-            throw SimDriveError(.noElement, "No accessibility element is at \(fraction.x), \(fraction.y).")
+            throw noElement
         }
         let layout = AccessibilityLayout(screenSize: snapshot.application.screenSize, screen: screen)
+        // Web content can answer with an element away from the point.
+        guard layout.contains(fraction, in: snapshot.element) else { throw noElement }
         let element = switch detail {
         case .light: layout.summary(snapshot.element)
         case .full: layout.json(snapshot.element)
