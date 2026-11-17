@@ -40,11 +40,8 @@ package final class GuestTouchscreen {
         self.codec = codec
     }
 
-    /// Connects to the digitizer and waits until the guest takes its touches.
     package static func open(guest: SimulatorGuest) async throws -> GuestTouchscreen {
-        let touchscreen = GuestTouchscreen(connection: try await guest.connection(to: feature), codec: guest.codec)
-        await pause(GuestInputTiming.settle)
-        return touchscreen
+        GuestTouchscreen(connection: try await guest.connection(to: feature), codec: guest.codec)
     }
 
     package var hasFailed: Bool { connection.hasFailed }

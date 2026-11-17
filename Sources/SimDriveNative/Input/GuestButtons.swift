@@ -42,11 +42,8 @@ package final class GuestButtons {
         self.codec = codec
     }
 
-    /// Connects to the buttons and waits until the guest takes their presses.
     package static func open(guest: SimulatorGuest) async throws -> GuestButtons {
-        let buttons = GuestButtons(connection: try await guest.connection(to: feature), codec: guest.codec)
-        await pause(GuestInputTiming.settle)
-        return buttons
+        GuestButtons(connection: try await guest.connection(to: feature), codec: guest.codec)
     }
 
     package var hasFailed: Bool { connection.hasFailed }

@@ -179,7 +179,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - Time `type` with `--timing` before and after.
   - Some guests may merge same-key repeats without a gap. If doubled letters drop, keep a minimal gap, such as 5 ms, between identical keys only.
 
-### - [ ] I2. Drop the 400 ms wait when opening touch and buttons (S)
+### - [x] I2. Drop the 400 ms wait when opening touch and buttons (S)
+
+**Result:** on an iPhone and a Duo iOS 27.2, a `tap` on Play right after the inputs were released reached the probe 20/20 times, and `button home` 10/10. The full matrix passes on both. On the iPhone, a tap after release fell from 750 ms to 343 ms, and `tap --no-daemon` from 2.35 s to 1.89 s.
 
 - **Problem:** `GuestTouchscreen.open` and `GuestButtons.open` wait `GuestInputTiming.settle`, 400 ms (`S:SimDriveNative/Input/GuestTouchscreen.swift:46`, `GuestButtons.swift:48`). They only open an XPC connection, though, and create no guest service, which is what the wait covers for the keyboard. NeoSimulator posts touches and buttons as soon as it connects (`N:NeoSimulatorPresentationAdapters/Native/GuestScreenInput.swift:18-33,125-149`). The wait costs 400 ms on the first input after every 30 s idle release.
 - **Do:** remove the wait from those two, and keep it in `GuestKeyboard.open`, after `createService`.
