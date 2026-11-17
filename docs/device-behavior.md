@@ -4,7 +4,7 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 
 ## Timing
 
-- A fresh process spends 2–8 s resolving bindings before its first command; a warm daemon answers in tens of milliseconds.
+- A fresh process spends about 2 s resolving bindings before its first command (`doctor`: 1.6 s on an iPhone and 1.8 s on a Duo iOS 27.2, from 3.0 s and 3.7–5.7 s before ABIBridge 0.20.4); a warm daemon answers in tens of milliseconds.
 - `simctl launch` returns 2.3–6 s before the app's scene is active. On a freshly booted simulator, with several others booted, apps took 20–67 s to come to the front.
 - The accessibility server's frontmost pid matches the app's `SCENE active` to within about 0.3 s, which makes it a reliable launch signal.
 - `tree` is bimodal: about 290 ms right after a launch or during animation, 25–150 ms otherwise.

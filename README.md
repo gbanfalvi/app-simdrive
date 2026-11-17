@@ -149,7 +149,7 @@ The log reads go through `simctl spawn log`, and stdout and stderr through `simc
 
 ### Daemon
 
-The first command for a device starts a daemon that keeps the private-framework bindings loaded: the first call takes 2–8 s, later ones tens of milliseconds. The daemon releases its keyboard, touch and button services 30 s after the last input and exits after 10 idle minutes. A rebuilt binary or a different developer directory replaces it. Sockets, daemon logs and log cursors live in `/tmp/simdrive-<uid>/`. `--no-daemon` runs a command in-process.
+The first command for a device starts a daemon that keeps the private-framework bindings loaded: the first call takes about 2 s, later ones tens of milliseconds. The daemon releases its keyboard, touch and button services 30 s after the last input and exits after 10 idle minutes. A rebuilt binary or a different developer directory replaces it. Sockets, daemon logs and log cursors live in `/tmp/simdrive-<uid>/`. `--no-daemon` runs a command in-process.
 
 The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR`, then `xcode-select -p`.
 

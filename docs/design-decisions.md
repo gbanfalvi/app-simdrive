@@ -19,11 +19,11 @@ Input goes to the guest's own HID services, as DeviceHub and NeoSimulator send i
 
 ## Port NeoSimulator onto ABIBridge
 
-The guest HID, keyboard translation, posture and pasteboard code came from NeoSimulator at `1dfc4af` (MIT; see [THIRD_PARTY.md](../THIRD_PARTY.md)), trimmed to the main keyboard (no per-Mac keyboard mirroring), the digitizer, buttons, orientation, pasteboard and posture. ABIBridge is pinned `exact: "0.19.1"`, the version NeoSimulator uses, because a different ABIBridge can change how the same symbols bind. When an Xcode update breaks a binding, diff NeoSimulator upstream for the ported files first: it tracks Xcode closely.
+The guest HID, keyboard translation, posture and pasteboard code came from NeoSimulator at `1dfc4af` (MIT; see [THIRD_PARTY.md](../THIRD_PARTY.md)), trimmed to the main keyboard (no per-Mac keyboard mirroring), the digitizer, buttons, orientation, pasteboard and posture. ABIBridge is pinned `exact: "0.20.4"`, the version NeoSimulator uses, because a different ABIBridge can change how the same symbols bind. When an Xcode update breaks a binding, diff NeoSimulator upstream for the ported files first: it tracks Xcode closely.
 
 ## A daemon per device
 
-- **Cost**: resolving the private bindings takes 2–8 s per process; a warm daemon answers in tens of milliseconds.
+- **Cost**: resolving the private bindings takes about 2 s per process; a warm daemon answers in tens of milliseconds.
 - **State**: guest services last as long as their XPC connection. A one-shot process would attach and detach a hardware keyboard on every call, which can reset keyboard focus and shows and hides the software keyboard.
 - **One per UDID**, so devices never share a queue and a stuck guest blocks only its own device.
 - **Replaced on rebuild or developer-directory change** (`BuildStamp`), so a stale binary never answers. A modification time is cheaper than hashing the binary on every call.

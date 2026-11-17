@@ -207,7 +207,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   3. Keep `unsupported` on tvOS by checking `responds(to:)` or catching the error.
 - **Test:** the matrix's `settings` section on an iPhone, iOS 17 and 27, where the probe logs the trait-collection change, and on Apple TV, where the settings stay `unsupported`. Time `setting` with no arguments before and after.
 
-### - [ ] I5. Upgrade ABIBridge from 0.19.1 to 0.20.4 (M)
+### - [x] I5. Upgrade ABIBridge from 0.19.1 to 0.20.4 (M)
+
+**Result:** no call site needed changing, and the build has no new warnings. A cold daemon's `doctor` fell from 3.0 s to 1.6 s on an iPhone iOS 27.2, and from 3.7–5.7 s to 1.8 s on a Duo iOS 27.2; warm commands and `--no-daemon` taps are unchanged. The full matrix passes on that iPhone and Duo, and on an Apple TV tvOS 26.2.
 
 - **Why:** `docs/design-decisions.md` pins the ABIBridge version NeoSimulator uses, which is now 0.20.4 (`/tmp/NeoSimulator/Package.swift`). Relevant changes:
   - Symbol tables are kept for 1 s after a batch instead of being rebuilt on every lookup (0.20.2).

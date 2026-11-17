@@ -11,7 +11,7 @@ let package = Package(
         .executable(name: "simdrive", targets: ["simdrive"]),
     ],
     dependencies: [
-        .package(url: "https://github.com/lynnswap/ABIBridge.git", exact: "0.19.1"),
+        .package(url: "https://github.com/lynnswap/ABIBridge.git", exact: "0.20.4"),
     ],
     targets: [
         // Private-framework glue: CoreSimulator, guest HID services, CoreDevice.

@@ -86,7 +86,7 @@ Guest services are reached the way CoreDevice's simulator plugin reaches them: `
 
 ## Calling private Swift API
 
-[ABIBridge](https://github.com/lynnswap/ABIBridge), pinned to 0.19.1, resolves Swift types, methods and getters by their demangled names at run time and calls them with a declared calling convention. Opaque values cross as `NativeSwiftValue`; `valueABIs` tell ABIBridge how to pass values it cannot lay out itself, such as `Data`-wrapping structs. Typed throws need a sample of the thrown error type, which `CoreDeviceRemote.errorSample()` supplies. Resolution happens when a driver opens, so a renamed method fails there, with the symbol in the message, rather than mid-command.
+[ABIBridge](https://github.com/lynnswap/ABIBridge), pinned to 0.20.4, resolves Swift types, methods and getters by their demangled names at run time and calls them with a declared calling convention. Opaque values cross as `NativeSwiftValue`; `valueABIs` tell ABIBridge how to pass values it cannot lay out itself, such as `Data`-wrapping structs. Typed throws need a sample of the thrown error type, which `CoreDeviceRemote.errorSample()` supplies. Resolution happens when a driver opens, so a renamed method fails there, with the symbol in the message, rather than mid-command.
 
 Objective-C private API (CoreSimulator, AXPTranslator) goes through `NSSelectorFromString` and `method(for:)` cast to a `@convention(c)` function type. Key-value coding works on local objects but not on CoreSimulator's remote proxies (see [private APIs](private-apis.md#interface-orientation)).
 
