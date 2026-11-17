@@ -422,15 +422,33 @@ NeoSimulator has none of these; `simctl` covers them.
   3. With no `--page`, use the frontmost app's only page.
 - **Test:** the probe adds an inspectable `WKWebView` loading a local HTML string. `web pages` lists it; `web eval "document.title"` returns the title; a thrown exception returns its message. Add matrix checks.
 
-### - [ ] N17. `services`: turn off noisy background daemons (M)
+### - [ ] N17. Point agents at simslim for slimmed simulators (M, mostly verification; unverified)
 
-- **Why:** fewer daemons means less log noise (see the `--system` filter in `logs`), less CPU and steadier timing.
-- **Read:** `N:NeoSimulatorKit/Devices/BackgroundServices.swift` and `BackgroundServiceCatalog.swift`, a catalog of services by category, ported from simslim.
-  - It reads `simctl spawn <udid> launchctl print-disabled system`.
-  - It disables with `launchctl disable` plus `bootout system/<label>` (`BackgroundServices.swift:362,510-517,640`).
-  - It notes what stops working with each category.
-- **Do:** `services [list]`, `services disable <category>`, `services enable <category>`. Port the catalog as data in `SimDriveCore/Settings/` or a new `Services/` folder.
-- **Test:** disable a category, check that its daemons are gone from `launchctl list`, and compare the log rate of `logs --all` before and after. Re-enable it and reboot.
+- **Why:**
+  - [simslim](https://github.com/MobAI-App/simslim) (reviewed at `f56a5a0`) turns off the ~175 background daemons a simulator doesn't need. Its README measures one iOS simulator going from 258 processes and 4.0 GB to 70 processes and 0.9 GB.
+  - That fits more simulators, one per agent, on one Mac.
+  - It also cuts log noise (see the `--system` filter in `logs`), CPU use and timing jitter.
+  - NeoSimulator ports its catalog (`N:NeoSimulatorKit/Devices/BackgroundServices.swift`, `BackgroundServiceCatalog.swift`). simdrive doesn't need to: simslim is a maintained CLI with `--json`.
+- **Read:** simslim's README, `profiles.go` (categories and their launchd labels), and `features.go`. `simslim doctor <udid> --requires <feature>` checks a feature against the slim profile.
+- **Do:**
+  1. Don't wrap or reimplement simslim. In the skill, add a short section for when an agent runs several simulators or reads noisy logs:
+     - Install with `brew install mobai-app/tap/simslim`.
+     - `simslim on <udid>` slims and reboots; `--no-reboot` keeps the current boot.
+     - `simslim boot <udid>` waits for services, unlike `simctl bootstatus` on Air and Duo (F3).
+     - `--except <category>` and `--keep <label>` keep what an app needs; `simslim off <udid>` restores stock.
+     - Slim only simulators the agent created, since it changes the device until `off`.
+  2. Add a line to the README.
+  3. List in the skill the categories that any simdrive command needs, as `--except` values.
+- **Verify:**
+  - On simulators you created, `simslim on` each of: an iPhone on the oldest and newest iOS runtimes, a Duo and an Apple TV.
+  - Run the full matrix on each and compare it with a stock run. At risk:
+    - `logs`, for crash reports and system entries: `telemetry` stops `diagnosticextensionsd` and other diagnostics daemons.
+    - `pasteboard` and `posture`, through CoreDevice.
+    - `settings`, through Preferences notifications.
+    - `tv`: `connectivity` stops `com.apple.tvremoted`.
+    - `tree`.
+  - Record breakages in `docs/device-behavior.md`, with the category that causes them.
+  - Time `--timing` stock and slim. Note any change in early-boot failures (F7, F9).
 
 ### - [ ] N18. `standby on|off` on iPhone Duo (M, unverified on simdrive's CoreDevice)
 
