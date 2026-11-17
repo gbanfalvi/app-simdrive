@@ -67,7 +67,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - Repeat with `posture` on a Duo.
   - Run the matrix's `misc` section, which reads the pasteboard.
 
-### - [ ] F6. A stalled CoreDevice blocks the daemon forever (M)
+### - [x] F6. A stalled CoreDevice blocks the daemon forever (M)
+
+**Result:** `SharedInitialization` (`S:SimDriveNative/Support/SharedInitialization.swift`) runs one start, failing with `coredevice-timeout` after 30 s. Unit-tested; the matrix's `basics,misc` pass on iPhone iOS 27.0. A real stall was not reproduced.
 
 - **Problem:** `CoreDeviceManager.shared()` awaits `awaitFullInitialization()` with no limit (`S:SimDriveNative/CoreDevice/CoreDeviceRemote.swift:9-27`). The daemon serves one request at a time, so a stalled CoreDevice service hangs every later command, keyboard and taps included. Concurrent callers also start separate initializations.
 - **Read:**

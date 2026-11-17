@@ -4,10 +4,16 @@ import Foundation
 /// CoreDevice's device manager for default devices and simulators, created and initialized once per process.
 @MainActor
 enum CoreDeviceManager {
-    private static var manager: NativeSwiftValue?
+    private static let initializationLimit: Duration = .seconds(30)
+    private static let manager = SharedInitialization(within: initializationLimit,
+        timeout: SimDriveError(.coreDeviceTimeout, "CoreDevice did not finish starting in time; retry."),
+        create)
 
     static func shared() async throws -> NativeSwiftValue {
-        if let manager { return manager }
+        try await manager.value()
+    }
+
+    private static func create() async throws -> NativeSwiftValue {
         try await NativeFrameworks.load(NativeFrameworks.coreDevicePath)
         let created = try await ABIRuntime.shared.prepare { runtime in
             let service = try await runtime.resolve(.swift(.type("CoreDevice.CoreDeviceService")))
@@ -23,7 +29,6 @@ enum CoreDeviceManager {
         let type = try await ABIRuntime.shared.resolve(.swift(.type("CoreDevice.DeviceManager")))
         let initialize = try await type.resolve(.swift(.method("awaitFullInitialization()", as: (() async -> Void).self)))
         try await unsafe initialize.unsafeInvoke(on: created)
-        manager = created
         return created
     }
 
