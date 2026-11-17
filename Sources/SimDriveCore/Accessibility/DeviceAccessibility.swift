@@ -22,7 +22,8 @@ final class DeviceAccessibility {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)
         let snapshot = try await accessibility.snapshot(detail: detail)
-        let fillsHalf = Self.fillsHalf(snapshot.element.children.map(\.frame), of: snapshot.application)
+        let fullLayout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen)
+        let fillsHalf = fullLayout.spansUnder(Self.halfWidthLimit, windows: snapshot.element.children.map(\.frame))
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen,
                                          appOrigin: appOrigin(fillsHalf: fillsHalf))
         let app = snapshot.application.json
@@ -60,13 +61,10 @@ final class DeviceAccessibility {
 
     /// Whether the frontmost app's windows fill one half of a split screen.
     func fillsHalf() async throws -> Bool {
+        let screen = try await screens.screen(.automatic, usesPixels: false)
         let (application, frames) = try await connected().windows()
-        return Self.fillsHalf(frames, of: application)
-    }
-
-    private static func fillsHalf(_ windows: [CGRect], of application: AccessibilityApplication) -> Bool {
-        guard let widest = windows.map(\.width).max(), application.screenSize.width > 0 else { return false }
-        return widest / application.screenSize.width < halfWidthLimit
+        return AccessibilityLayout(appSize: application.screenSize, scale: device.screenScale, screen: screen)
+            .spansUnder(Self.halfWidthLimit, windows: frames)
     }
 
     /// Only the half simdrive last set says which half a split app fills.

@@ -143,7 +143,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** check on an iPhone whether it passes there by luck; then attribute entries up to a short grace after each step ends, or let the matrix accept the entry in either step.
 - **Test:** the matrix's `logs` section on the Duo and an iPhone.
 
-### - [ ] F13. Split apps' origin for apps built with Xcode 27.0 (S)
+### - [x] F13. Split apps' origin for apps built with Xcode 27.0 (S)
+
+**Result:** the origins hold for both SDKs, on Duo iOS 27.1 and 27.2. A probe relinked to the 27.0 SDK with `vtool` leaves the status strip out of its window, 0.917 wide in full and 0.409 in the right half, and reports that window as its own frame, so `split` read it as full and failed with `split-dropped`. Half or full is now measured against the screenshot's width. No strip showed on the left of a left-half app. `tree` points tap Play and hit-test to it in every layout for both builds; the matrix's `tree` and `tap` pass on iOS 27.2.
 
 - **Problem:** `tree` places a split app's elements from fixed origins, 0 and 0.5068, measured on Settings and the probe (Xcode 27.2). The user reports that apps built with Xcode 27.0 use the Duo's status strip differently from 27.1 and later builds, and that the strip can show on the left of a left-half app, which would move that app's origin.
 - **Do:** build the probe with Xcode 27.0; in each half, tap two points and fit its logged window fractions to the origin, as was done for 27.2. Derive the origin per build if they differ.

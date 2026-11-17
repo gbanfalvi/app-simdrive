@@ -41,6 +41,13 @@ struct AccessibilityLayout: Equatable, Sendable {
 
     // MARK: Geometry
 
+    /// Whether the widest window spans under `limit` of the screen's width; apps built with older SDKs report the window as
+    /// their own frame, so only the screen tells.
+    func spansUnder(_ limit: CGFloat, windows: [CGRect]) -> Bool {
+        guard let widest = windows.map(\.width).max(), interfaceSize.width > 0 else { return false }
+        return widest / interfaceSize.width < limit
+    }
+
     /// Hit testing takes the screen's points, though the element it finds has the app's.
     func panelPoint(_ fraction: CGPoint) -> CGPoint {
         let unit = mapping.digitizerPoint(fraction)

@@ -46,6 +46,12 @@ struct AccessibilityLayoutTests {
         #expect(rightHalf.panelPoint(CGPoint(x: 0.75, y: 0.5)) == duoInner.panelPoint(CGPoint(x: 0.75, y: 0.5)))
     }
 
+    @Test func windowsSpanTheScreenNotTheApp() {
+        #expect(duoInner.spansUnder(0.75, windows: [CGRect(x: 0, y: 0, width: 389, height: 669)]))
+        #expect(!duoInner.spansUnder(0.75, windows: [CGRect(x: 0, y: 0, width: 871, height: 669)]))
+        #expect(!duoInner.spansUnder(0.75, windows: []))
+    }
+
     @Test func screensMeasureFromTheScreenshotWhenTheScaleIsKnown() {
         let cover = PixelSize(width: 1398, height: 2034)
         #expect(AccessibilityLayout.screenSize(screenshot: cover, scale: 3, appSize: CGSize(width: 385, height: 678))

@@ -33,11 +33,12 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 - The inner panel's screenshots can be rotated relative to the panel while the device reads portrait. Mapping taps by device orientation alone flipped them 180° there, which is why simdrive reads the interface orientation per screen.
 - The hinge animates toward the requested angle and settles near it, not on it.
 - Ending an input connection within 500 ms of the last event lost the event on the Duo; 500 ms sufficed on single-display devices.
-- **Split view.** On the inner panel in landscape, dragging the home indicator up and to one side moves the app into that half, and dragging a half's indicator to the middle restores the whole screen. Tested with Settings on iOS 27.1, from a bottom edge touch:
+- **Split view.** On the inner panel in landscape, dragging the home indicator up and to one side moves the app into that half, and dragging a half's indicator to the middle restores the whole screen. Tested with Settings and the probe on iOS 27.1 and 27.2, from a bottom edge touch:
   - Letting go while moving is a flick, and the app springs back. Holding, then lifting about 0.035 of the height before letting go, keeps a half.
   - Returning to the whole screen needs the hold at about y 0.925, a lift to 0.905 and a settle at 0.915; letting go on the lift opens the app switcher, and without the lift the app springs back to its half.
   - Sideways drags along the bottom switch apps, and lifting to about 0.90 opens the app switcher.
   - A split app's accessibility windows are 0.49 of the screen wide, against 1 for a whole-screen app, but start at x 0 in either half, so accessibility does not say which half. Its elements' frames start at the half's left edge, 0.5068 of the screen's width for the right half. Hit tests take screen points, and on the other half return the home screen's elements.
+  - On iOS 27.2, apps built with the iOS 27.1 SDK or later span the strip: 1 of the width in full, 0.4932 per half. Apps built with the 27.0 SDK leave it out, 0.917 in full and 0.409 in the right half, and report that window as their own frame. Both start each half at the same edge. On iOS 27.1, the probe left it out under either SDK, and Settings spanned it.
 
 ## Apple TV
 
