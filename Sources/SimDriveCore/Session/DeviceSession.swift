@@ -11,6 +11,7 @@ final class DeviceSession {
 
     private let udid: String
     private let device: SimulatorDevice
+    private let bootedAt: Date?
     private let tools: DeveloperTools
     private let inputs: DeviceInputs
     private let screens: Screens
@@ -25,6 +26,7 @@ final class DeviceSession {
     private init(udid: String, device: SimulatorDevice, tools: DeveloperTools, guest: SimulatorGuest) {
         self.udid = udid
         self.device = device
+        bootedAt = device.lastBootedAt
         self.tools = tools
         let coreDevice = LazyCapability { try await CoreDeviceRemote.open(device: device) }
         let orientation = LazyCapability(isUsable: { !$0.hasFailed }) { try await GuestOrientation.open(guest: guest) }
@@ -108,6 +110,9 @@ final class DeviceSession {
             throw SimDriveError(.notADeviceCommand, "This command is handled by the command line, not a device session.")
         }
     }
+
+    /// Whether the device still runs the boot the session opened in; its guest connections end with that boot.
+    var isCurrent: Bool { device.isBooted && device.lastBootedAt == bootedAt }
 
     /// Releases the inputs, as after an idle period; the next command opens them again.
     func releaseInputs() async {

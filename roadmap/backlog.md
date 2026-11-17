@@ -97,7 +97,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   3. Split the nil result into "no answer in time" (`accessibility-timeout`) and "unreachable" (new `accessibility-unavailable`). Map error 8 to `no-element`.
 - **Test:** on a simulator just booted from shutdown, `tree` succeeds on the first call more often than before; record the result in `docs/device-behavior.md`. Add unit tests for the deadline arithmetic if it is factored out, and run the matrix's `tree` section.
 
-### - [ ] F8. The daemon keeps its session across a reboot (M)
+### - [x] F8. The daemon keeps its session across a reboot (M)
+
+**Result:** before each request the daemon compares `isBooted` and `lastBootedAt` with the session's, and reopens it on a change; a `not-booted` reply makes it exit. A guest connection error also releases the inputs. Not reproduced with the old build on a Duo iOS 27.2: after 9 s and 20 s reboots, its `tap` reached the probe and `posture` read the new boot's hinge. After many quick reboots the guest's accessibility server stopped answering, with or without the daemon, until one more reboot.
 
 - **Problem:** the daemon creates one `DeviceSession` and keeps it (`S:SimDriveCore/Daemon/DaemonServer.swift`, around lines 100-110). `isBooted` is checked only when the session opens (`S:SimDriveCore/Session/DeviceSession.swift:46`). After a reboot, its guest connections, CoreDevice record, accessibility bridge and screen records point at the old boot, and the screen records are only reset through `ScreenStore`'s boot date. NeoSimulator advances a generation on each inventory change (`N:NeoSimulatorDeviceIO/CoreDevice/CoreDeviceSimulatorRecord.swift:176-184`).
 - **Do:**

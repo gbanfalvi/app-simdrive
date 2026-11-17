@@ -94,14 +94,21 @@ final class DaemonServer {
             return (.success(try await session.execute(command, workingDirectory: request.workingDirectory)), false)
         } catch {
             log("\(request.arguments.joined(separator: " ")): \(error.localizedDescription)")
+            let code = (error as? SimDriveError)?.code
             // A guest connection stays dead once it ends, so the next command opens new ones.
-            if (error as? SimDriveError)?.code == .guestConnection { await session?.releaseInputs() }
-            return (.failure(error), false)
+            if code == .guestConnection { await session?.releaseInputs() }
+            // A shut-down device has nothing to serve; the next command starts a daemon once it boots.
+            return (.failure(error), code == .notBooted)
         }
     }
 
     private func openSession() async throws -> DeviceSession {
-        if let session { return session }
+        if let session {
+            if session.isCurrent { return session }
+            log("the device rebooted or shut down; reopening")
+            self.session = nil
+            await session.close()
+        }
         let opened = try await DeviceSession.open(udid: udid, tools: tools)
         session = opened
         return opened
