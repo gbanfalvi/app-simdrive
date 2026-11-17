@@ -16,6 +16,7 @@ Reinstall after changing the skill here; the repo copy is the source.
 
 - Builds need Xcode 27 and macOS 26. Set `DEVELOPER_DIR` to the Xcode in use, such as `/Applications/Xcode_27_2.app/Contents/Developer`, when `xcode-select` points elsewhere.
 - Build with `swift build`, test with `swift test`, and release with `swift build -c release`.
+- Planned work, with context for each item, is in [roadmap/backlog.md](roadmap/backlog.md).
 - Modules, lowest first. Each uses only the one below:
   - `SimDriveNative`: private-framework drivers for CoreSimulator, the guest's HID and device-control services, CoreDevice, and AccessibilityPlatformTranslation. `Guest*` types reach the guest's Mach services directly; `CoreDevice*` types go through CoreDevice.
   - `SimDriveCore`: commands and their parser, the per-device session, screen geometry, device logs, and the per-device daemon.
