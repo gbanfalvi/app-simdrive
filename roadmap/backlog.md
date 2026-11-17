@@ -17,7 +17,7 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 ## 1. Fixes
 
-### - [ ] F1. Keyboard input returns before the guest has its keys (S)
+### - [x] F1. Keyboard input returns before the guest has its keys (S)
 
 - **Problem:** `tap` and `button` wait on a barrier after sending, but `key` and `type` do not. A `run` step after typing, such as a screenshot, can start before the keys arrive, and a release right after typing relies on the 1000 ms drain alone.
 - **Read:** `S:SimDriveNative/Input/GuestKeyboard.swift` (`press`, which sends without a barrier); `GuestTouchscreen.swift` and `GuestButtons.swift` for the barrier they use; `GuestConnection.flush()` in `S:SimDriveNative/Guest/SimulatorGuest.swift`.

@@ -40,6 +40,7 @@ final class DeviceInputs {
             if index > 0 { await pause(Timing.repeatGap) }
             try await keyboard.press(keyCode: stroke.keyCode, flags: flags)
         }
+        try await keyboard.flush()
         scheduleRelease()
     }
 
@@ -49,6 +50,7 @@ final class DeviceInputs {
             try await keyboard.press(keyCode: stroke.keyCode, flags: stroke.needsShift ? .shift : [])
             await pause(Timing.keyGap)
         }
+        try await keyboard.flush()
         scheduleRelease()
     }
 

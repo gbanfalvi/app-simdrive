@@ -35,6 +35,11 @@ package final class GuestKeyboard {
         if !flags.isEmpty { try send(.flagsChanged, keyCode: 0, flags: []) }
     }
 
+    /// Waits until the keys sent so far have left the connection.
+    package func flush() async throws {
+        try await connection.flush()
+    }
+
     /// Removes the guest's keyboard, which releases what it held.
     package func close() async throws {
         try await service.remove()
