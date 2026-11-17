@@ -31,7 +31,7 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** when the returned frame does not contain the point, fail with `no-element`, or walk up its parents to one that does.
 - **Test:** a `WKWebView` page in the probe app (add one), with `tree <x> <y>` on points inside and outside its elements. Add a unit test for the frame check.
 
-### - [ ] F3. Warn that iPhone Air and iPhone Duo report a failed boot (S, docs)
+### - [x] F3. Warn that iPhone Air and iPhone Duo report a failed boot (S, docs)
 
 - **Problem:** these devices always end boot with status 3, data migration failed, though the guest runs (NeoSimulator #616, `N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:609-619`). `simctl bootstatus` reports a failure an agent may act on.
 - **Do:** add to `docs/device-behavior.md` and the skill's rules: on these devices, a migration failure from `bootstatus` is expected. If simdrive ever waits on boot, through `SimDevice.bootStatus` (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:259-263,517-528`), count status 3 on a booted device as started.

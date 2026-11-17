@@ -46,6 +46,7 @@ Observed on Xcode 27.0 and 27.2 with iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad 
 - `show-borders` also drives `AccessibilitySettings.showBordersEnabled` from iOS 26.1.
 - `non-blinking-cursor` needs iOS 18; `glass-tint` needs iOS 26.
 - `prefer-cross-fade` has an effect only while `reduce-motion` is on.
+- iPhone Air and iPhone Duo end every boot with a failed data migration (boot status 3), which `simctl bootstatus` reports as a failure, though the guest runs. Reported by NeoSimulator (#616); not observed here.
 
 ## Logs
 
