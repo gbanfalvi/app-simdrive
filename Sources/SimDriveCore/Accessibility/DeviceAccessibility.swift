@@ -20,12 +20,12 @@ final class DeviceAccessibility {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)
         let snapshot = try await accessibility.snapshot(detail: detail)
-        let layout = AccessibilityLayout(screenSize: snapshot.application.screenSize, screen: screen)
+        let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen)
         let app = snapshot.application.json
         let display = JSONValue(screen.display?.index)
         switch detail {
         case .light: return ["app": app, "display": display, "elements": layout.elements(snapshot.element)]
-        case .full: return ["app": app, "display": display, "root": layout.json(snapshot.element)]
+        case .full: return ["app": app, "display": display, "root": layout.json(application: snapshot.element)]
         }
     }
 
@@ -34,12 +34,15 @@ final class DeviceAccessibility {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: point.usesPixels)
         let fraction = screen.normalizedPoint(point)
-        let panelPoint: @Sendable (CGSize) -> CGPoint = { AccessibilityLayout(screenSize: $0, screen: screen).panelPoint(fraction) }
+        let scale = device.screenScale
+        let panelPoint: @Sendable (CGSize) -> CGPoint = {
+            AccessibilityLayout(appSize: $0, scale: scale, screen: screen).panelPoint(fraction)
+        }
         let noElement = SimDriveError(.noElement, "No accessibility element is at \(fraction.x), \(fraction.y).")
         guard let snapshot = try await accessibility.snapshot(at: panelPoint, display: screen.display?.index ?? 0, detail: detail) else {
             throw noElement
         }
-        let layout = AccessibilityLayout(screenSize: snapshot.application.screenSize, screen: screen)
+        let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: scale, screen: screen)
         // Web content can answer with an element away from the point.
         guard layout.contains(fraction, in: snapshot.element) else { throw noElement }
         let element = switch detail {

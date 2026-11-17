@@ -108,6 +108,12 @@ def text_field(tree):
     return next((node for node in voice_over(tree) if node.get('type') == 'textField'), None)
 
 
+def in_app(full, x, y):
+    """A screen fraction as a fraction of the app's window, which the probe logs; the Duo's status strip narrows it."""
+    frame = full.get('result', {}).get('root', {}).get('frame') or {'x': 0, 'y': 0, 'width': 1, 'height': 1}
+    return (float(x) - frame['x']) / frame['width'], (float(y) - frame['y']) / frame['height']
+
+
 def touch_near(lines, phase, x, y, tolerance=0.03):
     for line in lines:
         match = re.search(rf'TOUCH {phase} ([0-9.]+) ([0-9.]+)', line)
@@ -249,7 +255,7 @@ def tap_checks(full):
     mark = log.mark()
     response = sd('tap', x, y)
     lines = log.wait(mark, r'TAP play')
-    check('tap', response.get('ok') and lines and touch_near(log.lines()[mark:], 'began', float(x), float(y)),
+    check('tap', response.get('ok') and lines and touch_near(log.lines()[mark:], 'began', *in_app(full, x, y)),
           brief(response) if not response.get('ok') else f'at {x},{y}')
     mark = log.mark()
     response = sd('tap', x, y, daemon=False)
@@ -259,7 +265,8 @@ def tap_checks(full):
     response = sd('swipe', '0.15', '0.8', '0.15', '0.3', '--duration', '300')
     log.wait(mark, r'TOUCH ended')
     lines = log.lines()[mark:]
-    check('swipe', response.get('ok') and touch_near(lines, 'began', 0.15, 0.8) and touch_near(lines, 'ended', 0.15, 0.3, 0.05),
+    check('swipe', response.get('ok') and touch_near(lines, 'began', *in_app(full, 0.15, 0.8))
+          and touch_near(lines, 'ended', *in_app(full, 0.15, 0.3), 0.05),
           '; '.join(line.split(' ', 1)[1] for line in lines if 'TOUCH' in line)[:200])
     time.sleep(1)
     after = sd('tree', '--full')

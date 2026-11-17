@@ -15,7 +15,7 @@ struct AccessibilityLayout: Equatable, Sendable {
     private let panelSize: CGSize
     private let mapping: ScreenMapping
 
-    /// `screenSize` is the app's size in points, which turns with the interface on some devices and not on others.
+    /// `screenSize` is in points, and turns with the interface on some devices and not on others.
     init(screenSize: CGSize, screenshot: PixelSize, mapping: ScreenMapping) {
         let turned = CGSize(width: screenSize.height, height: screenSize.width)
         interfaceSize = (screenSize.width > screenSize.height) == screenshot.isLandscape ? screenSize : turned
@@ -23,8 +23,16 @@ struct AccessibilityLayout: Equatable, Sendable {
         self.mapping = mapping
     }
 
-    init(screenSize: CGSize, screen: Screen) {
-        self.init(screenSize: screenSize, screenshot: screen.record.full, mapping: screen.mapping)
+    /// `scale` is the screen's pixels per point; without it the app's size stands in for the screen's.
+    init(appSize: CGSize, scale: Double?, screen: Screen) {
+        self.init(screenSize: Self.screenSize(screenshot: screen.record.full, scale: scale, appSize: appSize),
+                  screenshot: screen.record.full, mapping: screen.mapping)
+    }
+
+    /// The screen in points, which the app does not span beside the Duo's status strip.
+    static func screenSize(screenshot: PixelSize, scale: Double?, appSize: CGSize) -> CGSize {
+        guard let scale, scale > 0 else { return appSize }
+        return CGSize(width: Double(screenshot.width) / scale, height: Double(screenshot.height) / scale)
     }
 
     // MARK: Geometry
@@ -102,6 +110,18 @@ struct AccessibilityLayout: Equatable, Sendable {
     /// Defaults, nil and empty values are left out.
     func json(_ element: AccessibilityElement) -> JSONValue {
         json(element, visibleFrame: screenFrame)
+    }
+
+    /// The app's frame stays in the panel's orientation on the Duo's inner panel, overflowing the interface; turned, it fits.
+    func json(application: AccessibilityElement) -> JSONValue {
+        guard case .object(var fields) = json(application) else { return json(application) }
+        let frame = application.frame
+        let turned = CGRect(x: frame.minY, y: frame.minX, width: frame.height, height: frame.width)
+        let screen = screenFrame.insetBy(dx: -Self.hitTolerance, dy: -Self.hitTolerance)
+        if !screen.contains(frame), screen.contains(turned) {
+            fields["frame"] = json(turned)
+        }
+        return .object(fields)
     }
 
     /// `visibleFrame` is the part of the screen that the element's scrolling ancestors show.

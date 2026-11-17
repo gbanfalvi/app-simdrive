@@ -35,6 +35,25 @@ struct AccessibilityLayoutTests {
         #expect(json == ["frame": ["x": 0, "y": 0, "width": 1, "height": 0.1], "point": ["x": 0.6346, "y": 0.4928]])
     }
 
+    @Test func screensMeasureFromTheScreenshotWhenTheScaleIsKnown() {
+        let cover = PixelSize(width: 1398, height: 2034)
+        #expect(AccessibilityLayout.screenSize(screenshot: cover, scale: 3, appSize: CGSize(width: 385, height: 678))
+                == CGSize(width: 466, height: 678))
+        #expect(AccessibilityLayout.screenSize(screenshot: cover, scale: nil, appSize: CGSize(width: 385, height: 678))
+                == CGSize(width: 385, height: 678))
+    }
+
+    @Test func theDuoInnerAppFrameTurnsToFitTheInterface() {
+        var app = AccessibilityElement()
+        app.frame = CGRect(x: 0, y: 0, width: 669, height: 871)
+        guard case .object(let fields) = duoInner.json(application: app) else { Issue.record("not an object"); return }
+        #expect(fields["frame"] == ["x": 0, "y": 0, "width": 0.9159, "height": 1])
+        var fitting = AccessibilityElement()
+        fitting.frame = CGRect(x: 0, y: 0, width: 600, height: 400)
+        guard case .object(let kept) = duoInner.json(application: fitting) else { Issue.record("not an object"); return }
+        #expect(kept["frame"] == ["x": 0, "y": 0, "width": 0.6309, "height": 0.5979])
+    }
+
     @Test func hitElementsMustHoldThePoint() {
         var element = AccessibilityElement()
         element.frame = CGRect(x: 100.5, y: 437, width: 201, height: 87.4)

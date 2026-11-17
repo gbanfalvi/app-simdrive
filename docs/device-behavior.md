@@ -29,6 +29,7 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 - Hardware model `v68`. Two panels: the cover panel, `simctl` role `primary`, and the inner panel, `primary-1`, display 3 on the tested device.
 - Closed, the inner panel's framebuffer is powered off and `simctl` screenshots it black; `simctl`'s display power does not unfold it. The closed cover panel's screenshots show its camera hole. Commands default to the cover panel when closed and the inner panel otherwise.
 - The cover panel accepts orientation changes, but its apps stay portrait.
+- A status strip with the clock takes the right of either panel, so apps span 0.83 of the cover panel's width and 0.92 of the inner panel's. Apps' `UIScreen.bounds` covers the app, not the panel, so a fraction of it is not a fraction of the screenshot.
 - The inner panel's screenshots can be rotated relative to the panel while the device reads portrait. Mapping taps by device orientation alone flipped them 180° there, which is why simdrive reads the interface orientation per screen.
 - The hinge animates toward the requested angle and settles near it, not on it.
 - Ending an input connection within 500 ms of the last event lost the event on the Duo; 500 ms sufficed on single-display devices.

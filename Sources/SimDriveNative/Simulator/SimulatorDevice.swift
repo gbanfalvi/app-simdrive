@@ -12,6 +12,8 @@ package final class SimulatorDevice {
     private static let bootedState = "Booted"
     private static let lastBootedAtKey = "lastBootedAt"
     private static let dataPathKey = "dataPath"
+    private static let deviceTypeKey = "deviceType"
+    private static let screenScaleKey = "mainScreenScale"
     private static let tvOSRuntimePrefix = "com.apple.CoreSimulator.SimRuntime.tvOS-"
     private static let runtimeKey = "runtime"
     private static let runtimeRootKey = "root"
@@ -54,6 +56,15 @@ package final class SimulatorDevice {
         guard device.responds(to: NSSelectorFromString(Self.dataPathKey)) else { return nil }
         let value = device.value(forKey: Self.dataPathKey)
         return value as? URL ?? (value as? String).map { URL(fileURLWithPath: $0, isDirectory: true) }
+    }
+    /// Pixels per point of the device type's screens.
+    package var screenScale: Double? {
+        guard device.responds(to: NSSelectorFromString(Self.deviceTypeKey)),
+              let deviceType = device.value(forKey: Self.deviceTypeKey) as? NSObject,
+              deviceType.responds(to: NSSelectorFromString(Self.screenScaleKey)) else {
+            return nil
+        }
+        return (deviceType.value(forKey: Self.screenScaleKey) as? NSNumber)?.doubleValue
     }
     package var lastBootedAt: Date? {
         guard device.responds(to: NSSelectorFromString(Self.lastBootedAtKey)) else { return nil }

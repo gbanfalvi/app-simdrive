@@ -129,11 +129,19 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   4. Turn `full-keyboard-access` off before the `keys` section, and restore it after.
 - **Test:** the matrix's `tree` and `keys` sections pass on an iPad and an iPhone you created, with full keyboard access on beforehand.
 
-### - [ ] F11. Taps on the Duo's inner panel land 0.046 right (S)
+### - [x] F11. Taps on the Duo's inner panel land 0.046 right (S)
+
+**Result:** taps were right; `tree` was wrong, in every posture. A status strip takes the right of both Duo panels, and `tree` measured fractions against the app's frame, so its points sat 1.21× too far right on the cover panel and 1.09× on the inner one. `tree` now sizes the screen from the screenshot and the device type's scale, and turns the inner panel's app frame to fit the interface. The probe logs fractions of its window, which the matrix now converts with the app's frame. `tree` and `tap` pass on the Duo closed, open and half-open, and on an iPhone, iPad and Apple TV.
 
 - **Problem:** found testing I7. On a Duo iOS 27.1, open, the matrix's `tap [at 0.5,0.131]` fails: the probe logs `TOUCH began 0.546 0.131 interface=4`, outside the check's 0.03 tolerance. Play is wide enough that `TAP play` still fires. `tap --no-daemon` passes only because it checks `TAP play` alone. The build before I7 fails the same way. The screen record is 2853x2007, `landscapeLeft`. Either the mapping is off, or the probe's window does not span the panel.
 - **Do:** log the probe window's frame against the panel's points; fix the mapping in `Screens` if the window spans the panel, else make the probe report fractions of the screen.
 - **Test:** the matrix's `tap` section passes on the Duo, open and half-open, and on an iPhone.
+
+### - [ ] F12. `run --logs` gives a tap's entries to the next step on the Duo (S)
+
+- **Problem:** found testing F11. On a Duo iOS 27.1, the matrix's `run --logs attributes the tap` fails every time, before and after I7: in `["tap …", "logs --until \"TAP play error\"", "wait 100"]` the tap step gets no entries, and the `logs` step reads `TAP play` about 80 ms in. The probe logs after `tap` returns, so per-step attribution by start time misses it.
+- **Do:** check on an iPhone whether it passes there by luck; then attribute entries up to a short grace after each step ends, or let the matrix accept the entry in either step.
+- **Test:** the matrix's `logs` section on the Duo and an iPhone.
 
 ## 2. Improvements to existing commands
 

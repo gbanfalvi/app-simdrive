@@ -109,7 +109,7 @@ Loaded from `/System/Library/PrivateFrameworks/AccessibilityPlatformTranslation.
 - The token is the UDID, set on every translation object with `bridgeDelegateToken` before converting it with `macPlatformElementFromTranslation:`.
 - `frontmostApplicationWithDisplayId:bridgeDelegateToken:` answers for the frontmost app whatever display ID it gets. Its translation's `pid` is the app's process; the element's label is its name, a single space for SpringBoard.
 - `objectAtPoint:displayId:bridgeDelegateToken:` hit-tests in points of the panel's native orientation; the display ID is the `simctl` index, 0 on single-display devices.
-- The frontmost element's frame size is the app's screen size in points. It turns with the interface on some devices and not on others.
+- The frontmost element's frame is the app's, in points. It turns with the interface on some devices and not on others; on the Duo's inner panel it stays portrait while element frames follow the landscape interface. On the Duo it does not span the screen, beside the system's status strip, so simdrive sizes the screen from the screenshot and `SimDeviceType.mainScreenScale` (3 on both Duo panels), falling back to the app's frame.
 - The translator blocks while the guest answers, so it runs on its own queue.
 
 ### The snapshot attribute
