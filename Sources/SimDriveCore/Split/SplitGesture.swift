@@ -14,20 +14,20 @@ struct SplitGesture: Equatable {
     let duration: Duration
 
     private static let toRightHalf = SplitGesture(path: [
-        CGPoint(x: 0.5, y: 0.97), CGPoint(x: 0.55, y: 0.945), CGPoint(x: 0.70, y: 0.89), CGPoint(x: 0.77, y: 0.895),
-        CGPoint(x: 0.82, y: 0.895), CGPoint(x: 0.82, y: 0.895), CGPoint(x: 0.82, y: 0.86),
-    ], duration: .milliseconds(2400))
+        CGPoint(x: 0.5, y: 0.97), CGPoint(x: 0.70, y: 0.89), CGPoint(x: 0.82, y: 0.895), CGPoint(x: 0.82, y: 0.895),
+        CGPoint(x: 0.82, y: 0.86),
+    ], duration: .milliseconds(1000))
 
     /// Lifting, then settling at the middle, before letting go keeps the full screen without opening the app switcher.
     private static let rightHalfToFull = SplitGesture(path: [
-        CGPoint(x: 0.75, y: 0.97), CGPoint(x: 0.70, y: 0.945), CGPoint(x: 0.55, y: 0.92), CGPoint(x: 0.5, y: 0.925),
-        CGPoint(x: 0.5, y: 0.925), CGPoint(x: 0.5, y: 0.905), CGPoint(x: 0.5, y: 0.915),
-    ], duration: .milliseconds(2800))
+        CGPoint(x: 0.75, y: 0.97), CGPoint(x: 0.55, y: 0.92), CGPoint(x: 0.5, y: 0.925), CGPoint(x: 0.5, y: 0.925),
+        CGPoint(x: 0.5, y: 0.905), CGPoint(x: 0.5, y: 0.915),
+    ], duration: .milliseconds(1000))
 
     private static let rightHalfToLeftHalf = SplitGesture(path: [
         CGPoint(x: 0.75, y: 0.97), CGPoint(x: 0.70, y: 0.945), CGPoint(x: 0.40, y: 0.89), CGPoint(x: 0.18, y: 0.895),
         CGPoint(x: 0.18, y: 0.895), CGPoint(x: 0.18, y: 0.86),
-    ], duration: .milliseconds(2400))
+    ], duration: .milliseconds(1000))
 
     /// Nil when the app is already in the layout.
     static func moving(from current: SplitLayout, to target: SplitLayout) -> SplitGesture? {
