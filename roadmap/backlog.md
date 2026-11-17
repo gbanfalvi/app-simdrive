@@ -163,6 +163,24 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** time the framebuffer read, the display listing and the orientation read separately right after boot; skip or bound whichever waits on the guest.
 - **Test:** on a Duo you created, `screenshot` within a second of `bootstatus` returning, on three boots; then the matrix's `basics` and `orientation` sections.
 
+### - [ ] F15. The Duo's accessibility server stops answering until a reboot (M, cause unknown)
+
+- **Problem:** seen twice on a Duo iOS 27.2 under Xcode 27.2 (`688B6C57`), never on an iPhone. Every read went unanswered for minutes while the probe showed in front: `tree` failed with `accessibility-timeout` after its 20 s deadline, and `launch` with `launch-not-frontmost`, since `becomesFrontmost` reads the same server. A fresh daemon and `--no-daemon` failed alike, so it is the guest's state, not simdrive's session. Screenshots, taps and `posture` kept working. A reboot cleared it both times; reinstalling the probe neither caused nor cleared it.
+- **What came before:**
+  1. 22:41–22:53: five quick reboots in about six minutes while testing F8, the hinge set open before some of them. The first failure was a `tree` right after `posture open`; a reboot cleared it, then the next reboot brought it back, and it held for five minutes, across daemon restarts, until another reboot.
+  2. 22:55 boot, hinge closed, then 12 minutes idle. At 23:07 the matrix ran `doctor`, installed the probe, set `orientation portrait` and launched it at 23:08:23; reads failed from then on. Idle display sleep (I6) fits the idle period, but the screenshot taken during the failure was not dimmed.
+- **Clues:**
+  - Each read reached the guest: `CoreSimulatorBridge` logged `[com.apple.Accessibility:AXSupportCommon] Read CategoryName` at every attempt (23:09:05, 23:09:26, 23:09:27), and its `com.apple.CoreSimulator.accessibility.peer` connection stayed open until the daemon exited. So `sendAccessibilityRequestAsync` was delivered, but no reply came back: the failure is `unanswered`, not `unreachable` (`S:SimDriveNative/Simulator/SimulatorDevice.swift`, `AccessibilityChannel`).
+  - The launch itself succeeded in the guest log (`Launch successful for 'com.simdrive.axprobe', pid: 68904`), and the probe loaded its accessibility settings.
+  - Info-level accessibility entries (`AXRuntimeNotifications`, `AXLoading`) are missing from the stored guest log in healthy periods too, so their absence during the failure proves nothing. Stream the log live instead.
+  - F7's slow start is a different symptom: there the server answered with no app, here it does not answer.
+- **Research next time it happens, before rebooting:**
+  1. `sample` the guest's `CoreSimulatorBridge`, `SpringBoard` and `AccessibilityUIServer` during a `tree`: they run as Mac processes. Find their pids in the guest log (`Process[pid:…]`) or with `lsof -p <pid> | rg <udid>`. Look for the thread that handles the accessibility request and what it waits on.
+  2. Stream `simctl spawn <udid> log stream --level debug --predicate 'process == "CoreSimulatorBridge" OR subsystem == "com.apple.Accessibility"'` during a `tree`, and compare it with a healthy one.
+  3. Check whether a hit test (`tree <x> <y>`) also hangs, or only the frontmost-app request.
+  4. Try recovering without a reboot: `simctl spawn <udid> launchctl kickstart -k system/com.apple.CoreSimulator.bridge`, then `com.apple.AccessibilityUIServer`; then `lock`, `lock` and an edge swipe, in case the display slept. If one works, simdrive could do it after repeated unanswered reads.
+- **Reproduce:** on a Duo you created, alternate `posture open|closed`, `simctl shutdown` and `boot` five times within a few minutes, then `launch` the probe and `tree`; separately, leave a booted, closed Duo idle 15 minutes, then run the matrix.
+
 ## 2. Improvements to existing commands
 
 ### - [x] I1. Type without per-key delays (S)
