@@ -33,12 +33,14 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 ### - [x] F3. Warn that iPhone Air and iPhone Duo report a failed boot (S, docs)
 
+**Result:** observed on Air iOS 26.0 to 27.2 and Duo iOS 27.1 and 27.2, under Xcode 26.6 to 27.2. `bootstatus` exits 0 and returns early on second boots, so first commands time out; F9 and F7 cover that.
+
 - **Problem:** these devices always end boot with status 3, data migration failed, though the guest runs (NeoSimulator #616, `N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:609-619`). `simctl bootstatus` reports a failure an agent may act on.
 - **Do:** add to `docs/device-behavior.md` and the skill's rules: on these devices, a migration failure from `bootstatus` is expected. If simdrive ever waits on boot, through `SimDevice.bootStatus` (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:259-263,517-528`), count status 3 on a booted device as started.
 
 ### - [x] F4. Find out whether typing needs Connect Hardware Keyboard (S, unverified)
 
-**Result:** it does not. With the setting off, the matrix's `keys` section passed 34/34 on iPhone iOS 27.0; recorded in `docs/device-behavior.md`.
+**Result:** it does not. With the setting off, `keys` passed 34/34 on iPhone iOS 17.0, 18.3, 26.5, 27.0 and 27.2, and on Duo iOS 27.1. The iPad on iOS 27.2 passed it once full keyboard access was off (see F10), and `tv` passed 12/12 on tvOS 26.2. The Xcodes were 26.6 to 27.2. Recorded in `docs/device-behavior.md`.
 
 - **Problem:** NeoSimulator refuses to type while its Connect Hardware Keyboard preference is off, "when the guest takes no hardware keyboard's keys" (`N:NeoSimulatorKit/Simulator/Session/DeviceSession.swift:704-719`). That preference is NeoSimulator's own (`N:NeoSimulatorKit/Simulator/Session/PreferenceStore.swift:44`), which it applies with `SimDevice setHardwareKeyboardEnabled:keyboardType:error:` (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:369-370,1168-1173`). The keyboard type comes from `IndigoHIDGetKeyboardType()` in SimulatorKit (`N:NeoSimulatorPresentationAdapters/Simulator/SimulatorPresentationRuntime.swift:599,632`). simdrive creates its own main keyboard with `setSoftwareKeyboard(false)` and never calls this, and nobody has checked whether the setting gates simdrive's keys.
 - **Do:**
@@ -97,6 +99,27 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   2. On a change, close the session, releasing its inputs, and open a new one.
   3. A shut-down device fails with the existing not-booted error, and the daemon exits.
 - **Test:** for this simulator, start the daemon with `tap`, then `simctl shutdown` and `simctl boot`, then `tap` again. The second `tap` works, and the `doctor` from before the reboot no longer answers.
+
+### - [ ] F9. A slow orientation service fails `screenshot` and `tree` after boot (S)
+
+- **Problem:** found testing F3. Right after `bootstatus` returned on an iPhone Air iOS 27.2 under Xcode 27.2, `tree` and `screenshot` failed with `guest-service-timeout` naming `com.apple.coredevice.feature.remote.devicecontrol.orientation`, after 11–36 s. A Duo iOS 27.1 failed `tree` the same way. A screenshot needs the orientation only to record it, and `Screens.deviceOrientation()` (`S:SimDriveCore/Screens/Screens.swift:83-86`) throws instead of falling back. Its callers fall back to portrait only for nil.
+- **Do:** in `Screens`, prefer the interface orientation CoreSimulator reports (`interfaceOrientation(of:)`, same file) and read the guest's only when that is nil. Treat a guest read that fails as nil, so `screenshot` and `tree` degrade to portrait instead of failing. `orientation` itself keeps failing.
+- **Test:** boot an Air you created, and within a second of `simctl bootstatus -b` returning run `screenshot` and `tree` under Xcode 27.2. Neither fails with `guest-service-timeout`. Then run the matrix's `orientation` and `tap` sections.
+
+### - [ ] F10. The matrix assumes an iPhone's layout and state (S)
+
+- **Problem:** found testing F4. On iPad Air iOS 27.2, with the hardware keyboard on or off, three checks fail and simdrive is not at fault:
+  - `tree offscreen rows` finds 0/12 offscreen, because the tall screen shows every row.
+  - `tree hit test --no-daemon` hits a gap at 0.5, 0.5, between the probe's "Two" and "Glass" elements, and gets `no-element`.
+  - `type` reads `xxxhello, world`: the field keeps focus, so the earlier `key x --repeat 3` check types into it.
+  - The matrix also leaves full keyboard access as it finds it. While on, it fails `key left` and `key tab`.
+- **Read:** `Evaluation/matrix.py`: `tree_checks` (around line 213-224), `key_checks` and `clear_field` (around 338-363).
+- **Do:**
+  1. Make the probe's list longer than an iPad's screen.
+  2. Hit-test `Play`'s point with `--no-daemon`.
+  3. Call `clear_field()` after tapping the field, before `type`.
+  4. Turn `full-keyboard-access` off before the `keys` section, and restore it after.
+- **Test:** the matrix's `tree` and `keys` sections pass on an iPad and an iPhone you created, with full keyboard access on beforehand.
 
 ## 2. Improvements to existing commands
 

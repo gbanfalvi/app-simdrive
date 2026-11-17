@@ -1,6 +1,6 @@
 # Device behavior
 
-Observed on Xcode 27.0 and 27.2 with iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad iOS 26.5 and 27.0, iPhone Duo iOS 27.2 and Apple TV 4K simulators.
+Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0 to 27.2, iPad iOS 26.5 to 27.2, iPhone Duo iOS 27.1 and 27.2 and Apple TV 4K simulators.
 
 ## Timing
 
@@ -17,7 +17,8 @@ Observed on Xcode 27.0 and 27.2 with iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad 
 - **Unlocking.** Without a passcode, the same `lock`, `lock`, edge swipe sequence returns to the app.
 - **Going home.** A swipe up from the bottom goes home only with `--edge bottom`; the guest recognizes system gestures only for touches that start on an edge.
 - **Volume.** `volume-up` and `volume-down` show the volume HUD, and DeviceHub's volume changes, but apps' `AVAudioSession.outputVolume` stays put. Check volume presses by screenshot.
-- **Connect Hardware Keyboard.** Turning it off with `SimDevice setHardwareKeyboardEnabled:false keyboardType:error:` does not stop simdrive's keys: its own main keyboard service still types (iPhone, iOS 27.0).
+- **Connect Hardware Keyboard.** Turning it off with `SimDevice setHardwareKeyboardEnabled:false keyboardType:error:` does not stop simdrive's keys: its own main keyboard service still types. Tested on iPhone iOS 17.0 to 27.2, iPad iOS 27.2, iPhone Duo iOS 27.1 and Apple TV tvOS 26.2, with Xcode 26.6 to 27.2. The call succeeds, but no guest-side change was seen: `HardwareKeyboardLastSeen` stays 1 and the software keyboard stays hidden.
+- **Full keyboard access.** While it is on, Tab and the arrow keys move focus instead of reaching the app.
 - **Orientation.** The interface follows the device only when the foreground app supports that orientation, so it can differ from `orientation`'s reading. Face-up and face-down readings keep the last upright orientation for the interface.
 - **Upside down.** No tested device reported an upside-down interface; Face ID iPhones do not support it.
 
@@ -47,7 +48,8 @@ Observed on Xcode 27.0 and 27.2 with iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad 
 - `show-borders` also drives `AccessibilitySettings.showBordersEnabled` from iOS 26.1.
 - `non-blinking-cursor` needs iOS 18; `glass-tint` needs iOS 26.
 - `prefer-cross-fade` has an effect only while `reduce-motion` is on.
-- iPhone Air and iPhone Duo end every boot with a failed data migration (boot status 3), which `simctl bootstatus` reports as a failure, though the guest runs. Reported by NeoSimulator (#616); not observed here.
+- iPhone Air and iPhone Duo end boots with a failed data migration (boot status 3), though the guest runs. Seen on Air iOS 26.0 to 27.2 and Duo iOS 27.1 and 27.2, under Xcode 26.6 to 27.2. Only the Air's first boot on iOS 27.0 finished normally. `simctl bootstatus` still exits 0, printing `Data Migration Failed`.
+- On a second boot, status 3 comes 3–16 s in, before `Waiting on System App`, so `bootstatus` returns before SpringBoard is ready. Other iPhones wait for it, taking 11–17 s. Right after it returns, `tree` failed on 5 of 8 Air and Duo boots with `accessibility-timeout`, or under Xcode 27.2 with an orientation `guest-service-timeout`. That orientation timeout also failed one `screenshot`. After 90 s every command worked.
 
 ## Logs
 
