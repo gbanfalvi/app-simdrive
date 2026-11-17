@@ -220,7 +220,7 @@ def tree_checks():
     hit = sd('tree', *tap_point(play))
     check('tree hit test', hit.get('ok') and hit['result']['element'].get('label') == 'Play',
           brief(hit) if not hit.get('ok') else hit['result']['element'].get('label'))
-    hit = sd('tree', '0.5', '0.5', daemon=False)
+    hit = sd('tree', *tap_point(play), daemon=False)
     check('tree hit test --no-daemon', hit.get('ok'), brief(hit) if not hit.get('ok') else '')
     one_shot = sd('tree', '--full', daemon=False)
     check('tree --no-daemon', one_shot.get('ok'), '' if one_shot.get('ok') else brief(one_shot))
@@ -345,6 +345,8 @@ def clear_field():
 
 
 def key_checks(full):
+    # Full keyboard access turns Tab and the arrows into focus moves; restore_settings puts it back.
+    sd('setting', 'full-keyboard-access', 'off')
     for arguments, pattern, count in KEYS:
         mark = log.mark()
         response = sd(*arguments)
@@ -353,6 +355,7 @@ def key_checks(full):
               brief(response) if not response.get('ok') else f'{len(lines)} matching presses')
     sd('tap', *tap_point(text_field(full)))
     time.sleep(1)
+    clear_field()
     mark = log.mark()
     response = sd('type', 'hello, world')
     lines = log.wait(mark, r'TEXT hello, world$', 4)

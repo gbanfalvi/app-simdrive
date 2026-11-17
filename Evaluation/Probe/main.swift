@@ -209,7 +209,7 @@ final class ProbeViewController: UIViewController {
             glass.heightAnchor.constraint(equalToConstant: 80),
         ])
 
-        let rows = (1...12).map { Self.label("Row \($0)") }
+        let rows = (1...30).map { Self.label("Row \($0)") }
         let stack = UIStackView(arrangedSubviews: [header, play, card, slider, toggle, field, content, disclosure, disabled, swiftUI.view, pair, backdrop] + rows)
         stack.axis = .vertical
         stack.spacing = 16

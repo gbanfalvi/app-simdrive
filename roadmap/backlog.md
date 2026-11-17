@@ -106,7 +106,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** in `Screens`, prefer the interface orientation CoreSimulator reports (`interfaceOrientation(of:)`, same file) and read the guest's only when that is nil. Treat a guest read that fails as nil, so `screenshot` and `tree` degrade to portrait instead of failing. `orientation` itself keeps failing.
 - **Test:** boot an Air you created, and within a second of `simctl bootstatus -b` returning run `screenshot` and `tree` under Xcode 27.2. Neither fails with `guest-service-timeout`. Then run the matrix's `orientation` and `tap` sections.
 
-### - [ ] F10. The matrix assumes an iPhone's layout and state (S)
+### - [x] F10. The matrix assumes an iPhone's layout and state (S)
+
+**Result:** `tree,tap,keys` pass 38/38 on iPad Air iOS 27.2, with full keyboard access on, and on iPhone iOS 27.0.
 
 - **Problem:** found testing F4. On iPad Air iOS 27.2, with the hardware keyboard on or off, three checks fail and simdrive is not at fault:
   - `tree offscreen rows` finds 0/12 offscreen, because the tall screen shows every row.
