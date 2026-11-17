@@ -14,19 +14,23 @@ struct AccessibilityLayout: Equatable, Sendable {
     private let interfaceSize: CGSize
     private let panelSize: CGSize
     private let mapping: ScreenMapping
+    /// In points: frames start at the app's left edge, which a split app moves.
+    private let appOffset: CGFloat
 
-    /// `screenSize` is in points, and turns with the interface on some devices and not on others.
-    init(screenSize: CGSize, screenshot: PixelSize, mapping: ScreenMapping) {
+    /// `screenSize` is in points, and turns with the interface on some devices and not on others. `appOrigin` is the
+    /// app's left edge as a fraction of the screen's width.
+    init(screenSize: CGSize, screenshot: PixelSize, mapping: ScreenMapping, appOrigin: CGFloat = 0) {
         let turned = CGSize(width: screenSize.height, height: screenSize.width)
         interfaceSize = (screenSize.width > screenSize.height) == screenshot.isLandscape ? screenSize : turned
         panelSize = mapping.isRotated ? CGSize(width: interfaceSize.height, height: interfaceSize.width) : interfaceSize
         self.mapping = mapping
+        appOffset = appOrigin * interfaceSize.width
     }
 
     /// `scale` is the screen's pixels per point; without it the app's size stands in for the screen's.
-    init(appSize: CGSize, scale: Double?, screen: Screen) {
+    init(appSize: CGSize, scale: Double?, screen: Screen, appOrigin: CGFloat = 0) {
         self.init(screenSize: Self.screenSize(screenshot: screen.record.full, scale: scale, appSize: appSize),
-                  screenshot: screen.record.full, mapping: screen.mapping)
+                  screenshot: screen.record.full, mapping: screen.mapping, appOrigin: appOrigin)
     }
 
     /// The screen in points, which the app does not span beside the Duo's status strip.
@@ -37,6 +41,7 @@ struct AccessibilityLayout: Equatable, Sendable {
 
     // MARK: Geometry
 
+    /// Hit testing takes the screen's points, though the element it finds has the app's.
     func panelPoint(_ fraction: CGPoint) -> CGPoint {
         let unit = mapping.digitizerPoint(fraction)
         return CGPoint(x: unit.x * panelSize.width, y: unit.y * panelSize.height)
@@ -45,11 +50,12 @@ struct AccessibilityLayout: Equatable, Sendable {
     /// Whether the element's frame holds a screen fraction. An element without a frame says nothing, so it counts.
     func contains(_ fraction: CGPoint, in element: AccessibilityElement) -> Bool {
         guard !element.frame.isEmpty else { return true }
-        let point = CGPoint(x: fraction.x * interfaceSize.width, y: fraction.y * interfaceSize.height)
+        let point = CGPoint(x: fraction.x * interfaceSize.width - appOffset, y: fraction.y * interfaceSize.height)
         return element.frame.insetBy(dx: -Self.hitTolerance, dy: -Self.hitTolerance).contains(point)
     }
 
-    private var screenFrame: CGRect { CGRect(origin: .zero, size: interfaceSize) }
+    /// In the app's points.
+    private var screenFrame: CGRect { CGRect(origin: CGPoint(x: -appOffset, y: 0), size: interfaceSize) }
 
     private func point(of element: AccessibilityElement) -> CGPoint {
         element.activationPoint ?? element.frame.center
@@ -117,7 +123,7 @@ struct AccessibilityLayout: Equatable, Sendable {
         guard case .object(var fields) = json(application) else { return json(application) }
         let frame = application.frame
         let turned = CGRect(x: frame.minY, y: frame.minX, width: frame.height, height: frame.width)
-        let screen = screenFrame.insetBy(dx: -Self.hitTolerance, dy: -Self.hitTolerance)
+        let screen = CGRect(origin: .zero, size: interfaceSize).insetBy(dx: -Self.hitTolerance, dy: -Self.hitTolerance)
         if !screen.contains(frame), screen.contains(turned) {
             fields["frame"] = json(turned)
         }
@@ -162,11 +168,11 @@ struct AccessibilityLayout: Equatable, Sendable {
     }
 
     private func json(_ point: CGPoint) -> JSONValue {
-        ["x": Self.rounded(point.x / interfaceSize.width), "y": Self.rounded(point.y / interfaceSize.height)]
+        ["x": Self.rounded((point.x + appOffset) / interfaceSize.width), "y": Self.rounded(point.y / interfaceSize.height)]
     }
 
     private func json(_ frame: CGRect) -> JSONValue {
-        ["x": Self.rounded(frame.minX / interfaceSize.width), "y": Self.rounded(frame.minY / interfaceSize.height),
+        ["x": Self.rounded((frame.minX + appOffset) / interfaceSize.width), "y": Self.rounded(frame.minY / interfaceSize.height),
          "width": Self.rounded(frame.width / interfaceSize.width), "height": Self.rounded(frame.height / interfaceSize.height)]
     }
 

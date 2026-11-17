@@ -35,6 +35,17 @@ struct AccessibilityLayoutTests {
         #expect(json == ["frame": ["x": 0, "y": 0, "width": 1, "height": 0.1], "point": ["x": 0.6346, "y": 0.4928]])
     }
 
+    @Test func splitAppsMeasureFromTheirLeftEdge() {
+        let rightHalf = AccessibilityLayout(screenSize: CGSize(width: 669, height: 951), screenshot: PixelSize(width: 1902, height: 1338),
+                                            mapping: ScreenMapping(isRotated: true, orientation: .portrait), appOrigin: 0.5)
+        var button = AccessibilityElement()
+        button.frame = CGRect(x: 0, y: 0, width: 95.1, height: 66.9)
+        #expect(rightHalf.json(button) == ["frame": ["x": 0.5, "y": 0, "width": 0.1, "height": 0.1], "point": ["x": 0.55, "y": 0.05]])
+        #expect(rightHalf.contains(CGPoint(x: 0.55, y: 0.05), in: button))
+        #expect(!rightHalf.contains(CGPoint(x: 0.05, y: 0.05), in: button))
+        #expect(rightHalf.panelPoint(CGPoint(x: 0.75, y: 0.5)) == duoInner.panelPoint(CGPoint(x: 0.75, y: 0.5)))
+    }
+
     @Test func screensMeasureFromTheScreenshotWhenTheScaleIsKnown() {
         let cover = PixelSize(width: 1398, height: 2034)
         #expect(AccessibilityLayout.screenSize(screenshot: cover, scale: 3, appSize: CGSize(width: 385, height: 678))

@@ -5,6 +5,14 @@ enum SplitLayout: String, CaseIterable, Sendable {
     case left, right, full
 
     var isHalf: Bool { self != .full }
+
+    /// The app's left edge as a fraction of the inner screen's width, from which its accessibility frames start.
+    var appOrigin: CGFloat {
+        switch self {
+        case .right: 0.5068
+        case .left, .full: 0
+        }
+    }
 }
 
 /// A drag of the app's home indicator from one layout to another, in fractions of the inner screen in landscape.

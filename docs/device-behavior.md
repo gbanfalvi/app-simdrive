@@ -37,7 +37,7 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
   - Letting go while moving is a flick, and the app springs back. Holding, then lifting about 0.035 of the height before letting go, keeps a half.
   - Returning to the whole screen needs the hold at about y 0.925, a lift to 0.905 and a settle at 0.915; letting go on the lift opens the app switcher, and without the lift the app springs back to its half.
   - Sideways drags along the bottom switch apps, and lifting to about 0.90 opens the app switcher.
-  - A split app's accessibility windows are 0.49 of the screen wide, against 1 for a whole-screen app, but start at x 0 in either half, so accessibility does not say which half. Its elements' frames and hit tests are relative to the half too.
+  - A split app's accessibility windows are 0.49 of the screen wide, against 1 for a whole-screen app, but start at x 0 in either half, so accessibility does not say which half. Its elements' frames start at the half's left edge, 0.5068 of the screen's width for the right half. Hit tests take screen points, and on the other half return the home screen's elements.
 
 ## Apple TV
 
