@@ -49,7 +49,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   3. If they don't, `GuestKeyboard.open` should enable it, through a new `SimulatorDevice` method in `SimDriveNative`, or fail with a new `hardware-keyboard-off` code.
 - **Test:** the matrix's `keys` section, run after turning the setting off.
 
-### - [ ] F5. CoreDevice capabilities stay unavailable after an early boot (M)
+### - [x] F5. CoreDevice capabilities stay unavailable after an early boot (M)
+
+**Result:** `CoreDeviceRemote.open` waits up to 5 s for the record to be listed and connected, then fails with `coredevice-not-ready`, which the next use retries. The bug did not reproduce. `pasteboard` or `posture`, called in a loop from `simctl boot` on iPhone iOS 17.0 and 27.0 and a Duo on iOS 27.1, first answered 12–40 s in, already connected, under both builds. Apple TV still reads `posture-unsupported`. The matrix's `misc,posture` and `tv` pass.
 
 - **Problem:** right after boot, CoreDevice may not list the simulator yet, or may list it before it connects. A record that is not connected lists no features.
   - `CoreDeviceRemote.open` then returns nil (`S:SimDriveNative/CoreDevice/CoreDeviceRemote.swift:64-67`), or `supports()` returns false.

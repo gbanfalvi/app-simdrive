@@ -59,16 +59,33 @@ enum CoreDeviceManager {
 /// A simulator's CoreDevice `RemoteDevice`, which serves its CoreDevice capabilities. One serves a whole session.
 @MainActor
 package final class CoreDeviceRemote {
+    private static let connectionLimit: Duration = .seconds(5)
+    private static let connectionPollInterval: Duration = .milliseconds(250)
+
     let runtime: ABIRuntime
     private let type: NativeSwiftType
     private let object: NativeSwiftValue
     private let supportsFeature: NativeSwiftMethod<(String) -> Bool>
     private var cachedErrorSample: (any Error)?
 
-    /// The CoreDevice record of `device`, or nil when CoreDevice does not list it.
-    package static func open(device: SimulatorDevice) async throws -> CoreDeviceRemote? {
-        guard let identifier = try await CoreDeviceManager.simulatorIdentifier(udid: device.udid) else { return nil }
-        return try await CoreDeviceRemote(identifier: identifier)
+    /// The CoreDevice record of `device` once CoreDevice connects to it; until then its features read as absent.
+    package static func open(device: SimulatorDevice) async throws -> CoreDeviceRemote {
+        let deadline = ContinuousClock.now + connectionLimit
+        var remote: CoreDeviceRemote?
+        while true {
+            if remote == nil, let identifier = try await CoreDeviceManager.simulatorIdentifier(udid: device.udid) {
+                remote = try await CoreDeviceRemote(identifier: identifier)
+            }
+            if let remote, try await remote.isConnected() {
+                return remote
+            }
+            guard ContinuousClock.now < deadline else {
+                throw SimDriveError(.coreDeviceNotReady, remote == nil
+                    ? "CoreDevice does not list \(device.name) yet; retry."
+                    : "CoreDevice has not connected to \(device.name) yet; retry.")
+            }
+            try await Task.sleep(for: connectionPollInterval)
+        }
     }
 
     private init(identifier: UUID) async throws {
@@ -92,6 +109,19 @@ package final class CoreDeviceRemote {
 
     func supports(_ feature: String) throws -> Bool {
         try unsafe supportsFeature.unsafeInvoke(on: object, feature)
+    }
+
+    private func isConnected() async throws -> Bool {
+        let infoType = try await runtime.resolve(.swift(.type("CoreDeviceProtocols.DeviceInfo")))
+        let stateType = try await runtime.resolve(.swift(.type("CoreDeviceProtocols.DeviceState")))
+        let abis = try NativeType.opaqueABIs(for: [stateType])
+        let deviceInfo = try await type.resolve(.swift(.getter("deviceInfo", as: (() -> NativeSwiftValue).self)))
+        let state = try await infoType.resolve(.swift(.getter("state", as: (() -> NativeSwiftValue).self, valueABIs: abis)))
+        let rawValue = try await stateType.resolve(.swift(.getter("rawValue", as: (() -> String).self,
+            valueABIs: abis, receiverABI: abis[stateType])))
+        let connected = try stateType.makeEnumCase(named: "connected")
+        let info = try unsafe deviceInfo.unsafeInvoke(on: object)
+        return try unsafe rawValue.unsafeInvoke(on: state.unsafeInvoke(on: info)) == rawValue.unsafeInvoke(on: connected)
     }
 
     func hardwareModel() async throws -> String? {

@@ -39,6 +39,7 @@ extension ErrorCode {
     static let coreDeviceCapability = ErrorCode(rawValue: "coredevice-capability")
     static let coreDeviceErrorType = ErrorCode(rawValue: "coredevice-error-type")
     static let coreDeviceTimeout = ErrorCode(rawValue: "coredevice-timeout")
+    static let coreDeviceNotReady = ErrorCode(rawValue: "coredevice-not-ready")
     static let hingeObservation = ErrorCode(rawValue: "hinge-observation")
     static let hingeSnapshot = ErrorCode(rawValue: "hinge-snapshot")
     static let hingePayload = ErrorCode(rawValue: "hinge-payload")

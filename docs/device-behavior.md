@@ -10,6 +10,7 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 - `tree` is bimodal: about 290 ms right after a launch or during animation, 25–150 ms otherwise.
 - For about a minute after a simulator's first boot, the accessibility server answers slowly or not at all. A launching app answers with nothing, and any app occasionally does; simdrive retries three times, 0.5 s apart.
 - The guest ignores touches during transitions and batches events while busy, such as right after launch.
+- The first CoreDevice command after `simctl boot`, such as `pasteboard`, blocks for 10–40 s, and CoreDevice is connected by the time it answers (iPhone iOS 17.0 and 27.0, Duo iOS 27.1, Apple TV tvOS 26.2).
 
 ## iPhone and iPad
 
