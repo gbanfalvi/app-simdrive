@@ -104,7 +104,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   3. A shut-down device fails with the existing not-booted error, and the daemon exits.
 - **Test:** for this simulator, start the daemon with `tap`, then `simctl shutdown` and `simctl boot`, then `tap` again. The second `tap` works, and the `doctor` from before the reboot no longer answers.
 
-### - [ ] F9. A slow orientation service fails `screenshot` and `tree` after boot (S)
+### - [x] F9. A slow orientation service fails `screenshot` and `tree` after boot (S)
+
+**Result:** `screenshot`, taps and calibration treat a failed device orientation read as unknown; `orientation` and `doctor` still report it. The interface orientation now comes from the framebuffer (I7), so taps keep mapping right. Not reproduced: on four boots of an Air iOS 27.2 under Xcode 27.2, `screenshot` succeeded 9–12 s after `bootstatus`, cold daemon included; `tree` failed twice with `accessibility-timeout` (F7).
 
 - **Problem:** found testing F3. Right after `bootstatus` returned on an iPhone Air iOS 27.2 under Xcode 27.2, `tree` and `screenshot` failed with `guest-service-timeout` naming `com.apple.coredevice.feature.remote.devicecontrol.orientation`, after 11–36 s. A Duo iOS 27.1 failed `tree` the same way. A screenshot needs the orientation only to record it, and `Screens.deviceOrientation()` (`S:SimDriveCore/Screens/Screens.swift:83-86`) throws instead of falling back. Its callers fall back to portrait only for nil.
 - **Do:** in `Screens`, prefer the interface orientation CoreSimulator reports (`interfaceOrientation(of:)`, same file) and read the guest's only when that is nil. Treat a guest read that fails as nil, so `screenshot` and `tree` degrade to portrait instead of failing. `orientation` itself keeps failing.

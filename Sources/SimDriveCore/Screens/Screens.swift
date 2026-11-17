@@ -39,7 +39,7 @@ final class Screens {
     /// screenshot when there is none for the current orientation; pixels need the caller's own.
     func screen(_ selector: DisplaySelector, usesPixels: Bool) async throws -> Screen {
         let display = try await display(for: selector)
-        let orientation = try await deviceOrientation() ?? .portrait
+        let orientation = await knownDeviceOrientation() ?? .portrait
         var record = store.record(for: DigitizerTarget(display: display))
         if let existing = record, existing.orientation != orientation {
             guard !usesPixels else {
@@ -64,7 +64,7 @@ final class Screens {
 
     func screenshot(to path: String, display selector: DisplaySelector, maxDimension: Int) async throws -> JSONValue {
         let display = try await display(for: selector)
-        let orientation = try await deviceOrientation()
+        let orientation = await knownDeviceOrientation()
         let (shot, _) = try await capture(display, to: path, maxDimension: maxDimension, orientation: orientation ?? .portrait)
         return shot.json(display: display, orientation: orientation)
     }
@@ -82,6 +82,11 @@ final class Screens {
     func deviceOrientation() async throws -> DeviceOrientation? {
         guard let control = try await orientation.value() else { return nil }
         return try await control.read().orientation ?? .portrait
+    }
+
+    /// Nil also when the guest does not answer, as right after boot, so screens degrade to portrait instead of failing.
+    private func knownDeviceOrientation() async -> DeviceOrientation? {
+        try? await deviceOrientation()
     }
 
     /// Captures a screen and records it with the interface orientation.
@@ -129,7 +134,7 @@ final class Screens {
         // The probe doubles as the first calibration; an existing record may be the one pixel coordinates refer to.
         if store.record(for: .mainScreen) == nil {
             let size = try Screenshots.size(of: path)
-            store.save(ScreenshotRecord(full: size, image: size, orientation: try await deviceOrientation() ?? .portrait,
+            store.save(ScreenshotRecord(full: size, image: size, orientation: await knownDeviceOrientation() ?? .portrait,
                                         interfaceOrientation: await interfaceOrientation(of: nil)),
                        for: .mainScreen)
         }

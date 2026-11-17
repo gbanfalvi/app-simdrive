@@ -57,7 +57,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `posture` | `{"angle": degrees, "posture": "closed", "half" or "open"}` |
 | `orientation` | `{"orientation", "physical"}`: the interface's orientation, and the device's own, which may be `faceUp`, `faceDown` or `unknown` |
 | `pasteboard` | Reading: `{"items": [{"types": [UTIs], "text"}]}`. Writing: `{"characters"}` |
-| `screenshot` | `{"path", "width", "height", "fullPath", "fullWidth", "fullHeight", "display", "orientation"}`; `orientation` is null on devices that cannot rotate |
+| `screenshot` | `{"path", "width", "height", "fullPath", "fullWidth", "fullHeight", "display", "orientation"}`; `orientation` is null on devices that cannot rotate, or when the guest does not report it, as right after boot |
 | `tree` | `{"app": {"name", "pid"}, "display", "elements": [element]}`, or `"root"` with `--full`. With a point: `{"app", "display", "point", "element"}`. Elements are described under [Accessibility](#accessibility) |
 | `setting` | Listing: `{"settings": {name: value}}`. Otherwise `{"setting", "value"}`, the value read back after a change |
 | `launch` | `{"bundleID", "pid"}` |
