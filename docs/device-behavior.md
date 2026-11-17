@@ -17,6 +17,7 @@ Observed on Xcode 27.0 and 27.2 with iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad 
 - **Unlocking.** Without a passcode, the same `lock`, `lock`, edge swipe sequence returns to the app.
 - **Going home.** A swipe up from the bottom goes home only with `--edge bottom`; the guest recognizes system gestures only for touches that start on an edge.
 - **Volume.** `volume-up` and `volume-down` show the volume HUD, and DeviceHub's volume changes, but apps' `AVAudioSession.outputVolume` stays put. Check volume presses by screenshot.
+- **Connect Hardware Keyboard.** Turning it off with `SimDevice setHardwareKeyboardEnabled:false keyboardType:error:` does not stop simdrive's keys: its own main keyboard service still types (iPhone, iOS 27.0).
 - **Orientation.** The interface follows the device only when the foreground app supports that orientation, so it can differ from `orientation`'s reading. Face-up and face-down readings keep the last upright orientation for the interface.
 - **Upside down.** No tested device reported an upside-down interface; Face ID iPhones do not support it.
 
