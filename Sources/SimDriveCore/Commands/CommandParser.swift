@@ -54,6 +54,9 @@ enum CommandParser {
                 throw SimDriveError.usage("Unknown posture \"\(value)\"; use closed, half or open")
             }
             return .posture(posture)
+        case "split":
+            let list = try ArgumentList(rest, options: ["from"])
+            return .split(try splitLayout(list.single("a layout")), from: try list.option("from").map(splitLayout))
         case "orientation":
             guard let value = try ArgumentList(rest).optionalSingle() else { return .orientation(nil) }
             guard let orientation = DeviceOrientation(name: value) else {
@@ -216,6 +219,13 @@ enum CommandParser {
         return display
     }
 
+    private static func splitLayout(_ value: String) throws -> SplitLayout {
+        guard let layout = SplitLayout(rawValue: value) else {
+            throw SimDriveError.usage("Unknown layout \"\(value)\"; use left, right or full")
+        }
+        return layout
+    }
+
     private static func edge(_ value: String?) throws -> ScreenEdge? {
         guard let value else { return nil }
         guard let edge = ScreenEdge(rawValue: value) else {
@@ -248,6 +258,7 @@ enum CommandParser {
                  home|lock|volume-up|volume-down|siri; Apple TV Remote: menu|select|play-pause|up|down|left|right|
                  channel-up|channel-down, with home as the TV button
           posture [closed|half|open]          reads the hinge angle without an argument
+          split left|right|full [--from left|right|full]   moves an iPhone Duo inner screen's app to a half or the whole
           orientation [portrait|landscape-left|landscape-right|upside-down]
           pasteboard [text]                   reads the device's pasteboard, or replaces it with text
           screenshot <path.png> [--display D] [--max-dim N]   default 1024; 0 keeps full resolution

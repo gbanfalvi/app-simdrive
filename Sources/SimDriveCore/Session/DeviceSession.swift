@@ -15,6 +15,7 @@ final class DeviceSession {
     private let inputs: DeviceInputs
     private let screens: Screens
     private let accessibility: DeviceAccessibility
+    private let splitView: SplitView
     private let settings: DeviceSettings
     private let logs: DeviceLogs
     private let orientation: LazyCapability<GuestOrientation>
@@ -37,6 +38,7 @@ final class DeviceSession {
         inputs = DeviceInputs(guest: guest)
         screens = Screens(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
         accessibility = DeviceAccessibility(device: device, screens: screens)
+        splitView = SplitView(screens: screens, inputs: inputs, accessibility: accessibility)
         settings = DeviceSettings(udid: udid, device: device, tools: tools)
         logs = DeviceLogs(udid: udid, tools: tools)
     }
@@ -67,6 +69,8 @@ final class DeviceSession {
             return try await setPosture(posture)
         case .posture(nil):
             return try await readPosture()
+        case .split(let layout, let current):
+            return try await splitView.move(to: layout, from: current)
         case .orientation(let orientation?):
             return try await connectedOrientation().set(orientation).json
         case .orientation(nil):

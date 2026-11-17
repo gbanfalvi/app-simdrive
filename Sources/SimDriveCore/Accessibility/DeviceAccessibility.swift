@@ -5,6 +5,8 @@ import SimDriveNative
 @MainActor
 final class DeviceAccessibility {
     private static let frontmostPollInterval: Duration = .milliseconds(100)
+    /// A split app's window is about 0.49 of the screen wide, and a full one 1.
+    private static let halfWidthLimit = 0.75
 
     private let device: SimulatorDevice
     private let screens: Screens
@@ -51,6 +53,13 @@ final class DeviceAccessibility {
         }
         return ["app": snapshot.application.json, "display": JSONValue(screen.display?.index), "point": screen.json(point),
                 "element": element]
+    }
+
+    /// Whether the frontmost app's windows fill one half of a split screen.
+    func fillsHalf() async throws -> Bool {
+        let (application, frames) = try await connected().windows()
+        guard let widest = frames.map(\.width).max(), application.screenSize.width > 0 else { return false }
+        return widest / application.screenSize.width < Self.halfWidthLimit
     }
 
     /// Whether the app of `pid` comes to the front within `limit`; true when accessibility cannot tell.

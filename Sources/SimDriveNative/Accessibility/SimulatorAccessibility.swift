@@ -97,6 +97,15 @@ package final class SimulatorAccessibility: @unchecked Sendable {
         try await perform { try self.frontmost().application }
     }
 
+    /// The frontmost app with its windows' frames, in points from the app's own origin, which a split app keeps.
+    package func windows() async throws -> (application: AccessibilityApplication, frames: [CGRect]) {
+        try await perform {
+            let (application, root) = try self.frontmost()
+            let windows = (root as? NSAccessibilityElement)?.accessibilityChildren() ?? []
+            return (application, windows.compactMap { ($0 as? NSAccessibilityElement)?.accessibilityFrame() })
+        }
+    }
+
     /// The frontmost app's whole hierarchy.
     package func snapshot(detail: TreeDetail) async throws -> AccessibilitySnapshot {
         try await perform {

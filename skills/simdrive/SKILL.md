@@ -1,6 +1,6 @@
 ---
 name: simdrive
-description: Drives a booted iOS or tvOS simulator headlessly with the simdrive CLI, sending hardware keys, typing, taps, swipes and edge gestures, Home/lock/volume and Apple TV Remote buttons, rotation, pasteboard reads and writes, and a foldable's (iPhone Duo) open, half-open or closed hinge, taking screenshots, reading the frontmost app's accessibility tree (labels, traits, VoiceOver elements, frames), reading the app's logs, stdout, stderr and crash reports or waiting for a log entry, and changing dark mode, text size, Liquid Glass tint and accessibility settings such as Reduce Motion or Bold Text. Use when an agent must interact with an app running in a simulator or Apple TV simulator, reproduce a UI bug, check what an action logged or why an app crashed, test keyboard navigation, Full Keyboard Access, tvOS focus, VoiceOver labels or Dynamic Type, or fold and unfold a Duo simulator.
+description: Drives a booted iOS or tvOS simulator headlessly with the simdrive CLI, sending hardware keys, typing, taps, swipes and edge gestures, Home/lock/volume and Apple TV Remote buttons, rotation, pasteboard reads and writes, and a foldable's (iPhone Duo) open, half-open or closed hinge and split view, taking screenshots, reading the frontmost app's accessibility tree (labels, traits, VoiceOver elements, frames), reading the app's logs, stdout, stderr and crash reports or waiting for a log entry, and changing dark mode, text size, Liquid Glass tint and accessibility settings such as Reduce Motion or Bold Text. Use when an agent must interact with an app running in a simulator or Apple TV simulator, reproduce a UI bug, check what an action logged or why an app crashed, test keyboard navigation, Full Keyboard Access, tvOS focus, VoiceOver labels or Dynamic Type, or fold and unfold a Duo simulator.
 ---
 
 # simdrive
@@ -36,6 +36,7 @@ $S <udid> orientation landscape-left   # no argument reads it
 $S <udid> pasteboard                   # items with their types and text
 $S <udid> pasteboard "Grüße 東京"       # then: key v --mods cmd
 $S <udid> posture closed               # closed | half | open; no argument reads the hinge angle
+$S <udid> split right                  # Duo inner screen, landscape: the app to the left | right half, or full; --from left if a person moved it
 $S <udid> screenshot /tmp/s.png --max-dim 1024 --display inner
 $S <udid> tree                         # frontmost app's VoiceOver elements, flat, with tap points
 $S <udid> tree --full                  # every node and field, nested: frames, hints, classes, custom content…
@@ -64,7 +65,7 @@ echo '["tap 0.5 0.3", "logs --until loaded", "screenshot /tmp/b.png"]' | $S <udi
 - Settings apply to the whole simulator and persist. Note each value before changing it (`setting <name>`), and set it back when done.
 - Logs: launch the app with `launch` so `logs` knows its scope and captures `print` output; otherwise pass a scope or get `no-log-scope`. Prefer `run --logs` and `logs --until` to polling. `--until` sees entries since the cursor, so it does not miss one logged before it starts; add `--since 0s` to wait only for new ones. Inside `run`, it starts at the previous step's start, and later steps wait for it; a separate `logs --until` call, run in the background, waits while other calls drive the device. App scopes leave out system libraries' entries below error level; `--system` keeps them. `<private>` marks values the app did not log as public. A crash report arrives up to a minute after the crash, and a repeat of the same crash brings none; a `fatalError` message appears on stderr.
 - The first call per device starts a daemon (2–8 s); later calls are fast. Until 30 s after the last input, the guest drops a person's clicks in DeviceHub or Simulator.app; `simdrive <udid> stop` releases the input services at once.
-- Errors carry a `code`, such as `no-screenshot`, `stale-screenshot`, `unsupported-character`, `no-touchscreen`, `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `no-element`, `accessibility-timeout`, `setting-unsupported`, `launch-not-frontmost`, `no-log-scope`, `app-not-installed`, `log-timeout`, `log-read`, `ambiguous-device` or `step-failed`. Fix the cause the message names, then retry.
+- Errors carry a `code`, such as `no-screenshot`, `stale-screenshot`, `unsupported-character`, `no-touchscreen`, `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `split-unsupported`, `split-side-unknown`, `split-dropped`, `no-element`, `accessibility-timeout`, `setting-unsupported`, `launch-not-frontmost`, `no-log-scope`, `app-not-installed`, `log-timeout`, `log-read`, `ambiguous-device` or `step-failed`. Fix the cause the message names, then retry.
 
 ## Missing capabilities
 

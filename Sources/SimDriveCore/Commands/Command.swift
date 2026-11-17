@@ -32,6 +32,8 @@ enum Command: Equatable, Sendable {
     case button(HardwareButton, count: Int, hold: Duration)
     /// Sets the posture, or reads the hinge without one.
     case posture(DevicePosture?)
+    /// Moves the inner screen's app to a layout; `from` overrides the one simdrive last set.
+    case split(SplitLayout, from: SplitLayout?)
     /// Sets the orientation, or reads it without one.
     case orientation(DeviceOrientation?)
     /// Replaces the pasteboard with text, or reads it without any.

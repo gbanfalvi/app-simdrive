@@ -41,6 +41,14 @@ struct CommandParserTests {
         #expect(throws: SimDriveError.self) { try CommandParser.parse(["swipe", "0.5", "0.99", "0.5", "0.95", "0.9"]) }
     }
 
+    @Test func splitTakesALayoutAndOptionallyTheCurrentOne() throws {
+        #expect(try CommandParser.parse(["split", "right"]) == .split(.right, from: nil))
+        #expect(try CommandParser.parse(["split", "full", "--from", "left"]) == .split(.full, from: .left))
+        #expect(throws: SimDriveError.self) { try CommandParser.parse(["split"]) }
+        #expect(throws: SimDriveError.self) { try CommandParser.parse(["split", "top"]) }
+        #expect(throws: SimDriveError.self) { try CommandParser.parse(["split", "full", "--from", "middle"]) }
+    }
+
     @Test func postureAndOrientationReadWithoutAnArgument() throws {
         #expect(try CommandParser.parse(["posture"]) == .posture(nil))
         #expect(try CommandParser.parse(["posture", "half"]) == .posture(.partiallyOpen))

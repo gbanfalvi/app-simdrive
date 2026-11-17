@@ -28,6 +28,7 @@ simdrive <udid|booted> <command>
 | `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top\|bottom\|left\|right] [--display D]` | Drag through the points, each segment taking equal time, so a repeated point holds; `--edge` starts a system edge gesture |
 | `button <name> [--repeat N] [--hold ms]` | Hardware or Apple TV Remote button, held 100 ms by default |
 | `posture [closed\|half\|open]` | Sets or reads a foldable's hinge; returns once the hinge settles |
+| `split left\|right\|full [--from left\|right\|full]` | Moves the iPhone Duo inner screen's app to a half or the whole screen; see [Foldables](#foldables) |
 | `orientation [portrait\|landscape-left\|landscape-right\|upside-down]` | Sets or reads the device orientation |
 | `pasteboard [text]` | Reads the device's pasteboard items (types and text), or replaces it with text |
 | `screenshot <path.png> [--display D] [--max-dim N]` | Captures a screen, downscaled to 1024 px by default; the original is kept as `<path>.full.png`. The Dynamic Island shows as a black pill |
@@ -55,6 +56,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}`, with `"via": [{"x", "y"}]` for more points |
 | `button` | `{"button", "count"}` |
 | `posture` | `{"angle": degrees, "posture": "closed", "half" or "open"}` |
+| `split` | `{"display", "from", "layout"}` |
 | `orientation` | `{"orientation", "physical"}`: the interface's orientation, and the device's own, which may be `faceUp`, `faceDown` or `unknown` |
 | `pasteboard` | Reading: `{"items": [{"types": [UTIs], "text"}]}`. Writing: `{"characters"}` |
 | `screenshot` | `{"path", "width", "height", "fullPath", "fullWidth", "fullHeight", "display", "orientation"}`; `orientation` is null on devices that cannot rotate, or when the guest does not report it, as right after boot |
@@ -88,6 +90,8 @@ Remote buttons and the keyboard (`key down`, `key return`, typing into a focused
 ### Foldables
 
 On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands default to the cover panel when closed and the inner panel otherwise.
+
+`split` drags the frontmost app's home indicator, as a person would, to move the app into the left or right half of the Duo's unfolded inner screen in landscape, or back to the whole screen, and waits for the resize. Accessibility tells a half from the whole screen but not which half, so simdrive remembers the half it last set; after a person moves the app, pass `--from`, or get `split-side-unknown`. It fails with `split-unsupported` elsewhere, and `split-dropped` when the app did not resize.
 
 ### Accessibility
 
