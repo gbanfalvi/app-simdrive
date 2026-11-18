@@ -159,7 +159,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** build the probe with Xcode 27.0; in each half, tap two points and fit its logged window fractions to the origin, as was done for 27.2. Derive the origin per build if they differ.
 - **Test:** the matrix's `tree` and `tap` sections, with the probe split left and right, under both builds.
 
-### - [ ] F14. The first `screenshot` after a boot takes 10–14 s on the Duo (S)
+### - [x] F14. The first `screenshot` after a boot takes 10–14 s on the Duo (S)
+
+**Result:** the guest's orientation read took 2.7–7.6 s of it; listing the displays and reading the hinge took under 1 s each. A screenshot now waits at most 1 s for the orientation, recording null past that, and the read goes on for later commands. Right after `bootstatus` on a Duo iOS 27.2, the first `screenshot --no-daemon` takes 3.5–4.6 s and through a new daemon 4.8–11.5 s, from 7–10.5 s and 10–14 s. The matrix's `basics` and `posture` pass on the Duo, `basics` and `orientation` on an iPhone.
 
 - **Problem:** found testing F7. On a Duo iOS 27.2, `screenshot` right after `bootstatus` took 10.3–14.2 s, against under 1 s warm. Screenshots read the framebuffer in process, and read the device orientation only to record it (F9).
 - **Do:** time the framebuffer read, the display listing and the orientation read separately right after boot; skip or bound whichever waits on the guest.

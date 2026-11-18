@@ -9,6 +9,8 @@ final class Screens {
     private static let fullResolution = 0
     /// The screen ID CoreSimulator gives a single-display device's screen.
     private static let mainScreenID = 1
+    /// Bounds the orientation a screenshot records, which the guest takes seconds to report after boot.
+    private static let screenshotOrientationLimit: Duration = .seconds(1)
 
     private let udid: String
     private let device: SimulatorDevice
@@ -66,7 +68,7 @@ final class Screens {
 
     func screenshot(to path: String, display selector: DisplaySelector, maxDimension: Int) async throws -> JSONValue {
         let display = try await display(for: selector)
-        let orientation = await knownDeviceOrientation()
+        let orientation = await knownDeviceOrientation(within: Self.screenshotOrientationLimit)
         let (shot, _) = try await capture(display, to: path, maxDimension: maxDimension, orientation: orientation ?? .portrait)
         return shot.json(display: display, orientation: orientation)
     }
@@ -89,6 +91,23 @@ final class Screens {
     /// Nil also when the guest does not answer, as right after boot, so screens degrade to portrait instead of failing.
     private func knownDeviceOrientation() async -> DeviceOrientation? {
         try? await deviceOrientation()
+    }
+
+    /// As `knownDeviceOrientation()`, but nil past `limit`; the read goes on, so later commands get it sooner.
+    private func knownDeviceOrientation(within limit: Duration) async -> DeviceOrientation? {
+        let (first, continuation) = AsyncStream<DeviceOrientation?>.makeStream()
+        Task {
+            continuation.yield(await knownDeviceOrientation())
+            continuation.finish()
+        }
+        Task {
+            try? await Task.sleep(for: limit)
+            continuation.finish()
+        }
+        for await orientation in first {
+            return orientation
+        }
+        return nil
     }
 
     /// Captures a screen and records it with the interface orientation.
