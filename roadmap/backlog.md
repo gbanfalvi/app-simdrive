@@ -1,6 +1,6 @@
 # Backlog
 
-Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator) at `d467c60` (2026-11-17), 50 commits past the `1dfc4af` that simdrive's guest input was ported from. Ordered by kind (fixes, then improvements to existing commands, then new features), and within each kind by cost.
+Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator) at `d467c60` (2026-11-17), 50 commits past the `1dfc4af` that simdrive's guest input was ported from, then [AXe](https://github.com/cameroncooke/AXe), [idb](https://github.com/meta/idb) and [agent-device](https://github.com/callstack/agent-device) (2026-11-18). Ordered by kind (fixes, then improvements to existing commands, then new features), and within each kind by cost.
 
 ## Conventions
 
@@ -10,6 +10,8 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   ```sh
   git clone https://github.com/lynnswap/NeoSimulator /tmp/NeoSimulator && git -C /tmp/NeoSimulator checkout d467c60
   ```
+
+  `A:` is AXe at `cb30a64`, `I:` idb at `5f5a5fb`, `D:` agent-device at `655ede2` and `M:` [MobileBuildMCP](https://github.com/getsentry/MobileBuildMCP) at `2998ac7`, each from the repository root.
 
 - **Every item** follows [AGENTS.md](../AGENTS.md): "Adding a capability" for structure, the README and skill for docs, and [docs/](../docs) for what was learned. Verify on simulators you created with `swift build -c release`, then `Evaluation/matrix.py <udid>`. Measure speed claims with `--timing --label <name>` before and after (`SIMDRIVE=<path>` runs another build).
 - **Unverified** marks a claim taken from NeoSimulator's code or CoreSimulator's strings that nobody has run in simdrive.
@@ -174,6 +176,8 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - The launch itself succeeded in the guest log (`Launch successful for 'com.simdrive.axprobe', pid: 68904`), and the probe loaded its accessibility settings.
   - Info-level accessibility entries (`AXRuntimeNotifications`, `AXLoading`) are missing from the stored guest log in healthy periods too, so their absence during the failure proves nothing. Stream the log live instead.
   - F7's slow start is a different symptom: there the server answered with no app, here it does not answer.
+  - **Likely cause:** AXe documents the same state on iOS 27.2: "an accessibility read made in the first seconds after boot, before the guest publishes its displays, left every later read on that simulator returning 'No translation object' until it was rebooted" (`A:Sources/AXe/Utilities/AccessibilityFetcher.swift:136-169`). simdrive's session sends such a read in the background as it opens (`DeviceAccessibility.prepare`, from F7), and both occurrences followed a command run right after `bootstatus`: the F8 reboots, and at 22:55 a `posture` seconds after boot, whose session sent that read; every read after it failed, from a new daemon 12 minutes later too.
+- **Do first:** before a session's first accessibility request, wait until the device's displays can be read, as AXe does: poll every 250 ms for up to 60 s, and past that fail with a code that says the simulator is still starting. Then reproduce: a `doctor` within a second of `bootstatus` returning, on several boots, should no longer leave reads stuck.
 - **Research next time it happens, before rebooting:**
   1. `sample` the guest's `CoreSimulatorBridge`, `SpringBoard` and `AccessibilityUIServer` during a `tree`: they run as Mac processes. Find their pids in the guest log (`Process[pid:…]`) or with `lsof -p <pid> | rg <udid>`. Look for the thread that handles the accessibility request and what it waits on.
   2. Stream `simctl spawn <udid> log stream --level debug --predicate 'process == "CoreSimulatorBridge" OR subsystem == "com.apple.Accessibility"'` during a `tree`, and compare it with a healthy one.
@@ -291,6 +295,7 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - NeoSimulator sets the request's client type to 2, which on iOS 27.2 also returns covered elements; types 0 and 1 return only what is on screen (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:446-449,471`).
   - Request type 1, with `["pid": Int32]`, reads any process (`N:NeoSimulatorDeviceIO/Simulator/SimulatorAccessibility.swift:94-101,161-167`).
   - simdrive's requests go through `AccessibilityBridge.requestSender` (`S:SimDriveNative/Accessibility/SimulatorAccessibility.swift`, around 205-215), where `request.setValue(2, forKey: "clientType")` would go.
+  - idb finds content drawn by other processes, such as web views and pickers, by hit-testing a grid of points over the frontmost app (`I:FBSimulatorAX/Translation/AXTranslationRequest.swift:254-307`); N31's helper would see it directly.
 - **Do:**
   1. Add `tree --covered`, which sets client type 2. Covered elements get `covered: true` when their frame is under an alert; compare against the frontmost read.
   2. Add `tree --app <bundle-id>`, which reads that app's process through the pid from `simctl spawn launchctl list` or the log store.
@@ -325,6 +330,52 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   3. Add a row kind to `SettingCatalog` for action-backed settings.
 - **Test:** the matrix's `settings` section on iOS 17, 18, 26 and 27, where the probe app logs each change. Document the actions in `docs/private-apis.md`.
 - **Unlocks:** N20.
+
+### - [ ] I11. Confirm input delivery with a guest barrier, instead of a fixed drain (S)
+
+- **Problem:** `GuestConnection.flush` waits on `xpc_connection_send_barrier`, which proves only that messages left the Mac's side (`S:SimDriveNative/Guest/SimulatorGuest.swift`, `flush`). Closing a connection then waits a fixed `GuestInputTiming.drain` of 1000 ms, since the guest drops messages it has not activated. A guest whose input daemon is not behind the connection drops everything silently.
+- **Read:**
+  - AXe sends an `isBarrier` request after each message and waits for the guest's reply (`A:Packages/IDBKit/FBSimulatorControl/HID/FBSimulatorDTUHIDTransport.swift:253-274,310-327`).
+  - idb round-trips a barrier carrying key usage 0 when it opens a connection, as a liveness probe: 5 tries with a 4 s timeout, since a lookup can succeed while `dtuhidd` drops everything (`I:FBSimulatorControl/HID/SimulatorDTUHIDConnection.swift:168-242`). It drains 80 ms once per gesture, not per event (`I:FBSimulatorControl/HID/SimulatorHID.swift:88-140`).
+- **Do:** add the barrier request to `GuestMessageCodec`; send it after each input and on open; drop the fixed drain where the barrier answers.
+- **Test:** the cold-tap and cold-Home stress loops from I2 on an iPhone and a Duo, the full matrix, and `--timing` for `stop` and the 30 s release.
+
+### - [ ] I12. Read the Duo's tree from the active panel (S, unverified)
+
+- **Problem:** `SimulatorAccessibility` asks for the frontmost app on display 0 (`frontmostDisplayID`). AXe found that on a Duo this duplicates Home-screen controls, and reads the tree on the measured active panel's display ID (`A:Sources/AXe/Utilities/AccessibilityFetcher.swift:74-83,203-222`).
+- **Do:** pass the display `Screens` resolves for the command. **Test:** `tree` on the Home screen of a closed and an open Duo, against the screenshot; the matrix's posture section.
+
+### - [ ] I13. Type in the runtime's keyboard layout (S, unverified)
+
+- **Problem:** `type` maps characters through a US layout, failing others with `unsupported-character`. AXe types through the runtime's own hardware keyboard layout, with `type --layout` to choose one (`A:README.md:110`).
+- **Do:** read how AXe resolves the layout, and map characters through it in `KeyMap`. Overlaps N12 (`keyboard-language`) and N15 (`set-value`, which avoids keys entirely).
+
+### - [ ] I14. JSON schemas for results, and next-step hints in errors (S)
+
+- **Read:** AXe publishes JSON Schema 2020-12 for its result envelope and each command's payload, and its errors carry `nextSteps` (`A:schemas/`, `A:README.md:48-78`). agent-device's errors carry hints and whether the action was dispatched (`D:website/docs/docs/commands.md:482`).
+- **Do:** generate schemas from `CommandResults` into `schemas/`, test results against them, and add a `hint` to errors where the next step is known. Pairs with I9's retry verdicts and N26's `outputSchema`.
+
+### - [ ] I15. Unchanged and changed trees, for fewer tokens (M)
+
+- **Problem:** agents re-read the whole tree after each action, though most actions change a few elements.
+- **Read:**
+  - AXe returns a screen hash, and `describe-ui --since-screen-hash` answers "unchanged" (`A:README.md:48-78`).
+  - MobileBuildMCP's snapshot rows are `ref|action|role|label|value|id`, with a hash and a 60 s lifetime (`M:src/mcp/tools/ui-automation/snapshot_ui.ts:36-107`).
+  - agent-device's `--settle` returns a +/−/= diff with fresh references after an action (`D:README.md:55-75`).
+- **Do:** add `hash` to `tree` results and `tree --since <hash>`, answering `{"unchanged": true}`; then `--diff` against the last tree the daemon returned. **Test:** unit tests for the hash and diff; time `tree` with and without.
+
+### - [ ] I16. Start the accessibility server in under a second on iOS 27 (M, unverified)
+
+- **Problem:** the first `tree` after boot takes 14–18 s (F7).
+- **Read:** on iOS 27, when a direct read fails or returns an empty tree, AXe opens an automation session through XCTest's daemon: `XCUIDeviceRemoteDaemonConnectionProvider connectionProviderForSimDevice:`, `XCUIDeviceRemoteAutomationSession requestSessionWithDaemonConnectionProvider:`, `enableAutomationModeWithError:` and `loadAccessibilityWithTimeout:reply:`, then invalidates it. It takes 0.15–0.45 s, within a 5 s limit (`A:Packages/IDBKit/FBSimulatorControl/Utility/FBSimulatorControlFrameworkLoader.m:221-433`, `A:Sources/AXe/Utilities/AccessibilityFetcher.swift:171-189`).
+- **Do:** after F15's display wait, add the bootstrap as a driver in `SimDriveNative/Accessibility/`, loading `XCTDaemonControl` and `XCUIAutomation` from the selected Xcode. **Test:** the first `tree` after `bootstatus` on several boots of an iPhone and a Duo, against F7's numbers.
+
+### - [ ] I17. Recover a stuck accessibility server without rebooting (M, needs F15's research)
+
+- **Read:**
+  - On "channel disconnected" AXe runs `simctl spawn <udid> launchctl kickstart -k user/foreground/com.apple.testmanagerd` and retries once; when SpringBoard died (zero frame, dead pid) it restarts `com.apple.CoreSimulator.bridge` (`A:Sources/AXe/Utilities/AccessibilityFetcher.swift:281-356`, `A:Packages/IDBKit/FBSimulatorControl/Commands/FBSimulatorAccessibilityCommands.swift:214-273`).
+  - idb reports `springBoardRestarting` for 30 s after a restart, and reconnects its own accessibility connection when CoreSimulatorBridge restarts (`I:FBSimulatorAX/Commands/SimulatorAccessibilityCommands.swift:222-293`, `I:FBSimulatorAX/Translation/AXTranslationTransport.swift:72-198`).
+- **Do:** once F15 shows which restart clears the stuck state, run it after repeated unanswered reads, once per session, and say so in the result.
 
 ## 3. New features
 
@@ -399,6 +450,7 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
   - Add commands `pinch <x> <y> <scale> [--duration ms]` and `rotate <x> <y> <degrees>`, which compute both fingers around a center.
   - Both fingers start and end together.
 - **Test:** the probe adds a `UIPinchGestureRecognizer` and a `UIRotationGestureRecognizer` that log `PINCH scale=` and `ROTATE angle=`; add matrix checks.
+- **Also in:** AXe's `gesture pinch|rotate`, two-finger tap and swipe, and idb's `pinch`, over the same digitizer service.
 
 ### - [ ] N10. `location set <lat> <lon>|run <scenario>|clear|list` (S)
 
@@ -590,10 +642,63 @@ NeoSimulator has none of these; `simctl` covers them.
 - **Why:** an agent can sign in to test accounts kept in the Mac keychain or an environment variable, without the password entering its context.
 - **Do:** after N15 and N16, `fill-login --keychain <service>` or `--env USER_VAR,PASS_VAR`.
 
+### - [ ] N26. `simdrive mcp`: an MCP server over stdio (M)
+
+- **Why:** agents that speak MCP but not shell get simdrive without a skill, and clients can load a few tools up front and search the rest. Neither agent-device nor MobileBuildMCP uses a Swift SDK; agent-device hand-rolls stdio JSON-RPC in a few hundred lines.
+- **Read:**
+  - agent-device: newline-delimited JSON-RPC on stdio; one tool per command, generated from its command registry, named as the CLI names them, flags as properties; `readOnlyHint`/`destructiveHint`; calls run one at a time, `ping` and `tools/list` never wait behind them, and `notifications/cancelled` aborts a call (`D:src/mcp/server.ts:24-128`, `D:src/mcp/router.ts:109-146`, `D:src/mcp/command-tools.ts:143-236`).
+  - Small context: a 2 KB `instructions` card, an MCP-only `help` tool serving the CLI's help topics, `_meta["anthropic/alwaysLoad"]` on the loop tools only (open, snapshot, press, fill, scroll, back, wait) and `anthropic/searchHint` on the rest (`D:src/mcp/server-guide.ts:13-90`).
+  - Device and configuration come from the environment, never from tool arguments (`D:src/mcp/tool-control-fields.ts`).
+  - MobileBuildMCP returns screenshots as base64 JPEG image blocks, 800 px at quality 75, and file paths from its CLI; session defaults remove `simulatorId` from every schema (`M:src/mcp/tools/ui-automation/screenshot.ts:233-341`, `M:src/utils/typed-tool-factory.ts:154-159`).
+- **Do:**
+  1. `simdrive [<udid>] mcp` serves `initialize`, `tools/list`, `tools/call`, `ping` and cancellation on stdio, sending each call through the device's daemon as the CLI does.
+  2. Generate tools from `Command` and the usage text, with a JSON Schema per command; mark reads read-only and settings, launch and pasteboard writes destructive. The pasteboard write stays behind an explicit argument, per AGENTS.md.
+  3. Always load `tree`, `tap`, `type`, `key`, `swipe`, `screenshot` and `launch`; serve SKILL.md's sections from a `help` tool and its gist as `instructions`.
+  4. `screenshot` returns an image block, downscaled, with the path; other results return their JSON as text and `structuredContent` (I14's schemas as `outputSchema`).
+  5. The device comes from the argument or `SIMDRIVE_UDID`, or the only booted simulator.
+- **Test:** unit tests for the JSON-RPC framing and the tool schemas; a scripted session against a booted simulator; add the server to Cursor's and Claude Code's MCP configuration and drive the probe. Document the setup in the README and skill.
+
+### - [ ] N27. Target elements by label or identifier: `tap --label|--id`, `wait`, `scroll --until` (M)
+
+- **Why:** agents read the tree, then copy a point into `tap`; one call that resolves the element, and waits for it, removes a round trip and a race. Complements N15, which acts through accessibility instead of touches.
+- **Read:**
+  - AXe: `tap --id|--label|--value` with `--element-type`, `--wait-timeout` and `--poll-interval`; `gesture scroll-* --until-id|--until-label --max-swipes` and `--inside-id` (`A:README.md`).
+  - agent-device: selectors (`id=`, `label=`, `role=`) and refs (`@e12`) for every action; `wait text|@ref|selector|absent`; `scroll --until`, with typed failure reasons (`D:website/docs/docs/commands.md:442-470,580`).
+  - MobileBuildMCP taps a ref by identifier, then label, then value when that is unique, else at its activation point (`M:src/mcp/tools/ui-automation/shared/semantic-tap.ts:67-130`).
+- **Do:** resolve the element from a light tree in `DeviceAccessibility` and tap its point; `wait --label|--id [--absent] [--timeout ms]`; `swipe --until-label|--until-id --max-swipes n`. Ambiguous matches fail with a new code listing the candidates.
+- **Test:** parser tests; matrix checks on the probe's labelled buttons and its scrolling list.
+
+### - [ ] N28. `record start|stop`: video from the framebuffer (M)
+
+- **Read:** idb wraps the framebuffer IOSurface in a `CVPixelBuffer` and encodes H.264 or HEVC with VideoToolbox, pushing a frame only when the simulator renders one (`I:FBSimulatorVideo/README.md`). AXe encodes a screenshot per frame with `AVAssetWriter` (`A:Sources/AXe/Commands/RecordVideo.swift:153-200`). agent-device uses `simctl io recordVideo` and can overlay touches (`D:packages/platform-apple/src/recording/runtime.ts:39`).
+- **Do:** start with `simctl io recordVideo` stopped by SIGINT, as Not planned describes; move to the framebuffer surfaces simdrive already reads (I7) if `simctl` is slow to start or misses the Duo's panels. The daemon owns the recording, so it survives between calls.
+- **Test:** record a matrix tap sequence on an iPhone and a Duo; check duration and frames with `ffprobe`.
+
+### - [ ] N29. `alert`: read, accept and dismiss system alerts (M, needs I8)
+
+- **Read:** agent-device's `alert get|wait|accept|dismiss` ranks localized button labels (`D:website/docs/docs/commands.md:473-484`). idb detects modals from `SBAlertItemWindow` and `_UIAlertController*` windows (`I:SimulatorFrameworkBridge/Swift/AccessibilityService.swift:162-165,785-820`).
+- **Do:** after I8 reads SpringBoard, find an alert's buttons in its tree and tap them by label; `alert` returns the title, message and buttons, or null.
+- **Test:** the probe requests a permission at launch; accept and deny it in the matrix.
+
+### - [ ] N30. Install simdrive with Homebrew, and the skill with `simdrive init` (M)
+
+- **Read:** AXe ships `brew install cameroncooke/axe/axe`; the formula ad-hoc signs the binary and frameworks after install, and CI signs and notarizes releases (`A:scripts/generate-homebrew-formula.sh:62-91`, `A:.github/workflows/release-shared.yml:151-269`). The skill is embedded in the binary, and `axe init` installs it; Claude and Codex plugin manifests sit in `A:agent-plugin/`.
+- **Do:** a tap with a formula building from source with Xcode 27; `simdrive init [cursor|claude|<dir>]` writing the skill with this binary's path in place of `<simdrive>`, replacing the manual steps in AGENTS.md.
+
+### - [ ] N31. An in-guest accessibility helper (L, unverified)
+
+- **Why:** reading through `AXPTranslator` costs a round trip per element, sees only the frontmost app, and depends on the guest's accessibility server (F7, F15).
+- **Read:**
+  - idb's `axbridge` backend runs a helper inside the guest, reached over a Unix socket. It returns the whole tree in one round trip, sees content drawn by other processes, asserts automation mode, and reports modals (`I:FBSimulatorAX/README.md:15-100`, `I:SimulatorFrameworkBridge/`).
+  - agent-device compiles a helper with `xcrun --sdk iphonesimulator clang`, starts it with `simctl spawn <udid> … serve <socket>`, and snapshots through `XCTAccessibilityFramework`'s `userTestingSnapshotForElement:`: warm snapshots take 8.6–118 ms (`D:apple/snapshot-bridge/README.md:10-24`, `D:docs/evidence/ios-snapshot-adr-0004-measurements-2026-11-06.md:25-27`).
+- **Do:** prototype the helper as a separate target built for the simulator SDK, spawned by the session; compare speed, coverage and failure modes with the translator before switching `tree` to it.
+
 ## Not planned
 
 - **Scroll wheel and trackpad gestures:** the guest drops them unless they come from a real Mac HID device (`N:NeoSimulatorPresentationAdapters/Native/CoreDeviceScreenInput.swift:318-319,388`). Drags already scroll.
 - **NeoSimulator's control-socket CLI (#619):** it offers only `logins` and `sign-in`, and needs the NeoSimulator app running. N25 covers its use.
 - **Screen connection, USB capture, virtual-machine client and device reports:** these serve physical devices (`N:NeoSimulatorDeviceIO/CoreDevice/CoreDeviceScreenConnection.swift`, `RemoteScreenCaptureSource.swift`, `CoreDeviceVirtualMachineClient.swift`, `N:NeoSimulatorKit/Devices/DeviceReports.swift`). `logs` already reads simulator crash reports.
-- **Video recording through CoreDevice:** `simctl io recordVideo` covers simulators. A `record start|stop` command over `simctl` (stopped with SIGINT, waiting for "Recording started", as `N:NeoSimulatorKit/Simulator/Capture/VideoRecording.swift:56-96` does) is cheap, if agents ask for it.
+- **Video recording through CoreDevice:** `simctl io recordVideo` covers simulators. N28 plans `record start|stop` over `simctl` (stopped with SIGINT, waiting for "Recording started", as `N:NeoSimulatorKit/Simulator/Capture/VideoRecording.swift:56-96` does).
+- **An XCTest runner inside the simulator, as agent-device uses:** each touch costs 0.7–3.7 s, and a cold start may build the runner with `xcodebuild` (`D:apple/runner/RUNNER_PROTOCOL.md`, `D:docs/evidence/ios-other-paths-latency-2026-10-19.md`). simdrive's guest services answer in milliseconds.
+- **An LLM agent loop, React Native tooling, device clouds and physical devices** (AXe's `agent`, agent-device's `react-devtools` and remote sessions): outside simdrive's job of driving simulators for an agent that already exists.
 - **External displays, CarPlay and audio routing:** costly, and of little use to agents.
