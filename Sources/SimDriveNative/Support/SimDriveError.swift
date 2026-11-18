@@ -46,7 +46,8 @@ extension ErrorCode {
     static let accessibilityTimeout = ErrorCode(rawValue: "accessibility-timeout")
     static let accessibilityUnavailable = ErrorCode(rawValue: "accessibility-unavailable")
     package static let noElement = ErrorCode(rawValue: "no-element")
-    static let accessibilityTranslation = ErrorCode(rawValue: "accessibility-translation")
+    /// The translator gave no element, or the frontmost app had no frame.
+    package static let accessibilityTranslation = ErrorCode(rawValue: "accessibility-translation")
     static let guestNotification = ErrorCode(rawValue: "guest-notification")
     static let interfaceOption = ErrorCode(rawValue: "interface-option")
     static let screenAdapter = ErrorCode(rawValue: "screen-adapter")

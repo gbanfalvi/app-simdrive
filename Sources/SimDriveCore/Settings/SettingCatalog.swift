@@ -120,7 +120,9 @@ enum SettingCatalog {
 
     static let appearance = Setting(name: "appearance", kind: .choice(["light", "dark"]), storage: .interface(.appearance))
 
-    /// Not a setting of its own: Settings turns it on before starting a setting's service, so running apps answer that service.
+    /// Not a setting of its own: Settings turns it on before starting a setting's service, so running apps answer that service,
+    /// and `launch` before launching, so the app answers `tree`. backboardd turns it off when its last client, such as that
+    /// service, quits.
     static let applicationAccessibility = accessibilityToggle("application-accessibility", key: "ApplicationAccessibilityEnabled",
                                                               notification: "application.status", cache: "app.ax")
 

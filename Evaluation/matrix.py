@@ -549,6 +549,38 @@ def setting_checks():
         check('setting glass-tint (expect setting-unsupported)', response.get('code') == 'setting-unsupported', brief(response))
     else:
         check('setting glass-tint 0.8 (read back)', response.get('ok') and response['result'].get('value') == 0.8, brief(response))
+    app_accessibility_checks()
+
+
+def app_accessibility_checks():
+    """Full Keyboard Access quits when turned off, and backboardd then turns app accessibility off for apps launched later."""
+    if sd('setting', 'full-keyboard-access', 'on').get('code') == 'setting-unsupported':
+        return
+    # Quitting before it registers with backboardd leaves app accessibility on.
+    time.sleep(3)
+    sd('setting', 'full-keyboard-access', 'off')
+    deadline = time.time() + 5
+    while app_accessibility_enabled() and time.time() < deadline:
+        time.sleep(0.5)
+    if app_accessibility_enabled():
+        # iOS 17.0 keeps it on.
+        check('app accessibility after full-keyboard-access off', True, 'stays on; nothing to recover')
+        return
+    simctl('terminate', udid, BUNDLE)
+    simctl('launch', udid, BUNDLE)
+    time.sleep(3)
+    response = sd('tree')
+    check('tree after simctl launch, app accessibility off (expect app-accessibility-off)',
+          response.get('code') == 'app-accessibility-off', brief(response))
+    response = sd('launch', BUNDLE)
+    check('launch with app accessibility off', response.get('ok'), brief(response))
+    response = sd('tree')
+    check('tree after launch with app accessibility off', response.get('ok'), '' if response.get('ok') else brief(response))
+
+
+def app_accessibility_enabled():
+    value = simctl('spawn', udid, 'defaults', 'read', 'com.apple.Accessibility', 'ApplicationAccessibilityEnabled').stdout.strip()
+    return value == '1'
 
 
 def pasteboard_write_checks(full):

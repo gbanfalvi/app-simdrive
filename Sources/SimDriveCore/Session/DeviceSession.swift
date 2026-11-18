@@ -96,9 +96,9 @@ final class DeviceSession {
             return try await screens.screenshot(to: Self.absolutePath(path, in: workingDirectory), display: display,
                                                 maxDimension: maxDimension)
         case .tree(let point?, let detail):
-            return try await accessibility.element(at: point, detail: detail)
+            return try await readAccessibility { try await self.accessibility.element(at: point, detail: detail) }
         case .tree(nil, let detail):
-            return try await accessibility.tree(detail: detail)
+            return try await readAccessibility { try await self.accessibility.tree(detail: detail) }
         case .setting(let setting?, let value?):
             return try await settings.set(setting, to: value)
         case .setting(let setting?, nil):
@@ -232,6 +232,7 @@ final class DeviceSession {
     // MARK: Apps, steps and diagnostics
 
     private func launch(_ bundleID: String, arguments: [String]) async throws -> JSONValue {
+        try await settings.enableApplicationAccessibility()
         let output = logs.prepareLaunch(dataDirectory: device.dataDirectory)
         let launchedAt = Date.now
         // Restarts a running app, so it starts from its launch screen with these arguments.
@@ -246,6 +247,17 @@ final class DeviceSession {
                                 + "\(Self.launchLimit.components.seconds) s; take a screenshot to see what is in front.")
         }
         return ["bundleID": .string(bundleID), "pid": JSONValue(pid)]
+    }
+
+    /// An app launched while app accessibility was off has an empty frame until it relaunches.
+    private func readAccessibility(_ read: () async throws -> JSONValue) async throws -> JSONValue {
+        do {
+            return try await read()
+        } catch let error as SimDriveError where error.code == .accessibilityTranslation {
+            guard !(try await settings.isApplicationAccessibilityEnabled()) else { throw error }
+            throw SimDriveError(.appAccessibilityOff, "The frontmost app launched while app accessibility was off, as it is once "
+                                + "Full Keyboard Access or another accessibility service quits; relaunch it with `launch`.")
+        }
     }
 
     private func openURL(_ url: String) async throws -> JSONValue {

@@ -199,6 +199,13 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Problem:** on a new Duo iOS 27.2, `split left --from full` and `split right --from full` returned `ok` with the app switcher showing.
 - **Test:** `DisplayLayoutTests`; on a Duo you created, `stop` then `split right --from full`, five times.
 
+### - [x] F18. Apps launched after Full Keyboard Access is turned off have no tree (S)
+
+**Result:** on iOS 27, backboardd turns `ApplicationAccessibilityEnabled` off when the Full Keyboard Access process quits, and an app launched while it is off answers with an empty frame until it relaunches; no notification wakes it. `launch` now turns it on first, about 0.4 s, and `tree` reports `app-accessibility-off` when it finds an empty frame with the preference off. iOS 17.0 keeps the preference on. The matrix's `basics`, `tree` and `settings` pass on iPhone iOS 17.0 and 27.2; Max on iPad iOS 27.0 reads again after `launch`.
+
+- **Problem:** found driving Max on an iPad iOS 27.0. After `setting full-keyboard-access off`, `launch` failed with `launch-not-frontmost` though the app was in front, and `tree` with "The frontmost app has no frame yet; wait for it to finish launching" after its 20 s deadline, on every try. Turning Full Keyboard Access on brought both back.
+- **Test:** the matrix's `settings` section on iPhone iOS 17.0 and 27.2.
+
 ## 2. Improvements to existing commands
 
 ### - [x] I1. Type without per-key delays (S)

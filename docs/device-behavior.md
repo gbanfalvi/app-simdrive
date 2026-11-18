@@ -56,6 +56,7 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 ## Runtimes
 
 - iOS 17 and 18 apps miss some accessibility changes unless the `com.apple.accessibility.cache.` notification follows the regular one.
+- **App accessibility goes off with Full Keyboard Access.** On iPad iOS 27.0 and iPhone iOS 27.2, turning Full Keyboard Access off quits its process, and backboardd's `_AXNotificationObserverClientDied` then sets `ApplicationAccessibilityEnabled` to 0 within a second. Apps running keep answering; apps launched after that answer the frontmost-app request with an empty frame, so `tree` failed with `accessibility-translation` and `launch` with `launch-not-frontmost`. Writing the preference and posting `com.apple.accessibility.application.status` or `automation.enabled.status` does not wake such an app; a relaunch with the preference on, or starting an accessibility service, does. Turned off within about a second of turning it on, the process quits before registering and the preference stays on. iOS 17.0 keeps it on.
 - The expanded-status accessibility attribute exists from iOS 18.
 - `show-borders` also drives `AccessibilitySettings.showBordersEnabled` from iOS 26.1.
 - `non-blinking-cursor` needs iOS 18; `glass-tint` needs iOS 26.

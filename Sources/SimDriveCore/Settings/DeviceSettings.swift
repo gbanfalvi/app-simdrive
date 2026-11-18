@@ -36,7 +36,7 @@ final class DeviceSettings {
         case .preference:
             try await writePreference(value, of: setting)
             if let service = setting.service, value == true {
-                try await writePreference(true, of: SettingCatalog.applicationAccessibility)
+                try await enableApplicationAccessibility()
                 try await start(service)
             }
         }
@@ -45,6 +45,15 @@ final class DeviceSettings {
 
     func value(of setting: Setting) async throws -> JSONValue {
         try await values(of: [setting])[setting.name] ?? .null
+    }
+
+    /// Apps launched while it is off answer no accessibility reads until they relaunch.
+    func enableApplicationAccessibility() async throws {
+        try await writePreference(true, of: SettingCatalog.applicationAccessibility)
+    }
+
+    func isApplicationAccessibilityEnabled() async throws -> Bool {
+        try await value(of: SettingCatalog.applicationAccessibility) == true
     }
 
     /// Each preference domain is exported once, and every read runs concurrently.

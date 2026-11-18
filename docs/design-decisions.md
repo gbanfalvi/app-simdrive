@@ -56,6 +56,8 @@ simdrive runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFramework
 
 `launch` relaunches (`--terminate-running-process`) so the app starts from its launch screen with the given arguments. `simctl launch` returns seconds before the app is active, so under load the next step's input arrived before the app could take it. simdrive now polls the accessibility server's frontmost pid every 100 ms, for up to 30 s, and fails with `launch-not-frontmost` otherwise. 10 s was too short: freshly booted iOS 17 and 18 simulators, with six booted at once, took 20–67 s. When accessibility is unavailable, `launch` returns without waiting.
 
+`launch` first writes `ApplicationAccessibilityEnabled`, about 0.4 s, since an app launched while it is off never answers accessibility reads and iOS 27 turns it off with Full Keyboard Access (F18). When `tree` finds an empty frame and the preference off, it reports `app-accessibility-off` instead of `accessibility-translation`. It still takes the read's 20 s deadline to get there: the same empty frame comes from a launching app and after boot, where retrying is what works.
+
 ## Accessibility from the Mac
 
 `tree` reads the guest's accessibility server through AccessibilityPlatformTranslation, as Simulator and idb do, so nothing is installed in the guest and any app works, including SpringBoard.
