@@ -12,6 +12,33 @@ Each module uses only the one below it.
 
 Native types speak in domain terms (`tap(at:target:)`, `set(_ posture:)`), and Core never sees an XPC object, a Swift mangled name or an Objective-C selector. Native files named `Guest*` reach the guest's Mach services directly; `CoreDevice*` files go through CoreDevice.
 
+## Source layout
+
+Folders group code by subject; a subject usually has a driver in Native and a type of the same subject in Core that adds logic around it.
+
+| Folder | Holds |
+| --- | --- |
+| `SimDriveNative/Simulator` | `SimulatorDevice`, CoreSimulator's `SimDevice`: state, boot date, screen scale, service lookup, Darwin notifications and the accessibility request channel. Framebuffer reads (`ScreenFramebuffers`, `ScreenAdapter`) and `InterfaceOrientation`. |
+| `SimDriveNative/Guest` | `SimulatorGuest` and `GuestConnection`, XPC connections to the guest's Mach services; `GuestMessageCodec`, which encodes their messages as CoreDevice does; `GuestInputTiming`. |
+| `SimDriveNative/Input` | `GuestKeyboard`, `GuestTouchscreen`, `GuestButtons`, and `KeyboardBindings`, which turns Mac key events into HID reports. |
+| `SimDriveNative/DeviceControl` | `GuestOrientation`, `CoreDevicePasteboard`, `CoreDeviceHinge`. |
+| `SimDriveNative/CoreDevice` | `CoreDeviceManager` and `CoreDeviceRemote`: finding the simulator's CoreDevice record and calling its capabilities. |
+| `SimDriveNative/Accessibility` | `SimulatorAccessibility`, which drives `AXPTranslator`, and `AccessibilityElement`, the snapshot it returns. |
+| `SimDriveNative/Support` | `SimDriveError` and `ErrorCode`, `SharedInitialization`, `waitForCompletion`, ABIBridge setup. |
+| `SimDriveCore/CLI` | `SimDriveCLI`, the entry point. |
+| `SimDriveCore/Commands` | `Command`, `CommandParser`, `Steps` (for `run`) and `CommandResults`, every result's JSON. |
+| `SimDriveCore/Daemon` | `DaemonServer`, `DaemonClient`, the wire types in `DaemonProtocol`, `UnixSocket`, `StatePaths`. |
+| `SimDriveCore/Session` | `DeviceSession` and `LazyCapability`. |
+| `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes. |
+| `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. |
+| `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes. |
+| `SimDriveCore/Split` | `SplitView` and `SplitGesture`, the Duo's split view. |
+| `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |
+| `SimDriveCore/Settings` | `SettingCatalog` (one row per setting), `DeviceSettings`, `GuestPreferences`. |
+| `SimDriveCore/Logs` | `DeviceLogs`, `LogQuery`, `LogDigest`, `LogStore`, `LogEvent`, `CrashReports`. |
+| `SimDriveCore/Tools` | `DeveloperTools`, which runs `simctl` and friends for one developer directory, and `BootedSimulators`. |
+| `SimDriveCore/Support` | Core's `ErrorCode` constants and `JSONValue`. |
+
 ## Request path
 
 ```mermaid
@@ -41,6 +68,25 @@ flowchart LR
 2. `run` steps from a file or standard input are inlined as `--json` first, since the daemon shares neither the client's directory nor its input. Relative paths resolve against the client's working directory, which every request carries.
 3. `DaemonServer` handles one request at a time. The main actor would otherwise interleave two requests' awaits, and the guest's input services expect their messages in order. A top-level `logs` therefore runs in the client's process, so `logs --until` can wait while other calls drive the device; inside `run`, it runs in the daemon.
 4. `DeviceSession.execute` dispatches the command to a helper and returns its JSON. The CLI prints one line, `{"ok":true,"result":…}` or `{"ok":false,"error":…,"code":…}`.
+
+### Following a tap
+
+`simdrive <udid> tap 0.5 0.3`:
+
+1. `CommandParser` turns the arguments into `Command.tap(.normalized(CGPoint(x: 0.5, y: 0.3)), display: .automatic)`; whole numbers would be pixels of the last screenshot.
+2. `DeviceSession.tap` asks `Screens.touchscreen` for the `Screen` the point refers to. `Screens` picks the display: on a Duo, the hinge says whether the cover or inner panel is in use. It then finds that display's last screenshot record in `ScreenStore`, or takes a calibration screenshot when none matches the current orientation.
+3. `Screen.digitizerPoint` converts the fraction, which follows the interface's rotation as screenshots do, into the digitizer's unit coordinates, which follow the panel's native orientation (`ScreenMapping`).
+4. `DeviceInputs.tap` opens `GuestTouchscreen` through its `LazyCapability` if needed, which opens a `GuestConnection` to the guest's digitizer service. The touchscreen posts a touch-down and a touch-up, encoded by `GuestMessageCodec`, then flushes the connection.
+5. `DeviceInputs` restarts its 30 s idle timer, and the session returns the display and point as JSON.
+
+### Following a tree
+
+`simdrive <udid> tree`:
+
+1. `DeviceAccessibility.tree` gets the `Screen`, as a tap does, and a snapshot from `SimulatorAccessibility`.
+2. `SimulatorAccessibility` asks `AXPTranslator` for the frontmost app and its hierarchy. The translator calls back into `AccessibilityBridge`, which sends each request to the guest through `SimulatorDevice`'s `AccessibilityChannel` and returns the reply. Reads retry until one deadline (`Limit.read`).
+3. `AccessibilityElement` decodes the snapshot: labels, traits, frames and children.
+4. `AccessibilityLayout` converts the app's point frames into screenshot fractions, accounting for rotation and, on a Duo, a split app's offset. Light trees keep VoiceOver's elements and give each a tap point.
 
 ## Daemon lifecycle
 
@@ -83,6 +129,43 @@ The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.s
 | Logs | `simctl spawn log show` and `log stream`, files from `simctl launch --stdout --stderr`, and `~/Library/Logs/DiagnosticReports` | — |
 
 Guest services are reached the way CoreDevice's simulator plugin reaches them: `SimDevice lookup:error:` returns a Mach send right, which `xpc_endpoint_create_mach_port_4sim` and `xpc_connection_enable_sim2host_4sim` turn into an XPC connection. No CoreDevice record is needed. CoreDevice capabilities need the simulator's CoreDevice record, found by UDID in `DeviceManager.devices`, whose keys are not the UDID.
+
+## Key types
+
+- **`Command`** is every command with its parsed arguments; `CommandParser` builds it and holds the usage text. Commands are values, so the parser is tested without a simulator.
+- **`DeviceSession`** owns one booted device's capabilities and runs commands against them. It is the only Core type that sees every capability; the others each own one subject.
+- **`LazyCapability<Service>`** opens a driver on first use and keeps it: nil means the device lacks it, for good; a throw is retried next time; `isUsable` reopens a failed one. Callers that arrive while it opens share that open.
+- **`DeviceInputs`** owns the keyboard, touchscreen and buttons, and releases all three after 30 s idle.
+- **`Screens`** knows the device's displays and each one's last screenshot; it returns a **`Screen`**, which maps that display's points to the digitizer through **`ScreenMapping`**. `ScreenStore` persists the screenshot records across processes.
+- **`DeviceAccessibility`** places **`SimulatorAccessibility`**'s snapshots on the screen with **`AccessibilityLayout`**, and answers `becomesFrontmost` for `launch`.
+- **`SimulatorDevice`** wraps CoreSimulator's `SimDevice`; **`SimulatorGuest`** opens a **`GuestConnection`** per guest service, and a connection that ends reports `hasFailed`.
+- **`CoreDeviceRemote`** is the simulator's CoreDevice `RemoteDevice`, opened once per session and shared by the pasteboard and hinge.
+- **`DeveloperTools`** runs `simctl` and other tools for the session's developer directory, and streams `log stream` lines.
+- **`JSONValue`** is every result and the daemon's payload; results get their JSON in `CommandResults`, next to nothing else, so the README's JSON section has one place to check against.
+
+## Errors
+
+Every failure an agent can act on is a `SimDriveError`: an `ErrorCode`, the `code` field of the output, and a message that says what to do next. Native declares the codes its drivers throw as `package` constants in `SimDriveError.swift`; Core adds its own in `ErrorCodes.swift`. Any other error reaches the output with no `code`, so wrap failures an agent could handle. Error codes are API: agents branch on them, and the README and skill list them.
+
+## Concurrency
+
+- Core's stateful types and the drivers are `@MainActor`; value types such as `Command` and `LogQuery` are `Sendable`. The daemon serves one request at a time, so a command's awaits never interleave with another's.
+- `SimulatorAccessibility` runs translator calls on its own serial queue, since `AXPTranslator` calls its delegate synchronously and the delegate blocks until the guest replies.
+- `SharedInitialization` gives CoreDevice's process-wide start one bounded task that concurrent callers share; `waitForCompletion` bounds other waits on callbacks.
+- Sleeps that hold an input, such as a touch or a key, use `pause`, which cannot throw, so the release is always sent.
+
+## Tests and evaluation
+
+- `Tests/SimDriveCoreTests` and `Tests/SimDriveNativeTests` cover pure logic: parsing, screen mapping and rotation, layout, gestures, log digests and queries, crash summaries, settings rows, snapshot decoding. They need no simulator; run them with `swift test`.
+- `Evaluation/matrix.py <udid>` drives a real simulator end to end with a release build. On iPhones and iPads it installs the probe app (`Evaluation/Probe`, built by `build-probe.sh`), which logs the touches, keys, scene changes and trait changes it receives to a file the matrix reads. A command can return `ok` while the guest drops its input, so only the probe's log proves delivery. `--only <sections>` runs some sections; `--timing` measures common commands, and `SIMDRIVE=<path>` compares another build.
+- [Testing](testing.md) lists what each section covers and the devices to run on.
+
+## Where to start
+
+- To add a command, follow "Adding a capability" in [AGENTS.md](../AGENTS.md): driver, session method, `Command` case and parser, JSON result, tests, docs.
+- To add a setting, add a row to `SettingCatalog`.
+- Before touching a private API, read [private APIs](private-apis.md) for how each one was found, and [device behavior](device-behavior.md) for what the guest does that the API does not say.
+- [Design decisions](design-decisions.md) explains choices that look odd at first, such as the daemon and the 30 s input release; [open questions](open-questions.md) and the [backlog](../roadmap/backlog.md) list what is unknown or planned.
 
 ## Calling private Swift API
 
