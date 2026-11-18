@@ -176,4 +176,4 @@ Objective-C private API (CoreSimulator, AXPTranslator) goes through `NSSelectorF
 
 ## Release
 
-Tags `v0.0.1` to `v0.0.4` on GitHub. The package's only product is the `simdrive` executable; consumers run it with `swift run simdrive`. Exposing `SimDriveCore` as a library would freeze an API that changes with each Xcode.
+Tags `v0.0.1` to `v0.0.5` on GitHub. The package's only product is the `simdrive` executable; consumers run it with `swift run simdrive`. Exposing `SimDriveCore` as a library would freeze an API that changes with each Xcode.
