@@ -187,6 +187,11 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   4. Try recovering without a reboot: `simctl spawn <udid> launchctl kickstart -k system/com.apple.CoreSimulator.bridge`, then `com.apple.AccessibilityUIServer`; then `lock`, `lock` and an edge swipe, in case the display slept. If one works, simdrive could do it after repeated unanswered reads.
 - **Reproduce:** on a Duo you created, alternate `posture open|closed`, `simctl shutdown` and `boot` five times within a few minutes, then `launch` the probe and `tree`; separately, leave a booted, closed Duo idle 15 minutes, then run the matrix.
 
+### - [ ] F16. A bottom-edge swipe does not go home on a new iPhone iOS 17.0 (S, cause unknown)
+
+- **Problem:** on an iPhone 15 iOS 17.0 created and booted for I4 (`77657B7A`, Xcode 27.2), the matrix's `swipe --edge bottom (go home)` and `unlock (lock, edge swipe)` fail every run, with the I3 build too; the swipe returns `ok` and the probe stays active. `button home` works. `docs/device-behavior.md` records edge swipes working on iOS 17.0 before.
+- **Do:** check whether a first-boot state, such as the home-indicator tutorial, eats the gesture: screenshot during the swipe, retry after a reboot, and try a longer `--duration` and a start at 0.995.
+
 ## 2. Improvements to existing commands
 
 ### - [x] I1. Type without per-key delays (S)
@@ -337,7 +342,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Test:** the matrix's `settings` section on iOS 17, 18, 26 and 27, where the probe app logs each change. Document the actions in `docs/private-apis.md`.
 - **Unlocks:** N20.
 
-### - [ ] I11. Confirm input delivery with a guest barrier, instead of a fixed drain (S)
+### - [x] I11. Confirm input delivery with a guest barrier, instead of a fixed drain (S)
+
+**Result:** `flush` now waits for the guest's barrier reply, and closing waits 300 ms after it instead of 1000 ms after the last message. As AXe found, the reply alone is not enough on iOS 27.2: closing right after it lost 20 of 20 taps on an iPhone and on a Duo, and 10 of 10 Home presses on the Duo; iOS 17.0 lost none. With 300 ms, 30 `tap --no-daemon`, 20 taps each followed by `stop`, and 10 `button home --no-daemon` all arrived on an iPhone iOS 27.2, a Duo iOS 27.2 and an iPhone iOS 17.0. On the iPhone 27.2, `tap --no-daemon` fell from 1740 ms to 1045 ms and `button volume-up --no-daemon` from 1796 ms to 1061 ms; warm taps and typing are unchanged. The full matrix passes on that iPhone and Duo and on an Apple TV tvOS 26.2; on iOS 17.0 only F16's two checks fail, as before. The barrier is not sent on open: the first flush covers activation.
 
 - **Problem:** `GuestConnection.flush` waits on `xpc_connection_send_barrier`, which proves only that messages left the Mac's side (`S:SimDriveNative/Guest/SimulatorGuest.swift`, `flush`). Closing a connection then waits a fixed `GuestInputTiming.drain` of 1000 ms, since the guest drops messages it has not activated. A guest whose input daemon is not behind the connection drops everything silently.
 - **Read:**

@@ -72,6 +72,8 @@ final class GuestConnection {
     private let codec: GuestMessageCodec
     private var failure: (any Error)?
     private var lastPost: ContinuousClock.Instant?
+    /// When the guest service last confirmed handling every earlier message.
+    private var lastHandled: ContinuousClock.Instant?
     var hasFailed: Bool { failure != nil }
 
     init(_ connection: xpc_connection_t, feature: String, codec: GuestMessageCodec) {
@@ -97,8 +99,11 @@ final class GuestConnection {
     }
 
     func request(_ type: GuestMessageCodec.MessageType, _ payload: NativeSwiftValue) async throws -> xpc_object_t {
+        try await reply(to: try codec.message(type, to: feature, payload: payload))
+    }
+
+    private func reply(to message: xpc_object_t) async throws -> xpc_object_t {
         if let failure { throw failure }
-        let message = try codec.message(type, to: feature, payload: payload)
         let connection = self.connection
         let deadline = Task { @MainActor in
             do { try await Task.sleep(for: guestServiceLimit) } catch { return }
@@ -132,25 +137,18 @@ final class GuestConnection {
             })
     }
 
-    /// Waits until earlier messages have left the connection; cancelling a connection discards unsent ones.
+    /// Waits until the guest service has handled earlier messages; cancelling a connection discards unhandled ones.
     func flush() async throws {
-        let connection = self.connection
-        do {
-            try await waitForCompletion(within: guestServiceLimit,
-                timeout: SimDriveError(.guestServiceTimeout, "The guest's \(feature) service did not take its messages.")) { done in
-                xpc_connection_send_barrier(connection) { done(()) }
-            }
-        } catch {
-            if failure == nil { failure = error }
-            xpc_connection_cancel(connection)
-            throw error
-        }
+        _ = try await reply(to: codec.barrier())
+        lastHandled = .now
     }
 
     /// Waits until the guest has had time to take the last message, which it drops if the connection ends first.
     func drain() async {
         guard let lastPost else { return }
-        let remaining = GuestInputTiming.drain - (ContinuousClock.now - lastPost)
+        if lastHandled.map({ $0 < lastPost }) ?? true { try? await flush() }
+        guard let lastHandled, lastHandled >= lastPost else { return }
+        let remaining = GuestInputTiming.drain - (ContinuousClock.now - lastHandled)
         if remaining > .zero { await pause(remaining) }
     }
 

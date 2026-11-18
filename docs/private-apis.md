@@ -35,7 +35,7 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 - libxpc requires a connection to be activated before its release, even one being discarded.
 - Messages are XPC dictionaries with the feature identifier, a message type and a payload, under field names read from `CoreDeviceUtilities.HIDXPCServiceEvent`'s static getters. Payloads are CoreDeviceUtilities values encoded with `Mercury.XPCObjectEncoder`; replies decode with `Mercury.XPCObjectDecoder`, and an error field holds an `NSErrorContainer`.
 - The guest removes the services a connection created when the connection ends, and drops events it had not yet activated. Cancelling a connection also discards unsent messages, so simdrive waits on a barrier after each input.
-- The guest matches a new service shortly after it appears and drops events sent before; simdrive waits 400 ms. Ending a connection within 500 ms of its last event lost that event on the Duo; simdrive waits 1000 ms.
+- The guest matches a new service shortly after it appears and drops events sent before; simdrive waits 400 ms. A guest service answers a request of `{"isBarrier": true}` with an empty dictionary once it has handled the connection's earlier messages, on iOS 17.0 to 27.2 and tvOS 26.2; the first answer on a new connection can take 1.5 s. On iOS 27.2 the guest still drops a connection's events when it ends right after that answer, on iPhones and the Duo; 100 ms after it was enough in 60 tries, and simdrive waits 300 ms. iOS 17.0 needs no wait.
 
 | Feature (`com.apple.coredevice.feature.` …) | Message type | Payload |
 | --- | --- | --- |

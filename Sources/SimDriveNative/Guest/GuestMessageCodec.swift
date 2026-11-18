@@ -16,6 +16,7 @@ struct GuestMessageCodec {
 
     /// The `DigitizerEdge` case of a touch away from the edges.
     private static let noEdge = "none"
+    private static let barrierKey = "isBarrier"
 
     private let featureKey: String
     private let messageTypeKey: String
@@ -64,6 +65,13 @@ struct GuestMessageCodec {
         xpc_dictionary_set_string(message, featureKey, feature)
         xpc_dictionary_set_string(message, messageTypeKey, type.rawValue)
         xpc_dictionary_set_value(message, payloadKey, try encode(payload))
+        return message
+    }
+
+    /// A request the guest service answers once it has handled the connection's earlier messages.
+    func barrier() -> xpc_object_t {
+        let message = xpc_dictionary_create(nil, nil, 0)
+        xpc_dictionary_set_bool(message, Self.barrierKey, true)
         return message
     }
 
