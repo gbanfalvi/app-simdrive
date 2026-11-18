@@ -40,8 +40,11 @@ package final class GuestTouchscreen {
         self.codec = codec
     }
 
+    /// Waits out a new connection's 200 ms first-message delay, which would bunch a drag's first touches into a swipe.
     package static func open(guest: SimulatorGuest) async throws -> GuestTouchscreen {
-        GuestTouchscreen(connection: try await guest.connection(to: feature), codec: guest.codec)
+        let connection = try await guest.connection(to: feature)
+        try await connection.flush()
+        return GuestTouchscreen(connection: connection, codec: guest.codec)
     }
 
     package var hasFailed: Bool { connection.hasFailed }

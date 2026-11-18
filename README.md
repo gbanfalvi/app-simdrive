@@ -99,7 +99,7 @@ Remote buttons and the keyboard (`key down`, `key return`, typing into a focused
 
 On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands default to the cover panel when closed and the inner panel otherwise.
 
-`split` drags the frontmost app's home indicator, as a person would, to move the app into the left or right half of the Duo's unfolded inner screen in landscape, or back to the whole screen, and waits for the resize. Accessibility tells a half from the whole screen but not which half, so simdrive remembers the half it last set; after a person moves the app, pass `--from`, or get `split-side-unknown`. It fails with `split-unsupported` elsewhere, and `split-dropped` when the app did not resize. `tree` places a split app's elements by the same remembered half; an app a person moved to the right half reads as if on the left until a `split` call.
+`split` drags the frontmost app's home indicator, as a person would, to move the app into the left or right half of the Duo's unfolded inner screen in landscape, or back to the whole screen, and waits for SpringBoard to publish the app's frame in that half. Accessibility tells a half from the whole screen but not which half, so simdrive remembers the half it last set; after a person moves the app, pass `--from`, or get `split-side-unknown`. It fails with `split-unsupported` elsewhere, and `split-dropped` when SpringBoard shows another layout, such as the app switcher. `tree` places a split app's elements by the same remembered half; an app a person moved to the right half reads as if on the left until a `split` call.
 
 ### Accessibility
 

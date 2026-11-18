@@ -1,3 +1,4 @@
+import Foundation
 import SimDriveNative
 
 /// Moves the frontmost app between the halves and the whole of the iPhone Duo's inner screen, as a person drags its
@@ -7,17 +8,18 @@ final class SplitView {
     private enum Timing {
         /// The resize animates for about half a second after the touch ends.
         static let resizeLimit: Duration = .seconds(3)
-        static let poll: Duration = .milliseconds(200)
     }
 
     private let screens: Screens
     private let inputs: DeviceInputs
     private let accessibility: DeviceAccessibility
+    private let logs: DeviceLogs
 
-    init(screens: Screens, inputs: DeviceInputs, accessibility: DeviceAccessibility) {
+    init(screens: Screens, inputs: DeviceInputs, accessibility: DeviceAccessibility, logs: DeviceLogs) {
         self.screens = screens
         self.inputs = inputs
         self.accessibility = accessibility
+        self.logs = logs
     }
 
     /// `current` overrides the layout simdrive last set, which a person may have changed since.
@@ -28,9 +30,16 @@ final class SplitView {
         }
         let start = if let current { current } else { try await layout() }
         if let gesture = SplitGesture.moving(from: start, to: target) {
-            try await inputs.drag(through: gesture.path.map { screen.digitizerPoint(.normalized($0)) }, duration: gesture.duration,
-                                  edge: screen.mapping.digitizerEdge(.bottom), on: screen.digitizerTarget)
-            try await waitForResize(to: target)
+            let dragStart = Date.now
+            let shown = try await logs.entry(subsystem: DisplayLayout.subsystem, category: DisplayLayout.category,
+                                             within: Timing.resizeLimit,
+                                             where: { DisplayLayout(message: $0.message)?.splitLayout == target }) {
+                try await inputs.drag(through: gesture.path.map { screen.digitizerPoint(.normalized($0)) }, duration: gesture.duration,
+                                      edge: screen.mapping.digitizerEdge(.bottom), on: screen.digitizerTarget)
+            }
+            if shown == nil {
+                try await confirmLayout(target, since: dragStart)
+            }
         }
         screens.splitLayout = target
         return ["display": JSONValue(screen.display?.index), "from": .string(start.rawValue), "layout": .string(target.rawValue)]
@@ -45,14 +54,14 @@ final class SplitView {
         return remembered
     }
 
-    /// A move between halves keeps the width, so only a move to or from the whole screen is checked.
-    private func waitForResize(to target: SplitLayout) async throws {
-        let deadline = ContinuousClock.now + Timing.resizeLimit
-        while try await accessibility.fillsHalf() != target.isHalf {
-            guard ContinuousClock.now < deadline else {
-                throw SimDriveError(.splitDropped, "The app did not resize; take a screenshot to see what the drag did.")
-            }
-            try await Task.sleep(for: Timing.poll)
+    /// Reads the layout SpringBoard last published, for when the stream missed it.
+    private func confirmLayout(_ target: SplitLayout, since start: Date) async throws {
+        let shown = try await logs.entries(subsystem: DisplayLayout.subsystem, category: DisplayLayout.category, since: start)
+            .compactMap { DisplayLayout(message: $0.message) }.last
+        guard let shown, shown.splitLayout == target else {
+            let found = shown.map { $0.splitLayout?.rawValue ?? "no split" } ?? "no layout"
+            throw SimDriveError(.splitDropped, "SpringBoard shows \(found), not \(target.rawValue); take a screenshot to see what the "
+                                + "drag did.")
         }
     }
 }

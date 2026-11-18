@@ -123,6 +123,38 @@ struct DeviceLogs {
         return zip(starts.prefix(1) + boundaries, boundaries + [Date.distantFuture]).map { (start: $0, end: $1) }
     }
 
+    /// The entries any process logged in `subsystem`'s `category` since `start`, at default level and above.
+    func entries(subsystem: String, category: String, since start: Date) async throws -> [LogEvent] {
+        try await show(Self.query(subsystem: subsystem, category: category), target: .all, since: start)
+    }
+
+    /// Runs `action` while streaming `subsystem`'s `category`, and returns the first entry `accepts` takes by `timeout`
+    /// after it; nil also when the stream attached too late to see it.
+    func entry(subsystem: String, category: String, within timeout: Duration, where accepts: @escaping @Sendable (LogEvent) -> Bool,
+               during action: () async throws -> Void) async throws -> LogEvent? {
+        let query = Self.query(subsystem: subsystem, category: category)
+        let stream = try tools.simctlLines(query.streamArguments(udid: udid, target: .all, limit: timeout + Self.streamBackstop))
+        defer { stream.stop() }
+        let watch = Task { () -> LogEvent? in
+            for await line in stream.lines {
+                if let event = LogEvent(ndjson: line), accepts(event) { return event }
+            }
+            return nil
+        }
+        defer { watch.cancel() }
+        try await action()
+        let deadline = Task { try await Task.sleep(for: timeout); stream.stop() }
+        defer { deadline.cancel() }
+        return await watch.value
+    }
+
+    private static func query(subsystem: String, category: String) -> LogQuery {
+        var query = LogQuery()
+        query.subsystem = subsystem
+        query.category = category
+        return query
+    }
+
     private func show(_ query: LogQuery, target: LogTarget, since start: Date) async throws -> [LogEvent] {
         let result = try await tools.simctlResult(query.showArguments(udid: udid, target: target, since: start))
         guard result.succeeded else { throw SimDriveError(.logRead, "log show failed: \(result.diagnostics)") }

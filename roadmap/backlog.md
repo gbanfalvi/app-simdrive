@@ -190,7 +190,14 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 ### - [ ] F16. A bottom-edge swipe does not go home on a new iPhone iOS 17.0 (S, cause unknown)
 
 - **Problem:** on an iPhone 15 iOS 17.0 created and booted for I4 (`77657B7A`, Xcode 27.2), the matrix's `swipe --edge bottom (go home)` and `unlock (lock, edge swipe)` fail every run, with the I3 build too; the swipe returns `ok` and the probe stays active. `button home` works. `docs/device-behavior.md` records edge swipes working on iOS 17.0 before.
-- **Do:** check whether a first-boot state, such as the home-indicator tutorial, eats the gesture: screenshot during the swipe, retry after a reboot, and try a longer `--duration` and a start at 0.995.
+- **Do:** check whether a first-boot state, such as the home-indicator tutorial, eats the gesture: screenshot during the swipe, retry after a reboot, and try a longer `--duration` and a start at 0.995. Retry first with F17's fix, which may be the cause.
+
+### - [x] F17. `split` returns `ok` when the drag opens the app switcher (S)
+
+**Result:** on a new connection the guest takes about 215 ms to handle its first message, so a drag's first touches arrived bunched, then held: a swipe that stops, which opens the app switcher. That happened on 3–4 of 5 splits through a new daemon, and on none through a warm one. Opening the touchscreen now waits for a barrier, and fresh splits went 6 of 6. `split` also no longer trusts accessibility, which reads the switcher's card as a half: it streams SpringBoard's published layout during the drag and accepts the app's frame in the target half, falling back to one `log show`. A split takes 1.23 s, against 1.30 s.
+
+- **Problem:** on a new Duo iOS 27.2, `split left --from full` and `split right --from full` returned `ok` with the app switcher showing.
+- **Test:** `DisplayLayoutTests`; on a Duo you created, `stop` then `split right --from full`, five times.
 
 ## 2. Improvements to existing commands
 
