@@ -44,6 +44,8 @@ enum Command: Equatable, Sendable {
     /// Lists every setting without one, reads it without a value, or changes it.
     case setting(Setting?, value: JSONValue?)
     case launch(bundleID: String, arguments: [String])
+    /// Opens a URL, such as a deep link, in the app that handles it.
+    case openURL(String)
     case wait(milliseconds: Int)
     case logs(LogQuery)
     /// With `attachesLogs`, each step's result lists the entries logged while it ran.

@@ -301,6 +301,11 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         window.rootViewController = ProbeViewController()
         window.makeKeyAndVisible()
         self.window = window
+        connectionOptions.urlContexts.forEach { Log.write("URL \($0.url.absoluteString)") }
+    }
+
+    func scene(_ scene: UIScene, openURLContexts contexts: Set<UIOpenURLContext>) {
+        contexts.forEach { Log.write("URL \($0.url.absoluteString)") }
     }
 
     func sceneDidBecomeActive(_ scene: UIScene) {

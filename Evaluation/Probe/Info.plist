@@ -10,6 +10,17 @@
 	<string>AXProbe</string>
 	<key>CFBundlePackageType</key>
 	<string>APPL</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>com.simdrive.axprobe</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>simdriveprobe</string>
+			</array>
+		</dict>
+	</array>
 	<key>CFBundleShortVersionString</key>
 	<string>1.0</string>
 	<key>CFBundleVersion</key>

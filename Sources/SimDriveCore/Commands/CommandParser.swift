@@ -94,6 +94,12 @@ enum CommandParser {
             let list = try ArgumentList(rest)
             guard let bundleID = list.positionals.first else { throw SimDriveError.usage("launch needs a bundle identifier") }
             return .launch(bundleID: bundleID, arguments: Array(list.positionals.dropFirst()))
+        case "openurl":
+            let text = try ArgumentList(rest).single("the URL")
+            guard URL(string: text)?.scheme?.isEmpty == false else {
+                throw SimDriveError.usage("openurl needs a URL with a scheme, such as myapp://path")
+            }
+            return .openURL(text)
         case "wait":
             guard let milliseconds = Int(try ArgumentList(rest).single("milliseconds")), milliseconds >= 0 else {
                 throw SimDriveError.usage("wait needs milliseconds")
@@ -266,6 +272,7 @@ enum CommandParser {
                                               --full adds every node and field, nested
           setting [<name> [<value>]]          lists every setting, or reads or changes one, such as appearance dark
           launch <bundle-id> [args...]
+          openurl <url>                       opens a URL or deep link in the app that handles it
           wait <ms>
           logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until <regex> [--timeout ms]]
                [--limit N] [--width N]        the launched app's log entries, stdout, stderr and crashes since the

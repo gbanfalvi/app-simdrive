@@ -97,6 +97,8 @@ final class DeviceSession {
             return try await settings.all()
         case .launch(let bundleID, let arguments):
             return try await launch(bundleID, arguments: arguments)
+        case .openURL(let url):
+            return try await openURL(url)
         case .wait(let milliseconds):
             try await Task.sleep(for: .milliseconds(milliseconds))
             return ["waited": JSONValue(milliseconds)]
@@ -219,6 +221,12 @@ final class DeviceSession {
                                 + "\(Self.launchLimit.components.seconds) s; take a screenshot to see what is in front.")
         }
         return ["bundleID": .string(bundleID), "pid": JSONValue(pid)]
+    }
+
+    private func openURL(_ url: String) async throws -> JSONValue {
+        try await tools.simctl(["openurl", udid, url])
+        screens.forgetScreenshots()
+        return ["url": .string(url)]
     }
 
     private func run(_ steps: [Step], attachesLogs: Bool, workingDirectory: String) async throws -> JSONValue {

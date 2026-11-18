@@ -454,6 +454,15 @@ def button_checks():
     log.wait(mark, r'SCENE active', 4)
 
 
+def accept_url_prompt():
+    """Taps Open on the "Open in AXProbe?" alert iOS shows before a scheme's first URL."""
+    time.sleep(1)
+    elements = sd('tree').get('result', {}).get('elements', [])
+    if any(e.get('label', '').startswith('Open in') for e in elements):
+        point = next(e['point'] for e in elements if e.get('label') == 'Open' and e.get('type') == 'button')
+        sd('tap', str(point['x']), str(point['y']))
+
+
 def misc_checks(is_foldable):
     shot = output_path('run')
     steps = json.dumps([f'launch {BUNDLE}', 'key b', f'screenshot {shot}'])
@@ -465,6 +474,14 @@ def misc_checks(is_foldable):
     response = sd('pasteboard')
     items = response.get('result', {}).get('items')
     check('pasteboard read', response.get('ok') and isinstance(items, list), brief(response)[:120])
+    sd('button', 'home')
+    time.sleep(1)
+    for case in ('from-home', 'in-front'):
+        mark = log.mark()
+        url = f'simdriveprobe://item/{case}?x=1'
+        response = sd('openurl', url)
+        accept_url_prompt()
+        check(f'openurl {case}', response.get('ok') and log.wait(mark, rf'URL {re.escape(url)}$', 4), brief(response))
     if not is_foldable:
         response = sd('posture')
         check('posture (expect posture-unsupported)', response.get('code') == 'posture-unsupported', brief(response))

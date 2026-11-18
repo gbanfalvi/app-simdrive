@@ -400,13 +400,14 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 Each new command needs a `Command` case, parsing, usage text, results JSON, an error code where it can fail, parser tests, a README row and a skill line, per AGENTS.md's "Adding a capability".
 
-### - [ ] N1. `openurl <url>`: open a URL or deep link (S)
+### - [x] N1. `openurl <url>`: open a URL or deep link (S)
 
 - **Why:** agents test deep links and universal links, and today must leave simdrive to do it.
 - **Do:**
   - `simctl openurl <udid> <url>` through `DeveloperTools`, as `launch` does.
   - Wait for the frontmost app to change, reusing `launch`'s frontmost poll, and return `{"url", "app": {"name", "pid"}}`.
 - **Test:** the probe registers a URL scheme (add `CFBundleURLTypes` to `Evaluation/Probe/Info.plist`) and logs `URL <url>` from `scene(_:openURLContexts:)`. Add a matrix check.
+- **Result:** returns `{"url"}` once `simctl openurl` does, in about 1 s. Waiting for the frontmost app was dropped: a URL for the app in front changes nothing, so the wait always ran to its limit, and a cold app came forward after it. iOS asks "Open in “App”?" before a scheme's first URL; the matrix taps Open. Passes on iOS 17.0, 27.2 and the Duo.
 
 ### - [ ] N2. `install <path.app|path.ipa>` and `uninstall <bundle-id>` (S)
 

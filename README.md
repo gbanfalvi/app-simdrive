@@ -35,6 +35,7 @@ simdrive <udid|booted> <command>
 | `tree [<x> <y>] [--full]` | Lists the frontmost app's VoiceOver elements, or reads the element at a point; `--full` returns every node and field |
 | `setting [<name> [<value>]]` | Lists every setting, or reads or changes one |
 | `launch <bundle-id> [args...]` | Relaunches an app, capturing its stdout and stderr, and waits until it is frontmost |
+| `openurl <url>` | Opens a URL or deep link in the app that handles it, returning once iOS accepts it |
 | `logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until regex [--timeout ms]] [--limit N] [--width N]` | Reads the launched app's new log entries, output and crashes, or waits for an entry; see [Logs](#logs) |
 | `wait <ms>` | Pauses, for `run` |
 | `run <steps.json\|-> [--logs]` | Runs a JSON array of commands, such as `["tap 0.5 0.5", ["key", "tab"]]`, stopping at the first failure; `--logs` adds each step's log entries |
@@ -63,6 +64,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `tree` | `{"app": {"name", "pid"}, "display", "elements": [element]}`, or `"root"` with `--full`. With a point: `{"app", "display", "point", "element"}`. Elements are described under [Accessibility](#accessibility) |
 | `setting` | Listing: `{"settings": {name: value}}`. Otherwise `{"setting", "value"}`, the value read back after a change |
 | `launch` | `{"bundleID", "pid"}` |
+| `openurl` | `{"url"}` |
 | `logs` | `{"since", "entries": [entry], "stdout": [lines], "stderr": [lines], "crashes": [crash], "dropped"}`, each source's key only when read. An entry is `{"ms", "message", "level", "process", "subsystem", "category", "repeats"}`, described under [Logs](#logs); a crash is `{"process", "pid", "time", "exception", "reason", "frames", "path"}` |
 | `wait` | `{"waited": milliseconds}` |
 | `run` | `{"steps": [each step's result]}`; with `--logs`, each step also has `"logs": [entry]`, and a failed read adds `"logsError"` |
@@ -164,6 +166,7 @@ The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR
 - `tree` shows only what the app exposes to accessibility. A custom view marked as an accessibility element hides its subviews from the snapshot too; UIKit controls and cells list theirs.
 - `offscreen` compares frames with the screen and scroll views, so an element covered by another, such as one behind a sheet, does not count as offscreen. The app's own visibility check hit-tests every element and times out on large screens.
 - The first `tree` after a boot takes up to 20 s while the guest's accessibility server starts; it fails with `accessibility-timeout` past that, or `accessibility-unavailable` when CoreSimulator cannot reach the server. Retry either. On a Duo, the server occasionally stops answering until the simulator reboots, though the app shows in front: `tree` keeps timing out and `launch` fails with `launch-not-frontmost`.
+- iOS asks "Open in “App”?" before the first `openurl` of an app's custom scheme; tap Open. The app may come to the front after `openurl` returns.
 - `logs` captures stdout and stderr only from apps started with `launch`. A repeat of the same crash brings no new crash report, and the unified log shows values the app did not log as public as `<private>`.
 - Built on CoreSimulator, CoreDevice, UniversalHIDKit and AccessibilityPlatformTranslation private API, so Xcode and macOS updates may break it. Tested with Xcode 27.0 and 27.2 on iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad iOS 26.5 and 27.0, iPhone Duo iOS 27.2 and Apple TV 4K tvOS simulators.
 

@@ -98,6 +98,12 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["setting", "bold-text", "on", "now"]) }
     }
 
+    @Test func openURLTakesAURLWithAScheme() throws {
+        #expect(try CommandParser.parse(["openurl", "myapp://item/1?x=2"]) == .openURL("myapp://item/1?x=2"))
+        expectUsageError { try CommandParser.parse(["openurl", "no scheme"]) }
+        expectUsageError { try CommandParser.parse(["openurl"]) }
+    }
+
     @Test func launchPassesArgumentsAfterTheBundleIdentifier() throws {
         #expect(try CommandParser.parse(["launch", "com.example", "--", "--flag", "x"])
             == .launch(bundleID: "com.example", arguments: ["--flag", "x"]))
