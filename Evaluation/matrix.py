@@ -133,7 +133,8 @@ def launch_probe():
 def install_probe():
     if not os.path.exists(PROBE_APP):
         subprocess.run([BUILD_PROBE], check=True, capture_output=True)
-    simctl('install', udid, PROBE_APP)
+    response = sd('install', PROBE_APP)
+    check('install', response.get('result', {}).get('bundleID') == BUNDLE, brief(response))
     simctl('terminate', udid, BUNDLE)
     log.locate()
     mark = log.mark()
@@ -474,6 +475,8 @@ def misc_checks(is_foldable):
     response = sd('pasteboard')
     items = response.get('result', {}).get('items')
     check('pasteboard read', response.get('ok') and isinstance(items, list), brief(response)[:120])
+    response = sd('uninstall', 'com.simdrive.missing')
+    check('uninstall (expect app-not-installed)', response.get('code') == 'app-not-installed', brief(response))
     sd('button', 'home')
     time.sleep(1)
     for case in ('from-home', 'in-front'):

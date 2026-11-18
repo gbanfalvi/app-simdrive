@@ -94,6 +94,10 @@ enum CommandParser {
             let list = try ArgumentList(rest)
             guard let bundleID = list.positionals.first else { throw SimDriveError.usage("launch needs a bundle identifier") }
             return .launch(bundleID: bundleID, arguments: Array(list.positionals.dropFirst()))
+        case "install":
+            return .install(path: try ArgumentList(rest).single("the path of an .app or .ipa"))
+        case "uninstall":
+            return .uninstall(bundleID: try ArgumentList(rest).single("a bundle identifier"))
         case "openurl":
             let text = try ArgumentList(rest).single("the URL")
             guard URL(string: text)?.scheme?.isEmpty == false else {
@@ -272,6 +276,8 @@ enum CommandParser {
                                               --full adds every node and field, nested
           setting [<name> [<value>]]          lists every setting, or reads or changes one, such as appearance dark
           launch <bundle-id> [args...]
+          install <path.app|path.ipa>         installs or updates an app, returning its bundle identifier
+          uninstall <bundle-id>
           openurl <url>                       opens a URL or deep link in the app that handles it
           wait <ms>
           logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until <regex> [--timeout ms]]

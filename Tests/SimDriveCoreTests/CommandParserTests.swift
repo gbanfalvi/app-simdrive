@@ -104,6 +104,13 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["openurl"]) }
     }
 
+    @Test func installTakesAPathAndUninstallABundleIdentifier() throws {
+        #expect(try CommandParser.parse(["install", "build/My App.ipa"]) == .install(path: "build/My App.ipa"))
+        #expect(try CommandParser.parse(["uninstall", "com.example"]) == .uninstall(bundleID: "com.example"))
+        expectUsageError { try CommandParser.parse(["install"]) }
+        expectUsageError { try CommandParser.parse(["uninstall", "a", "b"]) }
+    }
+
     @Test func launchPassesArgumentsAfterTheBundleIdentifier() throws {
         #expect(try CommandParser.parse(["launch", "com.example", "--", "--flag", "x"])
             == .launch(bundleID: "com.example", arguments: ["--flag", "x"]))

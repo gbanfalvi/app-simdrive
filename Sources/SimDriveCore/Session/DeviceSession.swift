@@ -19,6 +19,7 @@ final class DeviceSession {
     private let splitView: SplitView
     private let settings: DeviceSettings
     private let logs: DeviceLogs
+    private let apps: DeviceApps
     private let orientation: LazyCapability<GuestOrientation>
     private let pasteboard: LazyCapability<CoreDevicePasteboard>
     private let hinge: LazyCapability<Hinge>
@@ -44,6 +45,7 @@ final class DeviceSession {
         accessibility.prepare()
         settings = DeviceSettings(udid: udid, device: device, tools: tools)
         logs = DeviceLogs(udid: udid, tools: tools)
+        apps = DeviceApps(udid: udid, tools: tools)
     }
 
     static func open(udid: String, tools: DeveloperTools) async throws -> DeviceSession {
@@ -97,6 +99,10 @@ final class DeviceSession {
             return try await settings.all()
         case .launch(let bundleID, let arguments):
             return try await launch(bundleID, arguments: arguments)
+        case .install(let path):
+            return try await apps.install(Self.absolutePath(path, in: workingDirectory))
+        case .uninstall(let bundleID):
+            return try await apps.uninstall(bundleID)
         case .openURL(let url):
             return try await openURL(url)
         case .wait(let milliseconds):

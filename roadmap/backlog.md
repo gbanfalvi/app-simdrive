@@ -409,13 +409,14 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
 - **Test:** the probe registers a URL scheme (add `CFBundleURLTypes` to `Evaluation/Probe/Info.plist`) and logs `URL <url>` from `scene(_:openURLContexts:)`. Add a matrix check.
 - **Result:** returns `{"url"}` once `simctl openurl` does, in about 1 s. Waiting for the frontmost app was dropped: a URL for the app in front changes nothing, so the wait always ran to its limit, and a cold app came forward after it. iOS asks "Open in “App”?" before a scheme's first URL; the matrix taps Open. Passes on iOS 17.0, 27.2 and the Duo.
 
-### - [ ] N2. `install <path.app|path.ipa>` and `uninstall <bundle-id>` (S)
+### - [x] N2. `install <path.app|path.ipa>` and `uninstall <bundle-id>` (S)
 
 - **Do:**
   - `simctl install <udid> <app>`. For an `.ipa`, unzip it to a temporary directory and install `Payload/*.app` (NeoSimulator uses `ditto -x -k`, `N:NeoSimulatorKit/Simulator/Import/InstallableApplication.swift:16-46`).
   - `simctl uninstall`.
   - Return the bundle ID, read from the app's `Info.plist`.
 - **Test:** install and uninstall the probe app in the matrix's setup, replacing `build-probe.sh`'s own install.
+- **Result:** `simctl install` takes an `.ipa` itself, so only its `Info.plist` is unzipped, for the bundle ID. `simctl uninstall` succeeds for a missing app, so `uninstall` checks first and fails with `app-not-installed`; a bad path fails with `app-invalid`. Install takes 0.7 s, uninstall 0.5 s. The matrix installs the probe with `install` and checks `uninstall`'s error; uninstalling the probe there would reset iOS's "Open in" consent, which the Duo's tree cannot show.
 
 ### - [ ] N3. `shake` (S)
 

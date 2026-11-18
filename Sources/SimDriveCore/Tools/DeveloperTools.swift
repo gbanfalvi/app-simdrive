@@ -19,6 +19,7 @@ struct ToolResult: Sendable {
 struct DeveloperTools: Sendable {
     private static let xcrun = "/usr/bin/xcrun"
     private static let xcodeSelect = "/usr/bin/xcode-select"
+    private static let unzip = "/usr/bin/unzip"
     /// CoreSimulator's own simctl. `xcrun simctl` reaches it through a wrapper script that adds about 0.8 s per call.
     private static let coreSimulatorSimctl = "/Library/Developer/PrivateFrameworks/CoreSimulator.framework/Versions/A/Resources/bin/simctl"
     private static let developerDirectoryOverride = "SIMDRIVE_DEVELOPER_DIR"
@@ -82,6 +83,11 @@ struct DeveloperTools: Sendable {
             throw SimDriveError(.simctl, "simctl \(arguments.first ?? "") failed: \(result.diagnostics)")
         }
         return result
+    }
+
+    /// Extracts the members of a zip archive that match `pattern` into `directory`.
+    func unzip(_ archive: String, members pattern: String, into directory: String) async throws -> ToolResult {
+        try await Self.run([Self.unzip, "-qq", "-o", archive, pattern, "-d", directory], environment: ProcessInfo.processInfo.environment)
     }
 
     private static func run(_ command: [String], environment: [String: String]) async throws -> ToolResult {

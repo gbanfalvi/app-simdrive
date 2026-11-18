@@ -9,6 +9,7 @@ extension ErrorCode {
     static let simctl = ErrorCode(rawValue: "simctl")
     static let launchNotFrontmost = ErrorCode(rawValue: "launch-not-frontmost")
     static let appNotInstalled = ErrorCode(rawValue: "app-not-installed")
+    static let appInvalid = ErrorCode(rawValue: "app-invalid")
     static let noLogScope = ErrorCode(rawValue: "no-log-scope")
     static let logTimeout = ErrorCode(rawValue: "log-timeout")
     static let logRead = ErrorCode(rawValue: "log-read")

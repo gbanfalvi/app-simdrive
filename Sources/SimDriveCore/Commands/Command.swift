@@ -44,6 +44,9 @@ enum Command: Equatable, Sendable {
     /// Lists every setting without one, reads it without a value, or changes it.
     case setting(Setting?, value: JSONValue?)
     case launch(bundleID: String, arguments: [String])
+    /// Installs an `.app` or `.ipa`.
+    case install(path: String)
+    case uninstall(bundleID: String)
     /// Opens a URL, such as a deep link, in the app that handles it.
     case openURL(String)
     case wait(milliseconds: Int)
