@@ -55,26 +55,42 @@ package final class GuestTouchscreen {
 
     /// Drags one touch through `path` over `duration`, giving each segment equal time, so a repeated point holds.
     package func drag(through path: [CGPoint], duration: Duration, edge: ScreenEdge?, target: DigitizerTarget) async throws {
-        guard let start = path.first, let end = path.last else { return }
-        let segments = Array(zip(path, path.dropFirst()))
+        try await drag([path], duration: duration, edge: edge, target: target)
+    }
+
+    /// Drags two touches together, each through its own path; the paths have as many points.
+    package func drag(through first: [CGPoint], and second: [CGPoint], duration: Duration, target: DigitizerTarget) async throws {
+        try await drag([first, second], duration: duration, edge: nil, target: target)
+    }
+
+    private func drag(_ paths: [[CGPoint]], duration: Duration, edge: ScreenEdge?, target: DigitizerTarget) async throws {
+        guard let path = paths.first, !path.isEmpty else { return }
+        let segments = path.count - 1
         let steps = max(1, Int((duration / Timing.dragStep).rounded()))
-        let segmentSteps = max(1, steps / max(1, segments.count))
-        try send(start, .began, edge: edge, target: target)
-        for (from, to) in segments {
+        let segmentSteps = max(1, steps / max(1, segments))
+        try send(paths.map { $0[0] }, .began, edge: edge, target: target)
+        for segment in 0..<segments {
             for step in stride(from: 1, through: segmentSteps, by: 1) {
                 await pause(Timing.dragStep)
                 let fraction = CGFloat(step) / CGFloat(segmentSteps)
-                try send(CGPoint(x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction), .moved,
-                         edge: edge, target: target)
+                try send(paths.map { path in
+                    let (from, to) = (path[segment], path[segment + 1])
+                    return CGPoint(x: from.x + (to.x - from.x) * fraction, y: from.y + (to.y - from.y) * fraction)
+                }, .moved, edge: edge, target: target)
             }
         }
-        try send(end, .ended, edge: edge, target: target)
+        try send(paths.map { $0[segments] }, .ended, edge: edge, target: target)
         try await connection.flush()
     }
 
     package func close() async { await connection.drain() }
 
     private func send(_ point: CGPoint, _ phase: TouchPhase, edge: ScreenEdge?, target: DigitizerTarget) throws {
-        try connection.post(.digitizerEvent, codec.digitizerEvent(at: point, phase: phase, edge: edge, target: target))
+        try send([point], phase, edge: edge, target: target)
+    }
+
+    private func send(_ fingers: [CGPoint], _ phase: TouchPhase, edge: ScreenEdge?, target: DigitizerTarget) throws {
+        try connection.post(.digitizerEvent, codec.digitizerEvent(at: fingers[0], second: fingers.dropFirst().first, phase: phase,
+                                                                  edge: edge, target: target))
     }
 }

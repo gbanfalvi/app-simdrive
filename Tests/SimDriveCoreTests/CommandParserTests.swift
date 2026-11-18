@@ -23,6 +23,17 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["tap", "-1", "2"]) }
     }
 
+    @Test func pinchAndRotateTakeACenterAndAnAmount() throws {
+        let center = ScreenPoint.normalized(CGPoint(x: 0.5, y: 0.5))
+        #expect(try CommandParser.parse(["pinch", "0.5", "0.5", "2"])
+            == .pinch(center: center, scale: 2, duration: CommandParser.defaultGestureDuration, display: .automatic))
+        #expect(try CommandParser.parse(["rotate", "0.5", "0.5", "-90", "--duration", "800"])
+            == .rotate(center: center, degrees: -90, duration: .milliseconds(800), display: .automatic))
+        expectUsageError { try CommandParser.parse(["pinch", "0.5", "0.5", "0"]) }
+        expectUsageError { try CommandParser.parse(["rotate", "0.5", "0.5", "0"]) }
+        expectUsageError { try CommandParser.parse(["rotate", "0.5", "0.5"]) }
+    }
+
     @Test func swipeDefaultsAndOptions() throws {
         let plain = try CommandParser.parse(["swipe", "0.5", "0.9", "0.5", "0.1"])
         #expect(plain == .swipe(path: [.normalized(CGPoint(x: 0.5, y: 0.9)), .normalized(CGPoint(x: 0.5, y: 0.1))],

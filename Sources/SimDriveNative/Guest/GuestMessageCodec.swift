@@ -22,7 +22,7 @@ struct GuestMessageCodec {
     private let messageTypeKey: String
     private let payloadKey: String
     private let encoders: [MessageType: Encode]
-    private let makeDigitizerEvent: (CGPoint, String, String, String) throws -> NativeSwiftValue
+    private let makeDigitizerEvent: (CGPoint, CGPoint?, String, String, String) throws -> NativeSwiftValue
     private let makeButtonEvent: (UInt16, UInt16, String) throws -> NativeSwiftValue
     private let requestType: NativeSwiftType
     private let readReportData: (NativeSwiftValue) throws -> Data
@@ -75,9 +75,10 @@ struct GuestMessageCodec {
         return message
     }
 
-    /// A touch at `point`, in unit coordinates of the target panel in its native orientation.
-    func digitizerEvent(at point: CGPoint, phase: TouchPhase, edge: ScreenEdge?, target: DigitizerTarget) throws -> NativeSwiftValue {
-        try makeDigitizerEvent(point, phase.rawValue, edge?.rawValue ?? Self.noEdge, target.description)
+    /// A touch at `point`, and a second finger's at `second`, in unit coordinates of the target panel in its native orientation.
+    func digitizerEvent(at point: CGPoint, second: CGPoint? = nil, phase: TouchPhase, edge: ScreenEdge?,
+                        target: DigitizerTarget) throws -> NativeSwiftValue {
+        try makeDigitizerEvent(point, second, phase.rawValue, edge?.rawValue ?? Self.noEdge, target.description)
     }
 
     func buttonEvent(_ button: HardwareButton, state: ButtonState) throws -> NativeSwiftValue {
@@ -115,7 +116,7 @@ struct GuestMessageCodec {
 
     /// An initializer consumes its arguments, so each event gets its own.
     private static func digitizerEvents(runtime: ABIRuntime) async throws
-        -> (type: NativeSwiftType, make: (CGPoint, String, String, String) throws -> NativeSwiftValue) {
+        -> (type: NativeSwiftType, make: (CGPoint, CGPoint?, String, String, String) throws -> NativeSwiftValue) {
         let point = try await runtime.resolve(.swift(.type("CoreDevice.DigitizerPoint")))
         let eventType = try await runtime.resolve(.swift(.type("CoreDevice.DigitizerEventType")))
         let edge = try await runtime.resolve(.swift(.type("CoreDevice.DigitizerEdge")))
@@ -127,8 +128,9 @@ struct GuestMessageCodec {
         let makeDigitizer = try await digitizer.resolve(.swift(.initializer("init(pointOne:pointTwo:eventType:edge:target:)",
             as: ((NativeSwiftValue, NativeSwiftValue?, NativeSwiftValue, NativeSwiftValue, NativeSwiftValue) -> NativeSwiftValue).self,
             valueABIs: abis)))
-        return (digitizer, { first, phase, edgeName, targetName in
-            try unsafe makeDigitizer.unsafeInvoke(makePoint.unsafeInvoke(first.x, first.y), nil,
+        return (digitizer, { first, second, phase, edgeName, targetName in
+            try unsafe makeDigitizer.unsafeInvoke(makePoint.unsafeInvoke(first.x, first.y),
+                second.map { try unsafe makePoint.unsafeInvoke($0.x, $0.y) },
                 eventType.makeEnumCase(named: phase), edge.makeEnumCase(named: edgeName), target.makeEnumCase(named: targetName))
         })
     }

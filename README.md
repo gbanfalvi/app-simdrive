@@ -26,6 +26,8 @@ simdrive <udid|booted> <command>
 | `type <text>` | Types on the simulator's hardware keyboard layout; paste anything else |
 | `tap <x> <y> [--display D]` | Touch |
 | `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top\|bottom\|left\|right] [--display D]` | Drag through the points, each segment taking equal time, so a repeated point holds; `--edge` starts a system edge gesture |
+| `pinch <x> <y> <scale> [--duration ms] [--display D]` | Two fingers around the point spread to `scale` times their distance, or close below 1 |
+| `rotate <x> <y> <degrees> [--duration ms] [--display D]` | Two fingers turn around the point, clockwise when positive |
 | `button <name> [--repeat N] [--hold ms]` | Hardware or Apple TV Remote button, held 100 ms by default |
 | `posture [closed\|half\|open]` | Sets or reads a foldable's hinge; returns once the hinge settles |
 | `split left\|right\|full [--from left\|right\|full]` | Moves the iPhone Duo inner screen's app to a half or the whole screen; see [Foldables](#foldables) |
@@ -57,6 +59,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `type` | `{"characters", "layout"}`; `layout` is the hardware keyboard layout typed on, such as `US` or `German` |
 | `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen |
 | `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}`, with `"via": [{"x", "y"}]` for more points |
+| `pinch`, `rotate` | `{"display", "center": {"x", "y"}, "scale"}` or `"degrees"` |
 | `button` | `{"button", "count"}` |
 | `posture` | `{"angle": degrees, "posture": "closed", "half" or "open"}` |
 | `split` | `{"display", "from", "layout"}` |
@@ -86,7 +89,7 @@ Taps follow the interface's rotation, which simdrive reads from CoreSimulator wi
 
 ### Apple TV
 
-Remote buttons and the keyboard (`key down`, `key return`, typing into a focused text field) move focus and act on it. `tap`, `swipe`, `orientation` and `pasteboard` fail with `no-touchscreen`, `orientation-unsupported` and `pasteboard-unsupported`; screenshots report a null orientation.
+Remote buttons and the keyboard (`key down`, `key return`, typing into a focused text field) move focus and act on it. `tap`, `swipe`, `pinch`, `rotate`, `orientation` and `pasteboard` fail with `no-touchscreen`, `orientation-unsupported` and `pasteboard-unsupported`; screenshots report a null orientation.
 
 ### Pasteboard
 

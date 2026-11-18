@@ -4,6 +4,8 @@ import SimDriveNative
 enum CommandParser {
     static let defaultMaxDimension = 1024
     static let defaultSwipeDuration: Duration = .milliseconds(300)
+    static let defaultGestureDuration: Duration = .milliseconds(500)
+    private static let pinchScales: ClosedRange<Double> = 0.1...10
     static let defaultButtonHold: Duration = .milliseconds(100)
     private static let postureNames: [String: DevicePosture] = [
         "closed": .closed, "half": .partiallyOpen, "partially-open": .partiallyOpen, "partiallyOpen": .partiallyOpen, "open": .open,
@@ -39,6 +41,22 @@ enum CommandParser {
             let duration = try list.positiveInteger("duration").map { Duration.milliseconds($0) } ?? defaultSwipeDuration
             return .swipe(path: try values.map { try point($0.0, $0.1) }, duration: duration,
                           edge: try edge(list.option("edge")), display: try display(list.option("display")))
+        case "pinch":
+            let list = try ArgumentList(rest, options: ["display", "duration"])
+            let values = try list.exactly(3, "x, y and a scale")
+            guard let scale = Double(values[2]), pinchScales.contains(scale) else {
+                throw SimDriveError.usage("pinch needs a scale from \(pinchScales.lowerBound) to \(pinchScales.upperBound)")
+            }
+            return .pinch(center: try point(values[0], values[1]), scale: scale, duration: try gestureDuration(list),
+                          display: try display(list.option("display")))
+        case "rotate":
+            let list = try ArgumentList(rest, options: ["display", "duration"])
+            let values = try list.exactly(3, "x, y and degrees")
+            guard let degrees = Double(values[2]), degrees.isFinite, degrees != 0 else {
+                throw SimDriveError.usage("rotate needs nonzero degrees")
+            }
+            return .rotate(center: try point(values[0], values[1]), degrees: degrees, duration: try gestureDuration(list),
+                           display: try display(list.option("display")))
         case "button":
             let list = try ArgumentList(rest, options: ["repeat", "hold"])
             let value = try list.single("a button")
@@ -221,6 +239,10 @@ enum CommandParser {
         return point
     }
 
+    private static func gestureDuration(_ list: ArgumentList) throws -> Duration {
+        try list.positiveInteger("duration").map { Duration.milliseconds($0) } ?? defaultGestureDuration
+    }
+
     private static func display(_ value: String?) throws -> DisplaySelector {
         guard let value else { return .automatic }
         guard let display = DisplaySelector(name: value) else {
@@ -264,6 +286,10 @@ enum CommandParser {
           type <text>                         on the simulator's keyboard layout; paste anything else
           tap <x> <y> [--display D]
           swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top|bottom|left|right] [--display D]
+          pinch <x> <y> <scale> [--duration ms] [--display D]
+                                              two fingers spread to scale times their distance, or close below 1
+          rotate <x> <y> <degrees> [--duration ms] [--display D]
+                                              two fingers turn around the point, clockwise when positive
           button <name> [--repeat N] [--hold ms]
                  home|lock|volume-up|volume-down|siri; Apple TV Remote: menu|select|play-pause|up|down|left|right|
                  channel-up|channel-down, with home as the TV button

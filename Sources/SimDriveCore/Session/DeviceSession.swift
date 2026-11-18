@@ -68,6 +68,14 @@ final class DeviceSession {
             return try await tap(point, display: display)
         case .swipe(let path, let duration, let edge, let display):
             return try await swipe(through: path, duration: duration, edge: edge, display: display)
+        case .pinch(let center, let scale, let duration, let display):
+            return try await twoFingerGesture(around: center, duration: duration, display: display, result: ["scale": .number(scale)]) {
+                TwoFingerGesture.pinch(around: $0, scale: scale, screen: $1)
+            }
+        case .rotate(let center, let degrees, let duration, let display):
+            return try await twoFingerGesture(around: center, duration: duration, display: display, result: ["degrees": .number(degrees)]) {
+                TwoFingerGesture.rotation(around: $0, degrees: degrees, screen: $1)
+            }
         case .button(let button, let count, let hold):
             return try await press(button, count: count, hold: hold)
         case .posture(let posture?):
@@ -154,6 +162,17 @@ final class DeviceSession {
         let screen = try await screens.touchscreen(display, usesPixels: point.usesPixels)
         try await inputs.tap(at: screen.digitizerPoint(point), on: screen.digitizerTarget)
         return ["display": JSONValue(screen.display?.index), "point": screen.json(point)]
+    }
+
+    private func twoFingerGesture(around center: ScreenPoint, duration: Duration, display: DisplaySelector, result: [String: JSONValue],
+                                  _ layout: (CGPoint, CGSize) -> TwoFingerGesture) async throws -> JSONValue {
+        let screen = try await screens.touchscreen(display, usesPixels: center.usesPixels)
+        let size = CGSize(width: screen.record.image.width, height: screen.record.image.height)
+        let gesture = layout(screen.normalizedPoint(center), size)
+        try await inputs.drag(through: gesture.first.map { screen.digitizerPoint(.normalized($0)) },
+                              and: gesture.second.map { screen.digitizerPoint(.normalized($0)) }, duration: duration,
+                              on: screen.digitizerTarget)
+        return .object(result.merging(["display": JSONValue(screen.display?.index), "center": screen.json(center)]) { $1 })
     }
 
     private func swipe(through path: [ScreenPoint], duration: Duration, edge: ScreenEdge?,

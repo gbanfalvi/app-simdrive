@@ -1,6 +1,6 @@
 ---
 name: simdrive
-description: Drives a booted iOS or tvOS simulator headlessly with the simdrive CLI, sending hardware keys, typing, taps, swipes and edge gestures, Home/lock/volume and Apple TV Remote buttons, rotation, pasteboard reads and writes, and a foldable's (iPhone Duo) open, half-open or closed hinge and split view, taking screenshots, reading the frontmost app's accessibility tree (labels, traits, VoiceOver elements, frames), reading the app's logs, stdout, stderr and crash reports or waiting for a log entry, and changing dark mode, text size, Liquid Glass tint and accessibility settings such as Reduce Motion or Bold Text. Use when an agent must interact with an app running in a simulator or Apple TV simulator, reproduce a UI bug, check what an action logged or why an app crashed, test keyboard navigation, Full Keyboard Access, tvOS focus, VoiceOver labels or Dynamic Type, or fold and unfold a Duo simulator.
+description: Drives a booted iOS or tvOS simulator headlessly with the simdrive CLI, sending hardware keys, typing, taps, swipes, pinches, rotations and edge gestures, Home/lock/volume and Apple TV Remote buttons, rotation, pasteboard reads and writes, and a foldable's (iPhone Duo) open, half-open or closed hinge and split view, taking screenshots, reading the frontmost app's accessibility tree (labels, traits, VoiceOver elements, frames), reading the app's logs, stdout, stderr and crash reports or waiting for a log entry, and changing dark mode, text size, Liquid Glass tint and accessibility settings such as Reduce Motion or Bold Text. Use when an agent must interact with an app running in a simulator or Apple TV simulator, reproduce a UI bug, check what an action logged or why an app crashed, test keyboard navigation, Full Keyboard Access, tvOS focus, VoiceOver labels or Dynamic Type, or fold and unfold a Duo simulator.
 ---
 
 # simdrive
@@ -29,6 +29,7 @@ $S <udid> tap 0.5 0.5
 $S <udid> swipe 0.5 0.8 0.5 0.2 --duration 300
 $S <udid> swipe 0.5 0.999 0.5 0.5 --edge bottom   # go home from an app
 $S <udid> swipe 0.2 0.5 0.5 0.5 0.5 0.5 0.8 0.5   # more points bend the path; each segment takes equal time, so a repeated point holds
+$S <udid> pinch 0.5 0.5 2                       # zoom in; below 1 zooms out. rotate 0.5 0.5 90 turns clockwise
 $S <udid> button home                  # home | lock | volume-up | volume-down | siri
 $S <udid> button down --repeat 3       # Apple TV Remote: menu (Back) | select | play-pause | up | down | left | right | channel-up | channel-down; home is the TV button
 $S <udid> button select --hold 1000    # long press

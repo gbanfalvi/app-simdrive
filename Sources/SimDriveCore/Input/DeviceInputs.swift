@@ -60,6 +60,11 @@ final class DeviceInputs {
         scheduleRelease()
     }
 
+    func drag(through first: [CGPoint], and second: [CGPoint], duration: Duration, on target: DigitizerTarget) async throws {
+        try await Self.connected(touchscreen).drag(through: first, and: second, duration: duration, target: target)
+        scheduleRelease()
+    }
+
     func press(_ button: HardwareButton, count: Int, hold: Duration) async throws {
         let buttons = try await Self.connected(buttons)
         for index in 0..<count {

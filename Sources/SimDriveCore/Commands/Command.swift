@@ -29,6 +29,10 @@ enum Command: Equatable, Sendable {
     case tap(ScreenPoint, display: DisplaySelector)
     /// Drags through two or more points.
     case swipe(path: [ScreenPoint], duration: Duration, edge: ScreenEdge?, display: DisplaySelector)
+    /// Two fingers spread to `scale` times their distance around `center`, or close below 1.
+    case pinch(center: ScreenPoint, scale: Double, duration: Duration, display: DisplaySelector)
+    /// Two fingers turn around `center`, clockwise for positive degrees.
+    case rotate(center: ScreenPoint, degrees: Double, duration: Duration, display: DisplaySelector)
     case button(HardwareButton, count: Int, hold: Duration)
     /// Sets the posture, or reads the hinge without one.
     case posture(DevicePosture?)

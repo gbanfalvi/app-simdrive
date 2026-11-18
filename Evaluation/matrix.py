@@ -276,6 +276,14 @@ def tap_checks(full):
     check('swipe scrolls (tree offscreen)', after.get('ok') and len(now) < len(before), f'{len(before)} -> {len(now)} offscreen rows')
     sd('swipe', '0.15', '0.3', '0.15', '0.9', '--duration', '200')
     time.sleep(1)
+    # Recognizers start after some movement, so they see a little less than the whole gesture.
+    for command, amount, pattern, tolerance in [('pinch', 2, r'PINCH scale=([0-9.-]+)', 0.3), ('pinch', 0.5, r'PINCH scale=([0-9.-]+)', 0.1),
+                                                ('rotate', 90, r'ROTATE angle=([0-9.-]+)', 12), ('rotate', -45, r'ROTATE angle=([0-9.-]+)', 12)]:
+        mark = log.mark()
+        response = sd(command, '0.5', '0.5', str(amount))
+        seen = [float(re.search(pattern, line).group(1)) for line in log.wait(mark, pattern)]
+        check(f'{command} {amount}', response.get('ok') and seen and abs(seen[-1] - amount) <= tolerance,
+              f'probe saw {seen[-1]}' if seen else brief(response))
 
 
 def messages(result):

@@ -262,6 +262,13 @@ final class ProbeViewController: UIViewController {
             }
         }
 
+        let pinch = UIPinchGestureRecognizer(target: self, action: #selector(pinched(_:)))
+        let rotation = UIRotationGestureRecognizer(target: self, action: #selector(rotated(_:)))
+        for recognizer in [pinch, rotation] as [UIGestureRecognizer] {
+            recognizer.delegate = self
+            view.addGestureRecognizer(recognizer)
+        }
+
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.ambient)
         try? session.setActive(true)
@@ -281,6 +288,14 @@ final class ProbeViewController: UIViewController {
         coordinator.animate(alongsideTransition: nil) { [weak self] _ in self?.logOrientation() }
     }
 
+    @objc private func pinched(_ recognizer: UIPinchGestureRecognizer) {
+        if recognizer.state == .ended { Log.write("PINCH scale=\(String(format: "%.2f", recognizer.scale))") }
+    }
+
+    @objc private func rotated(_ recognizer: UIRotationGestureRecognizer) {
+        if recognizer.state == .ended { Log.write("ROTATE angle=\(String(format: "%.0f", recognizer.rotation * 180 / .pi))") }
+    }
+
     private func logOrientation() {
         Log.write("ORIENT interface=\(view.window?.windowScene?.effectiveGeometry.interfaceOrientation.rawValue ?? 0)")
     }
@@ -290,6 +305,11 @@ final class ProbeViewController: UIViewController {
         label.text = text
         return label
     }
+}
+
+extension ProbeViewController: UIGestureRecognizerDelegate {
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 }
 
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {

@@ -464,7 +464,7 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
   The App Switcher is `home` twice, 150 ms apart (`DeviceCommand.swift:213`): add `button app-switcher`, or document `button home --repeat 2`.
 - **Test:** `keyboard` toggles the probe's software keyboard, visible in a screenshot; `app-switcher` shows the switcher. Add matrix checks.
 
-### - [ ] N9. `pinch` and `rotate` gestures (S)
+### - [x] N9. `pinch` and `rotate` gestures (S)
 
 - **Do:** `IndigoDigitizerEvent(pointOne:pointTwo:eventType:edge:target:)` takes a second finger. simdrive passes nil (`S:SimDriveNative/Guest/GuestMessageCodec.swift:119-123`), and NeoSimulator passes it (`N:NeoSimulatorDeviceIO/CoreDevice/SimulatorGuestHID.swift:250-254`).
   - Add `GuestTouchscreen.drag(_ fingers: [(from, to)])`.
@@ -472,6 +472,7 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
   - Both fingers start and end together.
 - **Test:** the probe adds a `UIPinchGestureRecognizer` and a `UIRotationGestureRecognizer` that log `PINCH scale=` and `ROTATE angle=`; add matrix checks.
 - **Also in:** AXe's `gesture pinch|rotate`, two-finger tap and swipe, and idb's `pinch`, over the same digitizer service.
+- **Result:** `GuestTouchscreen.drag(through:and:)` moves both fingers through their own paths, so a rotation follows an arc (10° steps) rather than a chord. `TwoFingerGesture` lays the paths out in screenshot pixels, so the aspect does not skew them; the farther finger is 0.3 of the shorter side from the center. Default duration 500 ms. The probe sees scale 2 as 1.88 and 90° as 85°, since recognizers start after some movement. Passes on iOS 17.0, 27.2 and the Duo.
 
 ### - [ ] N10. `location set <lat> <lon>|run <scenario>|clear|list` (S)
 
