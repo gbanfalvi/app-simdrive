@@ -184,4 +184,4 @@ The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR
 
 ## Credits
 
-The guest HID, posture and keyboard-translation approach comes from [NeoSimulator](https://github.com/lynnswap/NeoSimulator) (MIT); see [THIRD_PARTY.md](THIRD_PARTY.md). Native calls go through [ABIBridge](https://github.com/lynnswap/ABIBridge). [idb](https://github.com/facebook/idb) showed the way to read a simulator's accessibility through AccessibilityPlatformTranslation.
+The guest HID, posture and keyboard-translation approach comes from [NeoSimulator](https://github.com/lynnswap/NeoSimulator) (MIT); see [THIRD_PARTY.md](THIRD_PARTY.md). Native calls go through [ABIBridge](https://github.com/lynnswap/ABIBridge). [idb](https://github.com/facebook/idb) showed the way to read a simulator's accessibility through AccessibilityPlatformTranslation, and, with [AXe](https://github.com/cameroncooke/AXe), to confirm input with a guest barrier. AXe's approach to typing in the simulator's keyboard layout is the basis for simdrive's. Reviews of these and [agent-device](https://github.com/callstack/agent-device) shaped the [backlog](roadmap/backlog.md).
