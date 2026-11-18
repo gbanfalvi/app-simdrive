@@ -119,13 +119,19 @@ package final class SimulatorDevice {
         return port
     }
 
-    /// Whether the runtime ships the launchd daemon `label`, running or not.
-    package func hasLaunchDaemon(_ label: String) -> Bool {
+    /// The directory holding the guest's system files.
+    var runtimeRoot: URL? {
         guard device.responds(to: NSSelectorFromString(Self.runtimeKey)),
               let root = (device.value(forKey: Self.runtimeKey) as? NSObject)?.value(forKey: Self.runtimeRootKey) as? String else {
-            return false
+            return nil
         }
-        return FileManager.default.fileExists(atPath: "\(root)/\(Self.launchDaemonsPath)/\(label).plist")
+        return URL(fileURLWithPath: root, isDirectory: true)
+    }
+
+    /// Whether the runtime ships the launchd daemon `label`, running or not.
+    package func hasLaunchDaemon(_ label: String) -> Bool {
+        guard let root = runtimeRoot else { return false }
+        return FileManager.default.fileExists(atPath: root.appending(path: "\(Self.launchDaemonsPath)/\(label).plist").path)
     }
 
     func hasService(_ name: String) -> Bool {

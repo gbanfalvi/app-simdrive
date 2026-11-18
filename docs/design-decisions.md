@@ -78,9 +78,9 @@ Each setting is one row in `SettingCatalog`, with no new command. Three are `Sim
 
 The Mac clipboard is never touched: simdrive converts through a uniquely named `NSPasteboard`, and CoreDevice moves the snapshot to the guest. A syncing host such as DeviceHub still copies a guest write to the Mac clipboard, so writes need the user's consent, and the matrix writes only with `--pasteboard`.
 
-## `type` covers the US layout
+## `type` uses the guest's own layout data
 
-UniversalHIDKit's observer reads the key from the key code alone, not from the event's characters, so `type` maps each character to a US key code and shift. Anything else goes through the pasteboard and `key v --mods cmd`, rather than guessing at other layouts.
+UniversalHIDKit's observer reads the key from the key code alone, not from the event's characters, and the guest decodes keys with its hardware keyboard layout. So `type` reads the active layout from the guest's keyboard preferences, as AXe does, and inverts the runtime's `uchr` data for it, which `UCKeyTranslate` reads by HID usage. On US it keeps its fixed table and loads nothing. Anything else goes through the pasteboard and `key v --mods cmd`.
 
 ## Logs as digests behind a cursor
 

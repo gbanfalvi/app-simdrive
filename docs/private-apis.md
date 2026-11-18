@@ -50,6 +50,7 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 - Reports come from `UniversalHIDKit.EventObserver<NSEvent>` (`init(eventMask:)`, `processEvent(_:)`), as DeviceHub makes them. Its results are `(HIDReport, senderID)` pairs.
 - Two `UniversalHID` modules exist: the system's, which UniversalHIDKit uses, and a copy bundled in `CoreDevice.framework/Versions/A/Frameworks`, whose `HIDReport` CoreDevice's services take. Their types are distinct, so reports cross as `Data`.
 - The observer reads a key from its key code alone, and keeps modifier state per observer, so each keyboard needs its own.
+- The guest decodes keys with its hardware keyboard layout. A runtime's layouts are in `System/Library/KeyboardLayouts/USBKeyboardLayouts.bundle`: `USBKeyboardLayouts.plist` maps a name such as `German` to `KeyLayoutFileName`, a `uchr` file in `uchrs/` that `UCKeyTranslate` reads by HID usage rather than Mac key code. The active one follows from `.GlobalPreferences` (`AppleKeyboards`, `AppleKeyboardsExpanded`, `AppleLanguages`), `com.apple.keyboard.preferences` (`KeyboardLastUsed`) and the runtime's `TextInput_<language>.bundle/InputMode_<language>.plist` (`HWLayouts`, `UIKeyboardDefaultLanguageInputModes`), by AXe's rules. Typing German, French and Russian text matched on iOS 27.2.
 
 ### Digitizer
 

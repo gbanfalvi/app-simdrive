@@ -20,7 +20,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | --- | --- |
 | `SimDriveNative/Simulator` | `SimulatorDevice`, CoreSimulator's `SimDevice`: state, boot date, screen scale, service lookup, Darwin notifications and the accessibility request channel. Framebuffer reads (`ScreenFramebuffers`, `ScreenAdapter`) and `InterfaceOrientation`. |
 | `SimDriveNative/Guest` | `SimulatorGuest` and `GuestConnection`, XPC connections to the guest's Mach services; `GuestMessageCodec`, which encodes their messages as CoreDevice does; `GuestInputTiming`. |
-| `SimDriveNative/Input` | `GuestKeyboard`, `GuestTouchscreen`, `GuestButtons`, and `KeyboardBindings`, which turns Mac key events into HID reports. |
+| `SimDriveNative/Input` | `GuestKeyboard`, `GuestTouchscreen`, `GuestButtons`, `KeyboardBindings`, which turns Mac key events into HID reports, and `KeyboardLayout`, the guest's hardware keyboard layout. |
 | `SimDriveNative/DeviceControl` | `GuestOrientation`, `CoreDevicePasteboard`, `CoreDeviceHinge`. |
 | `SimDriveNative/CoreDevice` | `CoreDeviceManager` and `CoreDeviceRemote`: finding the simulator's CoreDevice record and calling its capabilities. |
 | `SimDriveNative/Accessibility` | `SimulatorAccessibility`, which drives `AXPTranslator`, and `AccessibilityElement`, the snapshot it returns. |
@@ -29,7 +29,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Commands` | `Command`, `CommandParser`, `Steps` (for `run`) and `CommandResults`, every result's JSON. |
 | `SimDriveCore/Daemon` | `DaemonServer`, `DaemonClient`, the wire types in `DaemonProtocol`, `UnixSocket`, `StatePaths`. |
 | `SimDriveCore/Session` | `DeviceSession` and `LazyCapability`. |
-| `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes. |
+| `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes, on US or a `KeyboardLayout`. |
 | `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. |
 | `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes. |
 | `SimDriveCore/Split` | `SplitView` and `SplitGesture`, the Duo's split view. |

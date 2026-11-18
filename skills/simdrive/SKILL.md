@@ -24,7 +24,7 @@ Each call prints one JSON line: `{"ok":true,"result":…}`, or `{"ok":false,"err
 S=<simdrive>
 $S <udid> key tab                      # names: tab return escape delete space left right up down home end page-up page-down f1…f12, or one character
 $S <udid> key f --mods cmd,shift --repeat 2
-$S <udid> type "hello, world"          # US-layout characters only
+$S <udid> type "hello, world"          # on the simulator's keyboard layout
 $S <udid> tap 0.5 0.5
 $S <udid> swipe 0.5 0.8 0.5 0.2 --duration 300
 $S <udid> swipe 0.5 0.999 0.5 0.5 --edge bottom   # go home from an app

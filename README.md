@@ -23,7 +23,7 @@ simdrive <udid|booted> <command>
 | Command | Effect |
 | --- | --- |
 | `key <name\|char> [--mods cmd,shift,alt,ctrl] [--repeat N]` | Hardware key press: `tab`, `return`, `escape`, `left`, `f5`, `a`, `/`… |
-| `type <text>` | Types US-layout characters; paste anything else |
+| `type <text>` | Types on the simulator's hardware keyboard layout; paste anything else |
 | `tap <x> <y> [--display D]` | Touch |
 | `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top\|bottom\|left\|right] [--display D]` | Drag through the points, each segment taking equal time, so a repeated point holds; `--edge` starts a system edge gesture |
 | `button <name> [--repeat N] [--hold ms]` | Hardware or Apple TV Remote button, held 100 ms by default |
@@ -51,7 +51,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | --- | --- |
 | `list` | `[{"udid", "name", "runtime", "deviceType"}]` |
 | `key` | `{"key", "modifiers": [names], "count"}` |
-| `type` | `{"characters"}` |
+| `type` | `{"characters", "layout"}`; `layout` is the hardware keyboard layout typed on, such as `US` or `German` |
 | `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen |
 | `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}`, with `"via": [{"x", "y"}]` for more points |
 | `button` | `{"button", "count"}` |
@@ -156,7 +156,7 @@ The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR
 ## Limitations
 
 - Simulators only; no physical devices.
-- `type` covers the US layout; other text goes through the pasteboard, which a syncing host copies to the Mac.
+- `type` types what the simulator's hardware keyboard layout has keys for, with Shift, Option and dead keys; other text, such as `日`, goes through the pasteboard, which a syncing host copies to the Mac. An app keeps the layout it was launched with, so relaunch it after changing keyboards. On a layout without Latin letters, such as Russian, text only US can type goes as US keys, as iOS reads them in ASCII fields. `key` names US key positions.
 - No swipes on the Apple TV Remote's touch surface; the directional buttons move focus instead.
 - The iPhone Duo's cover panel accepts orientation changes, but its apps stay portrait.
 - Until 30 s after simdrive's last input, the guest drops touches from other clients, such as clicks in DeviceHub or Simulator.app. `simdrive <udid> stop` releases its services at once. Driving while DeviceHub runs works.

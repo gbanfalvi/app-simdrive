@@ -1,5 +1,6 @@
 import AppKit
 import Carbon.HIToolbox
+import SimDriveNative
 
 enum KeyModifier: String, CaseIterable, Sendable {
     case command, shift, option, control
@@ -31,10 +32,13 @@ struct KeyStroke: Equatable, Sendable {
         self.keyCode = UInt16(keyCode)
         self.needsShift = needsShift
     }
+
+    var flags: NSEvent.ModifierFlags { needsShift ? .shift : [] }
 }
 
 /// Mac virtual key codes for key names and US-layout characters. The guest reads the main keyboard as US.
 enum KeyMap {
+    private static let usLayoutName = "US"
     private static let named: [String: KeyStroke] = [
         "tab": KeyStroke(kVK_Tab), "space": KeyStroke(kVK_Space), "return": KeyStroke(kVK_Return),
         "enter": KeyStroke(kVK_Return), "escape": KeyStroke(kVK_Escape), "esc": KeyStroke(kVK_Escape),
@@ -84,4 +88,24 @@ enum KeyMap {
     }
 
     static var keyNames: [String] { named.keys.sorted() }
+
+    /// The keys that type `text` on `layout`, else on US, and the layout's name. Text only US can type stays on US, as
+    /// iOS types it in fields that take only ASCII.
+    static func keys(for text: String, layout: KeyboardLayout?) throws -> (keys: [KeyboardLayout.Key], layout: String) {
+        let us = text.map { stroke(for: $0) }
+        let usKeys = us.contains(nil) ? nil : us.compactMap { $0.map { (keyCode: $0.keyCode, flags: $0.flags) } }
+        if let layout {
+            do {
+                return (try layout.keys(for: text), layout.name)
+            } catch {
+                if let usKeys { return (usKeys, usLayoutName) }
+                throw SimDriveError(.unsupportedCharacter, "\"\(error.character)\" has no key on the \(layout.name) layout.")
+            }
+        }
+        guard let usKeys else {
+            let missing = zip(text, us).first { $0.1 == nil }?.0 ?? " "
+            throw SimDriveError(.unsupportedCharacter, "\"\(missing)\" has no US-layout key.")
+        }
+        return (usKeys, usLayoutName)
+    }
 }

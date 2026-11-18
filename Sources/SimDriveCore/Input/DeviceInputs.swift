@@ -43,9 +43,9 @@ final class DeviceInputs {
         scheduleRelease()
     }
 
-    func type(_ strokes: [KeyStroke]) async throws {
+    func type(_ keys: [KeyboardLayout.Key]) async throws {
         let keyboard = try await Self.connected(keyboard)
-        try keyboard.type(strokes.map { (keyCode: $0.keyCode, flags: $0.needsShift ? .shift : []) })
+        try keyboard.type(keys)
         try await keyboard.flush()
         scheduleRelease()
     }

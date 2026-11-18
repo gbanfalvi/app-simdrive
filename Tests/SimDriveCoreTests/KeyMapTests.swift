@@ -1,3 +1,4 @@
+import AppKit
 import Carbon.HIToolbox
 import Testing
 @testable import SimDriveCore
@@ -29,5 +30,13 @@ struct KeyMapTests {
         #expect(KeyModifier(name: "Alt") == .option)
         #expect(KeyModifier(name: "ctrl") == .control)
         #expect(KeyModifier(name: "hyper") == nil)
+    }
+
+    @Test func withoutALayoutTextTypesOnUS() throws {
+        let (keys, layout) = try KeyMap.keys(for: "aB", layout: nil)
+        #expect(layout == "US")
+        #expect(keys.map(\.keyCode) == [UInt16(kVK_ANSI_A), UInt16(kVK_ANSI_B)])
+        #expect(keys.map(\.flags) == [[], .shift])
+        expectError(.unsupportedCharacter) { try KeyMap.keys(for: "aü", layout: nil) }
     }
 }

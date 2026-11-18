@@ -362,7 +362,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   3. **Icons with the other panel's frames.** Kept windows still list some icons at the outer panel's places: Calendar reads (0.06, 0.42), drawn at (0.525, 0.43). AXe asks each button for its display (one request per button, only when step 1 dropped a window) and drops those on another.
 - **Do:** the three steps in `DeviceAccessibility`, with the windows' classification in `AccessibilityLayout`, which knows the panel; the per-button display request in `SimulatorAccessibility`. **Test:** `tree` on the Home screen of a closed and an open Duo, every point against the screenshot; the probe's tree unchanged; the matrix's posture section; time `tree` on the Home screen.
 
-### - [ ] I13. Type in the runtime's keyboard layout (S, unverified)
+### - [x] I13. Type in the runtime's keyboard layout (S, unverified)
+
+**Result:** `type` reads the active hardware layout from the guest's keyboard preferences and inverts the runtime's `uchr` data, as AXe does, and returns the layout's name. On an iPhone iOS 27.2, German (`Grüße an @alle`, `ÄÖÜ ß € {[]}`, `é è ê`), French (`Ça va, été ? à 100 %`) and Russian (`привет`) arrived exactly; on Russian, Latin text goes as US keys, as in AXe. It is not slower: on US it loads no layout, and `type a` took 276 ms before and after, 100 characters 311–321 ms; on German `type a` took 278 ms. `key` still names US key positions, so `key a --mods cmd` is Cmd-Q on AZERTY.
 
 - **Problem:** `type` maps characters through a US layout, failing others with `unsupported-character`. AXe types through the runtime's own hardware keyboard layout, with `type --layout` to choose one (`A:README.md:110`).
 - **Do:** read how AXe resolves the layout, and map characters through it in `KeyMap`. Overlaps N12 (`keyboard-language`) and N15 (`set-value`, which avoids keys entirely).

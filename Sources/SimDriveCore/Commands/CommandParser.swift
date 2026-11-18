@@ -251,7 +251,7 @@ enum CommandParser {
 
         commands:
           key <name|char> [--mods cmd,shift,alt,ctrl] [--repeat N]
-          type <text>                         US-layout characters only; paste anything else
+          type <text>                         on the simulator's keyboard layout; paste anything else
           tap <x> <y> [--display D]
           swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top|bottom|left|right] [--display D]
           button <name> [--repeat N] [--hold ms]

@@ -133,16 +133,11 @@ final class DeviceSession {
                 "count": JSONValue(count)]
     }
 
-    /// Types US-layout characters; other text goes through the pasteboard.
+    /// Types on the guest's hardware keyboard layout; other text goes through the pasteboard.
     private func type(_ text: String) async throws -> JSONValue {
-        let strokes = try text.map { character in
-            guard let stroke = KeyMap.stroke(for: character) else {
-                throw SimDriveError(.unsupportedCharacter, "\"\(character)\" has no US-layout key.")
-            }
-            return stroke
-        }
-        try await inputs.type(strokes)
-        return ["characters": JSONValue(text.count)]
+        let (keys, layout) = try KeyMap.keys(for: text, layout: KeyboardLayout.active(on: device))
+        try await inputs.type(keys)
+        return ["characters": JSONValue(text.count), "layout": .string(layout)]
     }
 
     // MARK: Touches and buttons
