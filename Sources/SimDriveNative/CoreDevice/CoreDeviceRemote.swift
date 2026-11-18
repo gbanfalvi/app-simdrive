@@ -15,7 +15,7 @@ enum CoreDeviceManager {
 
     private static func create() async throws -> NativeSwiftValue {
         try await NativeFrameworks.load(NativeFrameworks.coreDevicePath)
-        let created = try await ABIRuntime.shared.prepare { runtime in
+        let (created, initialize) = try await ABIRuntime.shared.prepare { runtime in
             let service = try await runtime.resolve(.swift(.type("CoreDevice.CoreDeviceService")))
             let sharedConnection = try await service.resolve(.swift(.staticGetter("sharedConnection", as: (() -> NativeSwiftValue).self)))
             let connection = try unsafe sharedConnection.unsafeInvoke()
@@ -24,10 +24,9 @@ enum CoreDeviceManager {
             let type = try await runtime.resolve(.swift(.type("CoreDevice.DeviceManager")))
             let make = try await type.resolve(.swift(.initializer("init(serviceConnection:allowedDeviceVisibilityClasses:)",
                 as: ((NativeSwiftValue, [NativeSwiftValue]) -> NativeSwiftValue).self)))
-            return try unsafe make.unsafeInvoke(connection, classes)
+            let initialize = try await type.resolve(.swift(.method("awaitFullInitialization()", as: (() async -> Void).self)))
+            return (try unsafe make.unsafeInvoke(connection, classes), initialize)
         }
-        let type = try await ABIRuntime.shared.resolve(.swift(.type("CoreDevice.DeviceManager")))
-        let initialize = try await type.resolve(.swift(.method("awaitFullInitialization()", as: (() async -> Void).self)))
         try await unsafe initialize.unsafeInvoke(on: created)
         return created
     }
@@ -35,13 +34,15 @@ enum CoreDeviceManager {
     /// The CoreDevice identifier of the simulator `udid`; simulator UDIDs are not keys of `DeviceManager.devices`.
     static func simulatorIdentifier(udid: String) async throws -> UUID? {
         let manager = try await shared()
-        let runtime = ABIRuntime.shared
-        let managerType = try await runtime.resolve(.swift(.type("CoreDevice.DeviceManager")))
-        let devices = try await managerType.resolve(.swift(.getter("devices", as: (() -> [UUID: NativeSwiftValue]).self)))
-        let remote = try await runtime.resolve(.swift(.type("CoreDevice.RemoteDevice")))
-        let deviceInfo = try await remote.resolve(.swift(.getter("deviceInfo", as: (() -> NativeSwiftValue).self)))
-        let infoType = try await runtime.resolve(.swift(.type("CoreDeviceProtocols.DeviceInfo")))
-        let readUDID = try await infoType.resolve(.swift(.getter("udid", as: (() -> String?).self)))
+        let (devices, deviceInfo, readUDID) = try await ABIRuntime.shared.prepare { runtime in
+            let managerType = try await runtime.resolve(.swift(.type("CoreDevice.DeviceManager")))
+            let devices = try await managerType.resolve(.swift(.getter("devices", as: (() -> [UUID: NativeSwiftValue]).self)))
+            let remote = try await runtime.resolve(.swift(.type("CoreDevice.RemoteDevice")))
+            let deviceInfo = try await remote.resolve(.swift(.getter("deviceInfo", as: (() -> NativeSwiftValue).self)))
+            let infoType = try await runtime.resolve(.swift(.type("CoreDeviceProtocols.DeviceInfo")))
+            let readUDID = try await infoType.resolve(.swift(.getter("udid", as: (() -> String?).self)))
+            return (devices, deviceInfo, readUDID)
+        }
         var match: UUID?
         for (identifier, object) in try unsafe devices.unsafeInvoke(on: manager) {
             let info = try unsafe deviceInfo.unsafeInvoke(on: object)

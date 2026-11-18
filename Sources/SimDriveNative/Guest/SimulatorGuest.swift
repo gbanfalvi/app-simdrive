@@ -6,6 +6,8 @@ import XPC
 /// How long a guest service may take to reply or to take the messages sent to it.
 let guestServiceLimit: Duration = .seconds(10)
 
+private let libxpc = ImageSelector.installName("/usr/lib/system/libxpc.dylib")
+
 /// Reaches a simulator's guest services through the Mach services its `SimDevice` looks up, as CoreDevice's
 /// simulator plugin does, so no CoreDevice record is needed.
 @MainActor
@@ -19,9 +21,9 @@ package struct SimulatorGuest {
         let runtime = ABIRuntime.shared
         codec = try await runtime.prepare { try await GuestMessageCodec(runtime: $0) }
         let makeEndpoint = try await runtime.resolve(.c(.function("xpc_endpoint_create_mach_port_4sim",
-            as: ((UInt32) -> Unmanaged<AnyObject>?).self)))
+            as: ((UInt32) -> Unmanaged<AnyObject>?).self)), in: libxpc, loading: .loadedOnly)
         let enableGuestPeer = try await runtime.resolve(.c(.function("xpc_connection_enable_sim2host_4sim",
-            as: ((Unmanaged<AnyObject>) -> Void).self)))
+            as: ((Unmanaged<AnyObject>) -> Void).self)), in: libxpc, loading: .loadedOnly)
         connect = { name in
             let port = try device.lookUp(name)
             // A created endpoint owns the send right; otherwise it remains ours.

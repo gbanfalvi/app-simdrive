@@ -215,7 +215,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - The full matrix on an iPhone and on the Duo, since the Duo needed longer waits before.
   - Time it with `--timing`.
 
-### - [ ] I3. Narrow simdrive's native symbol lookups (S)
+### - [x] I3. Narrow simdrive's native symbol lookups (S)
+
+**Result:** on an iPhone iOS 27.2, the median `tap 0.5 0.5 --no-daemon` fell from 1800 ms to 1735 ms, and `doctor --no-daemon` from 1215 ms to 1177 ms, over 16 runs each. The matrix's `basics` and `misc` pass on that iPhone, and `basics` and `posture` on a Duo iOS 27.2.
 
 - **Problem:** `xpc_endpoint_create_mach_port_4sim` and `xpc_connection_enable_sim2host_4sim` are resolved in automatic scope (`S:SimDriveNative/Guest/SimulatorGuest.swift:21-24`), which searches every loaded image. NeoSimulator #574 limits them to libxpc with `in: ImageSelector.installName("/usr/lib/system/libxpc.dylib"), loading: .loadedOnly` (`N:NeoSimulatorDeviceIO/CoreDevice/SimulatorGuestHID.swift:21-25`). `CoreDeviceManager` also makes seven `resolve` calls outside any `prepare` batch (`S:SimDriveNative/CoreDevice/CoreDeviceRemote.swift:23-24,33-39`).
 - **Do:** scope the two xpc lookups to libxpc. Move the resolves into one `runtime.prepare { … }` where they share a batch.
