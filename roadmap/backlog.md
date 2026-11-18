@@ -353,10 +353,14 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** add the barrier request to `GuestMessageCodec`; send it after each input and on open; drop the fixed drain where the barrier answers.
 - **Test:** the cold-tap and cold-Home stress loops from I2 on an iPhone and a Duo, the full matrix, and `--timing` for `stop` and the 30 s release.
 
-### - [ ] I12. Read the Duo's tree from the active panel (S, unverified)
+### - [ ] I12. Read the Duo's Home screen from the active panel only (M)
 
-- **Problem:** `SimulatorAccessibility` asks for the frontmost app on display 0 (`frontmostDisplayID`). AXe found that on a Duo this duplicates Home-screen controls, and reads the tree on the measured active panel's display ID (`A:Sources/AXe/Utilities/AccessibilityFetcher.swift:74-83,203-222`).
-- **Do:** pass the display `Screens` resolves for the command. **Test:** `tree` on the Home screen of a closed and an open Duo, against the screenshot; the matrix's posture section.
+- **Problem:** on a Duo's Home screen, `tree` mixes both panels. Open, on iOS 27.2 (`688B6C57`), it returned 26 VoiceOver elements, 13 of them duplicates (Safari, Messages, Options, the clock), with points from -0.43 to 2.42. Closed was alike. Apps are not affected: the probe's tree is right either way.
+- **Measured:** the display ID passed to `frontmostApplicationWithDisplayId:` changes nothing: 0, 1 and 3 return the same tree, open and closed, so the planned fix does not work. SpringBoard's top-level windows (open, interface 951×669 points) come in four sizes, each at the origin: the inner panel in native portrait points (669×951) and pixels (2007×2853), and the outer panel in points (466×678) and pixels (1398×2034). AXe handles three problems, all needed (`A:Packages/IDBKit/FBSimulatorControl/Commands/FBAXInactivePanelWindowFilter.swift`, `FBAXTranslationRequest.swift:357-380`):
+  1. **Other panel's windows.** Dropping top-level windows at the origin with the other panel's size, in points or pixels and either orientation, removed every labelled duplicate. The panels' sizes are in the device type's `capabilities.plist` (`displays`, `integrated`, `hasDigitizer`), or in `Screens`.
+  2. **Native frames.** On a quarter-turned panel, SpringBoard's windows of the panel's native size keep native coordinates. Safari's raw point (0.3656, 0.0715) matches its dock icon at (0.95, 0.52) only after AXe's conversion: x = native height − y, y = x.
+  3. **Icons with the other panel's frames.** Kept windows still list some icons at the outer panel's places: Calendar reads (0.06, 0.42), drawn at (0.525, 0.43). AXe asks each button for its display (one request per button, only when step 1 dropped a window) and drops those on another.
+- **Do:** the three steps in `DeviceAccessibility`, with the windows' classification in `AccessibilityLayout`, which knows the panel; the per-button display request in `SimulatorAccessibility`. **Test:** `tree` on the Home screen of a closed and an open Duo, every point against the screenshot; the probe's tree unchanged; the matrix's posture section; time `tree` on the Home screen.
 
 ### - [ ] I13. Type in the runtime's keyboard layout (S, unverified)
 
