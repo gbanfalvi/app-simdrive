@@ -10,6 +10,7 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 - `SimDevice` getters: `name`, `stateString` (`Booted`), `runtimeIdentifier` (`com.apple.CoreSimulator.SimRuntime.iOS-18-3`), `deviceTypeIdentifier`, `lastBootedAt`, `dataPath` (the host directory holding the guest's `/tmp`, `/var` and home directories).
 - `-lookup:error:` returns a caller-owned Mach send right to a guest service, or 0 or `UInt32.max` when there is none. Probing for a service means looking it up and deallocating the right.
 - `-postDarwinNotification:error:` posts in the guest, as `notifyutil -p` there would.
+- `-currentUIInterfaceStyle`, `-currentContentSizeCategory` and `-currentIncreaseContrastMode` return `Int`s numbered from 1 (light and dark; extra small to accessibility extra extra extra large; off and on), and -1 on tvOS. `-setUIInterfaceStyle:error:` and `-setContentSizeCategory:error:` take those numbers, and `-setIncreaseContrastEnabled:error:` a `BOOL`.
 - `-sendAccessibilityRequestAsync:completionQueue:completionHandler:` carries AXPTranslator's requests to the guest.
 
 ### Interface orientation

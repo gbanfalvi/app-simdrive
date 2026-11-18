@@ -46,7 +46,7 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 - `home` is the TV button and goes to HeadBoard, the home screen; `lock` opens Control Center; `menu` goes back.
 - Settings has no focused element until the first `button down`.
 - HeadBoard's tree may hold a single focusable element; test `tree` on Settings instead.
-- `simctl ui` is unsupported, so `appearance`, `text-size` and `increase-contrast` read `unsupported`. The preference settings work.
+- CoreSimulator's interface options are unsupported, so `appearance`, `text-size` and `increase-contrast` read `unsupported`. The preference settings work.
 - A quick relaunch of Settings can leave HeadBoard in front, which `launch` reports as `launch-not-frontmost`.
 - While an app launches, `tree` can fail with `accessibility-translation` (no frame yet); retry after a second.
 

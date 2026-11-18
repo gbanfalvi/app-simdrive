@@ -1,3 +1,5 @@
+import SimDriveNative
+
 /// A device setting that `setting` reads and changes.
 struct Setting: Equatable, Sendable {
     /// The values a setting takes.
@@ -9,8 +11,8 @@ struct Setting: Equatable, Sendable {
 
     /// Where a setting is kept.
     enum Storage: Equatable, Sendable {
-        /// A `simctl ui` option.
-        case interface(option: String)
+        /// An option CoreSimulator changes itself.
+        case interface(SimulatorDevice.InterfaceOption)
         /// A guest preference, and the Darwin notifications that tell running apps it changed. `defaultValue` applies
         /// while the key is unset.
         case preference(domain: String, key: String, defaultValue: JSONValue, notifications: [String])
@@ -19,11 +21,6 @@ struct Setting: Equatable, Sendable {
     private static let toggleNames: [String: Bool] = ["on": true, "off": false, "true": true, "false": false]
     /// Preferences keep numbers as 32-bit floats; four decimals drop their rounding error.
     private static let numberPrecision = 10_000.0
-
-    private enum InterfaceToggle {
-        static let on = "enabled"
-        static let off = "disabled"
-    }
 
     let name: String
     let kind: Kind
@@ -68,19 +65,21 @@ struct Setting: Equatable, Sendable {
         }
     }
 
-    /// The value of a `simctl ui` reading. Readings such as "unsupported" stay as they are.
-    func value(fromInterfaceReading reading: String) -> JSONValue {
-        guard kind == .toggle else { return .string(reading) }
-        switch reading {
-        case InterfaceToggle.on: return true
-        case InterfaceToggle.off: return false
-        default: return .string(reading)
+    /// The value of an interface option's choice index, which is nil when the device lacks the option.
+    func value(fromInterfaceChoice choice: Int?) -> JSONValue {
+        switch (kind, choice) {
+        case (.toggle, let choice?): return .bool(choice != 0)
+        case (.choice(let choices), let choice?) where choices.indices.contains(choice): return .string(choices[choice])
+        default: return .unsupported
         }
     }
 
-    func interfaceArgument(for value: JSONValue) -> String {
-        if case .bool(let isOn) = value { return isOn ? InterfaceToggle.on : InterfaceToggle.off }
-        return value.argument ?? ""
+    func interfaceChoice(for value: JSONValue) -> Int? {
+        switch (kind, value) {
+        case (.toggle, .bool(let isOn)): isOn ? 1 : 0
+        case (.choice(let choices), .string(let choice)): choices.firstIndex(of: choice)
+        default: nil
+        }
     }
 
     /// The value of a stored preference, which is a number for toggles; nil when the key is unset.
@@ -119,7 +118,7 @@ enum SettingCatalog {
         "accessibility-extra-extra-extra-large",
     ]
 
-    static let appearance = Setting(name: "appearance", kind: .choice(["light", "dark"]), storage: .interface(option: "appearance"))
+    static let appearance = Setting(name: "appearance", kind: .choice(["light", "dark"]), storage: .interface(.appearance))
 
     /// Not a setting of its own: Settings turns it on before starting a setting's service, so running apps answer that service.
     static let applicationAccessibility = accessibilityToggle("application-accessibility", key: "ApplicationAccessibilityEnabled",
@@ -127,8 +126,8 @@ enum SettingCatalog {
 
     static let all: [Setting] = [
         appearance,
-        Setting(name: "text-size", kind: .choice(textSizes), storage: .interface(option: "content_size")),
-        Setting(name: "increase-contrast", kind: .toggle, storage: .interface(option: "increase_contrast")),
+        Setting(name: "text-size", kind: .choice(textSizes), storage: .interface(.textSize)),
+        Setting(name: "increase-contrast", kind: .toggle, storage: .interface(.increaseContrast)),
         accessibilityToggle("bold-text", key: "EnhancedTextLegibilityEnabled", notification: "text.legibility.status",
                             cache: "enhance.text.legibility"),
         accessibilityToggle("reduce-motion", key: "ReduceMotionEnabled", notification: "reduce.motion.status", cache: "reduce.motion"),

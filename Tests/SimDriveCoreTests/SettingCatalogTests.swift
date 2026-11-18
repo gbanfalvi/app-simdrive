@@ -47,14 +47,18 @@ struct SettingCatalogTests {
         #expect(try #require(Self.glassTint).preferenceValue(for: 0.25).defaultsArguments == ["-float", "0.25"])
     }
 
-    @Test func interfaceTogglesReadAndWriteEnabled() throws {
+    @Test func interfaceOptionsMapTheirChoices() throws {
         let contrast = try #require(Self.increaseContrast)
-        #expect(contrast.value(fromInterfaceReading: "enabled") == true)
-        #expect(contrast.value(fromInterfaceReading: "disabled") == false)
-        #expect(contrast.value(fromInterfaceReading: "unsupported") == .unsupported)
-        #expect(contrast.interfaceArgument(for: true) == "enabled")
-        #expect(SettingCatalog.appearance.value(fromInterfaceReading: "dark") == "dark")
-        #expect(SettingCatalog.appearance.interfaceArgument(for: "dark") == "dark")
+        #expect(contrast.value(fromInterfaceChoice: 1) == true)
+        #expect(contrast.value(fromInterfaceChoice: 0) == false)
+        #expect(contrast.value(fromInterfaceChoice: nil) == .unsupported)
+        #expect(contrast.interfaceChoice(for: true) == 1)
+        #expect(SettingCatalog.appearance.value(fromInterfaceChoice: 1) == "dark")
+        #expect(SettingCatalog.appearance.value(fromInterfaceChoice: 2) == .unsupported)
+        #expect(SettingCatalog.appearance.interfaceChoice(for: "dark") == 1)
+        let textSize = try #require(SettingCatalog.setting(named: "text-size"))
+        #expect(textSize.value(fromInterfaceChoice: 3) == "large")
+        #expect(textSize.interfaceChoice(for: "accessibility-extra-extra-extra-large") == 11)
     }
 
     @Test func accessibilityPreferencesNotifyRunningApps() {

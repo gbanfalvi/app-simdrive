@@ -8,6 +8,35 @@ package final class SimulatorDevice {
     private typealias DeviceSetFunction = @convention(c) (NSObject, Selector, AutoreleasingUnsafeMutablePointer<NSError?>) -> NSObject?
     private typealias LookUpFunction = @convention(c) (NSObject, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> UInt32
     private typealias PostFunction = @convention(c) (NSObject, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
+    private typealias ReadIntFunction = @convention(c) (NSObject, Selector) -> Int
+    private typealias SetIntFunction = @convention(c) (NSObject, Selector, Int, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
+    private typealias SetBoolFunction = @convention(c) (NSObject, Selector, Bool, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
+
+    /// A setting CoreSimulator changes itself, as `simctl ui` does.
+    package enum InterfaceOption: Sendable {
+        /// Light, dark.
+        case appearance
+        /// Extra small to accessibility extra extra extra large.
+        case textSize
+        /// Off, on.
+        case increaseContrast
+
+        fileprivate var getter: Selector {
+            switch self {
+            case .appearance: NSSelectorFromString("currentUIInterfaceStyle")
+            case .textSize: NSSelectorFromString("currentContentSizeCategory")
+            case .increaseContrast: NSSelectorFromString("currentIncreaseContrastMode")
+            }
+        }
+
+        fileprivate var setter: Selector {
+            switch self {
+            case .appearance: NSSelectorFromString("setUIInterfaceStyle:error:")
+            case .textSize: NSSelectorFromString("setContentSizeCategory:error:")
+            case .increaseContrast: NSSelectorFromString("setIncreaseContrastEnabled:error:")
+            }
+        }
+    }
 
     private static let bootedState = "Booted"
     private static let lastBootedAtKey = "lastBootedAt"
@@ -18,6 +47,8 @@ package final class SimulatorDevice {
     private static let runtimeKey = "runtime"
     private static let runtimeRootKey = "root"
     private static let launchDaemonsPath = "System/Library/LaunchDaemons"
+    /// CoreSimulator numbers each interface option's choices from 1; 0 and below mean the device lacks it.
+    private static let firstInterfaceValue = 1
     private static var contexts: [String: NSObject] = [:]
 
     let udid: String
@@ -113,6 +144,30 @@ package final class SimulatorDevice {
         let post = unsafeBitCast(device.method(for: selector), to: PostFunction.self)
         guard post(device, selector, name as NSString, &error) else {
             throw SimDriveError(.guestNotification, "Could not post \(name): \(error?.localizedDescription ?? "no reason given")")
+        }
+    }
+
+    /// The index of `option`'s current choice, in the order its cases document; nil when the device lacks the option.
+    package func interfaceChoice(_ option: InterfaceOption) -> Int? {
+        guard device.responds(to: option.getter) else { return nil }
+        let read = unsafeBitCast(device.method(for: option.getter), to: ReadIntFunction.self)
+        let value = read(device, option.getter)
+        return value >= Self.firstInterfaceValue ? value - Self.firstInterfaceValue : nil
+    }
+
+    package func setInterfaceChoice(_ option: InterfaceOption, to choice: Int) throws {
+        guard device.responds(to: option.setter) else {
+            throw SimDriveError(.interfaceOption, "CoreSimulator cannot change \(option) on \(name).")
+        }
+        var error: NSError?
+        let method = device.method(for: option.setter)
+        let changed = switch option {
+        case .increaseContrast: unsafeBitCast(method, to: SetBoolFunction.self)(device, option.setter, choice != 0, &error)
+        case .appearance, .textSize:
+            unsafeBitCast(method, to: SetIntFunction.self)(device, option.setter, choice + Self.firstInterfaceValue, &error)
+        }
+        guard changed else {
+            throw SimDriveError(.interfaceOption, "Could not change \(option): \(error?.localizedDescription ?? "no reason given")")
         }
     }
 

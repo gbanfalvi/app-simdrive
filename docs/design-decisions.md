@@ -67,7 +67,7 @@ simdrive runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFramework
 
 ## Settings as a catalog
 
-Each setting is one row in `SettingCatalog`, with no new command. Three go through `simctl ui`; the rest are guest preferences plus the Darwin notifications that UIKit and the accessibility cache listen for.
+Each setting is one row in `SettingCatalog`, with no new command. Three are `SimDevice` interface options, which `simctl ui` also uses; the rest are guest preferences plus the Darwin notifications that UIKit and the accessibility cache listen for.
 
 - Preferences are written and read with `simctl spawn <udid> defaults`, not the plist on disk, since `cfprefsd` caches and may not flush. Notifications go through `SimDevice postDarwinNotification:error:` instead of a second spawn.
 - A row stays only if a running probe app sees the change on the oldest and newest runtimes; candidates it did not see were dropped.

@@ -223,7 +223,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** scope the two xpc lookups to libxpc. Move the resolves into one `runtime.prepare { … }` where they share a batch.
 - **Test:** time `doctor --no-daemon` and `tap 0.5 0.5 --no-daemon` with `--timing`, several rounds, before and after. Combine with I5 if both are done together.
 
-### - [ ] I4. Change appearance, text size and contrast in process (S)
+### - [x] I4. Change appearance, text size and contrast in process (S)
+
+**Result:** on an iPhone iOS 27.2 through a warm daemon, changing one of the three fell from 720 ms to 277 ms, reading one from 420 ms to 275 ms, and listing every setting from 1247 ms to 1169 ms, which the `defaults export` spawns dominate. The matrix's `settings` section passes on iPhones iOS 17.0 and 27.2; on Apple TV tvOS 26.2 the three read `unsupported` and changing them fails with `setting-unsupported`. CoreSimulator numbers each option's choices from 1 and reads -1 on tvOS.
 
 - **Problem:** `setting appearance|text-size|increase-contrast` spawns `simctl ui` to read and to write (`S:SimDriveCore/Settings/DeviceSettings.swift:38,107`). Each spawn costs hundreds of milliseconds, and listing all settings spawns three.
 - **Read:** `SimDevice` has `setUIInterfaceStyle:error:` (Int), `setContentSizeCategory:error:` (Int, 1-12) and `setIncreaseContrastEnabled:error:` (Bool), with getters `currentUIInterfaceStyle`, `currentContentSizeCategory` and `currentIncreaseContrastMode` (0 unknown, 1 off, 2 on). See `N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:316-343,986-1000`. NeoSimulator's content-size numbering is in its `DeviceSettings` types (`N:NeoSimulatorKit/Devices/DeviceSettings.swift`).

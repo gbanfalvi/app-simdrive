@@ -61,7 +61,7 @@ flowchart LR
   Screens --> Adapter["CoreSimulator screen adapter"]
   Hinge --> CoreDevice["CoreDevice RemoteDevice"]
   AX --> Translator["AXPTranslator, via SimDevice"]
-  Settings --> Spawn["simctl ui, simctl spawn defaults, SimDevice notifications"]
+  Settings --> Spawn["SimDevice interface options and notifications, simctl spawn defaults"]
 ```
 
 1. `SimDriveCLI` resolves the developer directory and the UDID (`booted` means the only booted simulator), parses the command, and sends the raw arguments to the device's daemon, starting it if needed.
@@ -124,7 +124,8 @@ The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.s
 | Pasteboard | CoreDevice `PasteboardCapability` | tvOS |
 | Hinge | CoreDevice `MonitorMotionCapability` and `VendorDefinedHIDCapability` | All but the iPhone Duo |
 | Accessibility | `AXPTranslator` on the Mac, requests carried by `SimDevice` | — |
-| Launch, `simctl ui` settings | CoreSimulator's own `simctl` binary | `simctl ui` on tvOS |
+| Launch | CoreSimulator's own `simctl` binary | — |
+| Appearance, text size, contrast | `SimDevice` interface options, in process | tvOS |
 | Preference settings | `simctl spawn defaults`, then `SimDevice postDarwinNotification:error:` | — |
 | Logs | `simctl spawn log show` and `log stream`, files from `simctl launch --stdout --stderr`, and `~/Library/Logs/DiagnosticReports` | — |
 

@@ -4,9 +4,6 @@ import SimDriveNative
 /// Reads and changes the settings of `SettingCatalog`.
 @MainActor
 final class DeviceSettings {
-    /// What `simctl ui` reads for an option the device lacks.
-    private static let unsupportedReading = "unsupported"
-
     private let udid: String
     private let device: SimulatorDevice
     private let tools: DeveloperTools
@@ -32,10 +29,10 @@ final class DeviceSettings {
         guard isAvailable(setting) else { throw unsupported(setting) }
         switch setting.storage {
         case .interface(let option):
-            guard try await Self.interfaceReading(option, udid: udid, tools: tools) != Self.unsupportedReading else {
+            guard device.interfaceChoice(option) != nil, let choice = setting.interfaceChoice(for: value) else {
                 throw unsupported(setting)
             }
-            try await tools.simctl(["ui", udid, option, setting.interfaceArgument(for: value)])
+            try device.setInterfaceChoice(option, to: choice)
         case .preference:
             try await writePreference(value, of: setting)
             if let service = setting.service, value == true {
@@ -52,29 +49,26 @@ final class DeviceSettings {
 
     /// Each preference domain is exported once, and every read runs concurrently.
     private func values(of settings: [Setting]) async throws -> [String: JSONValue] {
-        let (udid, tools, preferences) = (udid, tools, preferences)
+        let preferences = preferences
         let available = settings.filter(isAvailable)
         var keysByDomain: [String: [(setting: Setting, key: String)]] = [:]
+        var values = Dictionary(uniqueKeysWithValues: settings.filter { !available.contains($0) }.map {
+            ($0.name, JSONValue.unsupported)
+        })
         for setting in available {
-            if case .preference(let domain, let key, _, _) = setting.storage { keysByDomain[domain, default: []].append((setting, key)) }
-        }
-        return try await withThrowingTaskGroup(of: [String: JSONValue].self) { group in
-            for setting in available {
-                guard case .interface(let option) = setting.storage else { continue }
-                group.addTask {
-                    let reading = try await Self.interfaceReading(option, udid: udid, tools: tools)
-                    return [setting.name: setting.value(fromInterfaceReading: reading)]
-                }
+            switch setting.storage {
+            case .interface(let option): values[setting.name] = setting.value(fromInterfaceChoice: device.interfaceChoice(option))
+            case .preference(let domain, let key, _, _): keysByDomain[domain, default: []].append((setting, key))
             }
+        }
+        return try await withThrowingTaskGroup(of: [String: JSONValue].self) { [values] group in
             for (domain, keys) in keysByDomain {
                 group.addTask {
                     let stored = try await preferences.export(domain)
                     return Dictionary(uniqueKeysWithValues: keys.map { ($0.setting.name, $0.setting.value(fromPreference: stored[$0.key])) })
                 }
             }
-            var values = Dictionary(uniqueKeysWithValues: settings.filter { !available.contains($0) }.map {
-                ($0.name, JSONValue.unsupported)
-            })
+            var values = values
             for try await part in group {
                 values.merge(part) { current, _ in current }
             }
@@ -101,9 +95,5 @@ final class DeviceSettings {
 
     private func unsupported(_ setting: Setting) -> SimDriveError {
         SimDriveError(.settingUnsupported, "\(device.name) has no \(setting.name) setting.")
-    }
-
-    nonisolated private static func interfaceReading(_ option: String, udid: String, tools: DeveloperTools) async throws -> String {
-        try await tools.simctl(["ui", udid, option]).standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
     }
 }
