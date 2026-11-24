@@ -93,6 +93,7 @@ flowchart LR
 - Spawned with `posix_spawn` in its own session (`POSIX_SPAWN_SETSID`), so it outlives the client and its terminal. Its output goes to `<udid>.log`.
 - Each request carries `BuildStamp` (the executable's modification time) and the developer directory. A daemon that differs refuses with `stale-daemon` and exits; the client waits for its socket to go and retries once.
 - Exits after 10 idle minutes, on `stop`, or on SIGTERM, SIGINT or SIGHUP, releasing its input services first; it waits at most 3 s for them, since a guest that stopped answering cannot be released. `stop` is answered at once, ahead of the request queue, so a stuck request cannot keep the daemon alive; that request's client gets `daemon-ended`.
+- While a request runs or waits its turn, a dispatch source watches its client's socket. When the client goes away, as after Ctrl-C or its own timeout, the request's task is cancelled: a queued request is skipped, and a running one stops at its next sleep or wait. The client itself reads the reply without a limit, since `run` and `install` legitimately take minutes; `stop` and cancellation cover a stuck daemon.
 - A `guest-connection` error releases every input, since a dead guest connection never recovers; the next command reconnects.
 
 ## State files
@@ -147,7 +148,7 @@ Guest services are reached the way CoreDevice's simulator plugin reaches them: `
 
 ## Errors
 
-Every failure an agent can act on is a `SimDriveError`: an `ErrorCode`, the `code` field of the output, and a message that says what to do next. Native declares the codes its drivers throw as `package` constants in `SimDriveError.swift`; Core adds its own in `ErrorCodes.swift`. Any other error reaches the output with no `code`, so wrap failures an agent could handle. Error codes are API: agents branch on them, and the README and skill list them.
+Every failure an agent can act on is a `SimDriveError`: an `ErrorCode`, the `code` field of the output, and a message that says what to do next. Native declares the codes its drivers throw as `package` constants in `SimDriveError.swift`; Core adds its own in `ErrorCodes.swift`. Any other error reaches the output with no `code`, so wrap failures an agent could handle. Error codes are API: agents branch on them, and the README and skill list them. A code declared with `retryable: true` adds `"retry": true` to the output, meaning the same command may succeed unchanged. `ErrorCodeDocumentationTests` fails when a code or its retry answer is missing from the README's error table.
 
 ## Concurrency
 

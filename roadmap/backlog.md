@@ -422,7 +422,16 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   3. Test first whether client type 2 works with the snapshot attribute.
 - **Test:** the probe app needs an alert (add a button that presents one). Check `tree` and `tree --covered` with the alert up. Add unit tests for the parsing.
 
-### - [ ] I9. Say whether an error is worth retrying, and cancel abandoned requests (M)
+### - [x] I9. Say whether an error is worth retrying, and cancel abandoned requests (M)
+
+**Result:**
+- **Retry hint:** each `ErrorCode` says whether it is retryable, and failures print `"retry": true|false`. `step-failed` takes the step's answer.
+- **Documentation:** the README has a table of every code with its meaning and retry answer, and `ErrorCodeDocumentationTests` fails when a declared code or its retry answer is missing from it.
+- **Cancellation:** the daemon watches each client's socket while its request waits or runs, and cancels the request when the client goes away. A queued request is skipped. On iPhone 17, iOS 27.2:
+  - after killing a `run` of `wait 30000`, the next command answered in 0.59 s;
+  - after killing a `run` of `logs --until … --timeout 60000`, it answered in 3.95 s, while the log stream was shutting down.
+- **Matrix:** the `tap`, `logs` and `misc` sections pass 57/57.
+- **Not done:** the client still reads the reply with no limit, by decision. `run` and `install` legitimately take minutes, `stop` skips the queue, and cancellation frees the daemon when an agent gives up.
 
 - **Problem:** errors carry a `code`, but an agent must know from the skill which codes are safe to retry. A client that disconnects, for example after a Ctrl-C or a timeout, leaves its request running in the daemon and blocks the next one.
 - **Read:**

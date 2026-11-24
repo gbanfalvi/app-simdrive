@@ -80,6 +80,49 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `doctor` | `{"developerDirectory", "device", "state", "deviceType", "displays", "orientation", "pasteboard", "keyboard", "posture", "accessibility", "appearance"}`; `accessibility` is the frontmost app's `{"name", "pid"}`, and a failed check is `{"error"}` |
 | `stop` | `{"stopped": whether a daemon ran}` |
 
+### Errors
+
+A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`. `retry` is true when running the same command again, unchanged, may succeed, because the simulator was busy or slow rather than the command or the device being wrong. A `step-failed` from `run` takes `retry` from the failed step's error. An error without a `code` is unexpected, and has no `retry`. The message names the cause and what to do.
+
+| Code | Means | Retry |
+| --- | --- | --- |
+| `usage`, `step-invalid` | The command line or a `run` step is malformed | no |
+| `ambiguous-device` | `booted` was given while none or several simulators are booted; pass a UDID | no |
+| `not-booted` | The simulator is not booted | no |
+| `developer-directory` | No Xcode is selected | no |
+| `state-directory` | `/tmp/simdrive-<uid>` is a symlink or belongs to another user | no |
+| `simctl` | A `simctl` call failed; the message has its output | no |
+| `tool-timeout` | A `simctl` call ran past its limit and was stopped | yes |
+| `unknown-key`, `unsupported-character` | A key or character the keyboard layout cannot type; paste it instead | no |
+| `no-touchscreen` | The device has no touchscreen, as an Apple TV | no |
+| `no-screenshot`, `stale-screenshot` | Pixel coordinates need a screenshot of the current orientation; take one | no |
+| `screenshot`, `screenshot-read`, `screenshot-scale`, `screenshot-write` | A screenshot could not be captured, read, scaled or written | no |
+| `single-display`, `unknown-display` | `--display` names a display the device lacks | no |
+| `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `setting-unsupported`, `accessibility-unsupported` | The device lacks the capability | no |
+| `posture-timeout` | The hinge did not reach or settle at the posture | yes |
+| `split-unsupported` | Split view needs a Duo's inner screen, unfolded and in landscape | no |
+| `split-side-unknown` | The app fills a half simdrive did not set; pass `--from` | no |
+| `split-dropped` | SpringBoard showed another layout after the drag | yes |
+| `no-element` | No element at the point, or none with the label or identifier in time | no |
+| `ambiguous-element` | Several onscreen elements have the label or identifier | no |
+| `element-offscreen` | The only matching elements are scrolled out of view | no |
+| `element-still-shown` | `wait --absent` timed out | no |
+| `accessibility-timeout` | The guest's accessibility server did not answer in time | yes |
+| `accessibility-unavailable`, `accessibility-translation` | CoreSimulator cannot reach the accessibility server, or the app has no hierarchy yet | no |
+| `app-accessibility-off` | The app launched while app accessibility was off; relaunch it with `launch` | no |
+| `launch-not-frontmost` | The launched app did not come to the front in time | yes |
+| `app-invalid`, `app-not-installed` | The app bundle is invalid, or not installed | no |
+| `no-log-scope` | `logs` needs an app launched with `launch`, or a scope | no |
+| `log-timeout` | `logs --until` saw no matching entry in time | no |
+| `log-read` | `log show` failed | no |
+| `guest-connection`, `guest-service-timeout` | A guest service connection ended or did not answer; the next command reconnects | yes |
+| `coredevice-not-ready`, `coredevice-timeout` | CoreDevice has not connected to the simulator yet, or did not answer in time | yes |
+| `screen-adapter-timeout` | CoreSimulator did not list the screens in time | yes |
+| `daemon-start`, `daemon-ended`, `stale-daemon` | The device's daemon did not start, ended without replying, or was replaced by another build | yes |
+| `step-failed` | A `run` step failed; the message names it and how many steps completed | as the step's |
+| `bad-request`, `daemon-running`, `daemon-socket`, `not-a-device-command` | Problems between the command line and its daemon; see the daemon's log in `/tmp/simdrive-<uid>/` | no |
+| `framework-load`, `core-simulator`, `device-set`, `device-missing`, `guest-lookup`, `guest-endpoint`, `guest-message`, `guest-notification`, `guest-preferences`, `hid-service-removed`, `keyboard-event`, `keyboard-report`, `coredevice-identity`, `coredevice-device`, `coredevice-capability`, `coredevice-error-type`, `hinge-observation`, `hinge-snapshot`, `hinge-payload`, `interface-option`, `screen-adapter` | A private framework did not behave as simdrive expects, usually after an Xcode update; report it with the message | no |
+
 ### Coordinates
 
 Values in 0–1 written with a decimal point (`0.5 0.25`, `1.0 0.0`) are fractions of the screen. Other values are pixels of the last screenshot's image, so `screenshot` then `tap 120 340` taps what the image shows at that pixel. Pixel taps fail once the device rotates, until a new screenshot.

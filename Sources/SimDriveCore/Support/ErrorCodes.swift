@@ -7,8 +7,8 @@ extension ErrorCode {
     static let notADeviceCommand = ErrorCode(rawValue: "not-a-device-command")
     static let developerDirectory = ErrorCode(rawValue: "developer-directory")
     static let simctl = ErrorCode(rawValue: "simctl")
-    static let toolTimeout = ErrorCode(rawValue: "tool-timeout")
-    static let launchNotFrontmost = ErrorCode(rawValue: "launch-not-frontmost")
+    static let toolTimeout = ErrorCode(rawValue: "tool-timeout", retryable: true)
+    static let launchNotFrontmost = ErrorCode(rawValue: "launch-not-frontmost", retryable: true)
     static let appNotInstalled = ErrorCode(rawValue: "app-not-installed")
     static let appInvalid = ErrorCode(rawValue: "app-invalid")
     static let noLogScope = ErrorCode(rawValue: "no-log-scope")
@@ -28,10 +28,10 @@ extension ErrorCode {
     static let orientationUnsupported = ErrorCode(rawValue: "orientation-unsupported")
     static let pasteboardUnsupported = ErrorCode(rawValue: "pasteboard-unsupported")
     static let postureUnsupported = ErrorCode(rawValue: "posture-unsupported")
-    static let postureTimeout = ErrorCode(rawValue: "posture-timeout")
+    static let postureTimeout = ErrorCode(rawValue: "posture-timeout", retryable: true)
     static let splitUnsupported = ErrorCode(rawValue: "split-unsupported")
     static let splitSideUnknown = ErrorCode(rawValue: "split-side-unknown")
-    static let splitDropped = ErrorCode(rawValue: "split-dropped")
+    static let splitDropped = ErrorCode(rawValue: "split-dropped", retryable: true)
     static let accessibilityUnsupported = ErrorCode(rawValue: "accessibility-unsupported")
     static let ambiguousElement = ErrorCode(rawValue: "ambiguous-element")
     static let elementOffscreen = ErrorCode(rawValue: "element-offscreen")
@@ -40,14 +40,20 @@ extension ErrorCode {
     static let settingUnsupported = ErrorCode(rawValue: "setting-unsupported")
     static let guestPreferences = ErrorCode(rawValue: "guest-preferences")
     static let stepInvalid = ErrorCode(rawValue: "step-invalid")
+    /// Retryable when the failed step's own error is; see `stepFailed(retryable:)`.
     static let stepFailed = ErrorCode(rawValue: "step-failed")
     static let badRequest = ErrorCode(rawValue: "bad-request")
-    static let staleDaemon = ErrorCode(rawValue: "stale-daemon")
-    static let daemonEnded = ErrorCode(rawValue: "daemon-ended")
-    static let daemonStart = ErrorCode(rawValue: "daemon-start")
+    static let staleDaemon = ErrorCode(rawValue: "stale-daemon", retryable: true)
+    static let daemonEnded = ErrorCode(rawValue: "daemon-ended", retryable: true)
+    static let daemonStart = ErrorCode(rawValue: "daemon-start", retryable: true)
     static let daemonRunning = ErrorCode(rawValue: "daemon-running")
     static let daemonSocket = ErrorCode(rawValue: "daemon-socket")
     static let stateDirectory = ErrorCode(rawValue: "state-directory")
+
+    /// `step-failed`, retryable as the step's own error was, so `run` reports whether running it again may help.
+    static func stepFailed(retryable: Bool) -> ErrorCode {
+        ErrorCode(rawValue: stepFailed.rawValue, retryable: retryable)
+    }
 }
 
 extension SimDriveError {

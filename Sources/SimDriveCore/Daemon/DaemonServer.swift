@@ -58,7 +58,7 @@ final class DaemonServer {
             }
             let message = try? UnixSocket.readMessage(from: client)
             Task { @MainActor in
-                let (reply, stops) = await server.respond(to: message)
+                let (reply, stops) = await server.respond(to: message, client: client)
                 try? UnixSocket.writeMessage(reply, to: client)
                 close(client)
                 if stops {
@@ -69,7 +69,7 @@ final class DaemonServer {
         }
     }
 
-    private func respond(to message: Data?) async -> (Data, Bool) {
+    private func respond(to message: Data?, client: Int32) async -> (Data, Bool) {
         // `stop` skips the queue, so a request stuck on the guest cannot keep the daemon from stopping.
         if Self.isStop(message) {
             log("stopping on request")
@@ -85,11 +85,34 @@ final class DaemonServer {
         let previous = pending
         let task = Task { @MainActor in
             await previous?.value
+            // A client that left while its request waited, as after Ctrl-C or its own timeout, wants nothing done.
+            guard !Task.isCancelled else {
+                return (CommandResponse.failure(SimDriveError(.badRequest, "The client went away before its request ran.")), false)
+            }
             return await self.handle(message)
         }
         pending = Task { _ = await task.value }
+        let departure = Self.watchForDeparture(of: client) { [weak self] in
+            self?.log("the client went away; cancelling its request")
+            task.cancel()
+        }
+        defer { departure.cancel() }
         let (response, stops) = await task.value
         return ((try? JSONEncoder.line.encode(response)) ?? Data(), stops)
+    }
+
+    /// Calls `departed` once the client closes its end. A client sends its whole request before reading the reply, so
+    /// the socket turns readable again only at the end of the stream.
+    private static func watchForDeparture(of client: Int32, _ departed: @escaping @MainActor () -> Void) -> any DispatchSourceRead {
+        let source = DispatchSource.makeReadSource(fileDescriptor: client, queue: .main)
+        source.setEventHandler { [weak source] in
+            var byte: UInt8 = 0
+            guard recv(client, &byte, 1, MSG_PEEK | MSG_DONTWAIT) == 0 else { return }
+            source?.cancel()
+            MainActor.assumeIsolated { departed() }
+        }
+        source.resume()
+        return source
     }
 
     private func handle(_ message: Data?) async -> (CommandResponse, Bool) {

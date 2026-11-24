@@ -259,7 +259,7 @@ def element_checks(full):
     response = sd('run', '-', stdin=json.dumps(['tap --label Play', 'wait --label Probe --timeout 0']))
     check('run with tap --label and wait --label', response.get('ok') and log.wait(mark, r'TAP play'), brief(response))
     response = sd('wait', '--id', 'nowhere', '--timeout', '300')
-    check('wait --id (expect no-element)', response.get('code') == 'no-element', brief(response))
+    check('wait --id (expect no-element, no retry)', response.get('code') == 'no-element' and response.get('retry') is False, brief(response))
     response = sd('wait', '--id', 'play-button', '--absent', '--timeout', '300')
     check('wait --absent (expect element-still-shown)', response.get('code') == 'element-still-shown', brief(response))
     offscreen = next((n.get('label') for n in voice_over(full) if (n.get('label') or '').startswith('Row ') and n.get('offscreen')), None)

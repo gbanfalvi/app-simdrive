@@ -323,7 +323,8 @@ final class DeviceSession {
                     results.append(try await execute(step.command, workingDirectory: workingDirectory))
                 }
             } catch {
-                throw SimDriveError(.stepFailed, "Step \(index + 1) (\(step.arguments.joined(separator: " "))) failed after \(index) "
+                let retryable = (error as? SimDriveError)?.code.isRetryable ?? false
+                throw SimDriveError(.stepFailed(retryable: retryable), "Step \(index + 1) (\(step.arguments.joined(separator: " "))) failed after \(index) "
                                     + "completed: \(error.localizedDescription)")
             }
         }
