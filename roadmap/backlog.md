@@ -332,7 +332,12 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** after `createDirectory`, `lstat` the directory and refuse, with a new `state-directory` code, unless it is a real directory owned by `getuid()` with mode 0700. Open the log with `O_NOFOLLOW`.
 - **Test:** a unit test pointing `prepare` at a directory with mode 0777 and at a symlink.
 
-### - [ ] F27. The matrix's `openurl` checks miss the URL prompt on an iPhone Duo (S)
+### - [x] F27. The matrix's `openurl` checks miss the URL prompt on an iPhone Duo (S)
+
+**Result:**
+- **The prompt:** `accept_url_prompt` now runs `tap --label Open --timeout 2000`, and with no prompt it just finds no Open. On a fresh Duo, iOS 27.2, `openurl from-home` and `in-front` pass.
+- **Also fixed:** the same run failed `settings restored` because the first `setting` read, right after that first boot, outlasted `simctl`'s 60 s limit with `tool-timeout`, which left the starting snapshot empty. `setting_snapshot` now runs it again when the error says `retry`.
+- **Not rerun:** the `misc` section, after the retry fix.
 
 - **Problem:** found verifying I19 (2026-11-24) on a fresh Duo, iOS 27.2. `openurl from-home` and `openurl in-front` fail: `openurl` returns `ok`, but the "Open in “AXProbe”?" alert stays on the inner screen, so the probe never logs the URL. `accept_url_prompt` reads the tree 1 s after `openurl` and finds no element starting with "Open in". `tap --label Open` dismisses the same alert.
 - **Read:** `Evaluation/matrix.py` (`accept_url_prompt`, `misc_checks`).

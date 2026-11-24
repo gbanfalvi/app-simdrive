@@ -160,7 +160,11 @@ def basics(doctor):
 
 
 def setting_snapshot():
-    return sd('setting').get('result', {}).get('settings', {})
+    response = sd('setting')
+    # Right after a first boot, simctl spawn can outlast its limit; the error says whether running it again may help.
+    if response.get('retry'):
+        response = sd('setting')
+    return response.get('result', {}).get('settings', {})
 
 
 def setting_argument(value):
@@ -508,12 +512,8 @@ def button_checks():
 
 
 def accept_url_prompt():
-    """Taps Open on the "Open in AXProbe?" alert iOS shows before a scheme's first URL."""
-    time.sleep(1)
-    elements = sd('tree').get('result', {}).get('elements', [])
-    if any(e.get('label', '').startswith('Open in') for e in elements):
-        point = next(e['point'] for e in elements if e.get('label') == 'Open' and e.get('type') == 'button')
-        sd('tap', str(point['x']), str(point['y']))
+    """Taps Open on the "Open in AXProbe?" alert iOS shows before a scheme's first URL; without one, tap finds no Open."""
+    sd('tap', '--label', 'Open', '--timeout', '2000')
 
 
 def misc_checks(is_foldable):
