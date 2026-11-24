@@ -49,7 +49,20 @@ enum ElementSelector: Equatable, Sendable {
 /// A VoiceOver element of the light tree: where `tap` reaches it, as a fraction of the screen, and whether its scroll
 /// view shows it.
 struct PlacedElement: Sendable {
+    /// Positions compared to a thousandth of the screen, finer than a scroll moves and coarser than rounding noise.
+    private static let signatureScale: CGFloat = 1000
+
     let element: AccessibilityElement
     let fraction: CGPoint
     let isOffscreen: Bool
+
+    /// What the screen shows, as each element's type, identifier, label and place. Two equal signatures mean nothing
+    /// moved: content at rest, or a scroll that reached the end of its content.
+    static func signature(of elements: [PlacedElement]) -> String {
+        elements.map { placed in
+            let x = Int((placed.fraction.x * signatureScale).rounded()), y = Int((placed.fraction.y * signatureScale).rounded())
+            let type = placed.element.type.map { "\($0)" } ?? ""
+            return "\(type)|\(placed.element.identifier ?? "")|\(placed.element.label ?? "")|\(x),\(y)|\(placed.isOffscreen)"
+        }.joined(separator: "\n")
+    }
 }

@@ -627,7 +627,18 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - Keep the `physical` JSON spelling while mapping it from an enum.
 - **Test:** `swift test`; the matrix's `basics`, `tree`, `settings` and `logs` sections.
 
-### - [ ] I22. `swipe --until`: stop at the end of the content, read once the scroll rests, and slow before lifting (S)
+### - [x] I22. `swipe --until`: stop at the end of the content, read once the scroll rests, and slow before lifting (S)
+
+**Result:**
+- **Reads at rest:** `DeviceAccessibility.shownElementAtRest` reads the light tree until two reads in a row have the same `PlacedElement.signature` (type, identifier, label, position to a thousandth of the screen, and offscreen flag). It reads every 150 ms, up to 8 times, replacing the fixed 400 ms wait.
+- **End of content:** a swipe that leaves the signature unchanged ends the command with `no-element`, naming which swipe moved nothing.
+- **Resting swipe:** each swipe repeats its last point, so the finger holds still for one segment's time before lifting, and the content stops instead of flinging past the element.
+- **Checks on iPhone 17, iOS 27.2:**
+  - The matrix's `tap` section passes 42/42.
+  - A search for a missing row now stops after 1 swipe, where it used all 10 before.
+  - Scrolling back to Play lands at the top (y 0.1712), where the flinging swipe stopped short at 0.1934.
+  - The signature test fails when positions are left out.
+- **Not taken from AXe:** its hit-test definition of visible, which belongs to I23.
 
 - **Why:** found in the upstream review (2026-11-24). N32 keeps swiping until `--max-swipes` runs out even when the list has already ended, reads after a fixed 400 ms however fast the content settles, and lifts the finger at full speed, so content can fling past the element. AXe has handled all of this since before `cb30a64`.
 - **Read:** `A:Sources/AXe/Utilities/ScrollUntil.swift:47-92 @1ffbd35`, which judges a read once two in a row have the same tree signature (types, ids, labels and frames), and stops when a swipe changes nothing. `A:Sources/AXe/Commands/Swipe.swift:159-181 @1ffbd35`, `restingPath`, which slows the path to a stop before lifting. In simdrive: `S:SimDriveCore/Session/DeviceSession.swift` (`swipe(through:duration:until:maxSwipes:)`).

@@ -314,6 +314,9 @@ def tap_checks(full):
         result = response.get('result', {})
         check('swipe --until-label scrolls the last row into view', response.get('ok') and result.get('swipes', 0) > 0
               and result.get('element', {}).get('label') == rows[-1] and 'offscreen' not in result.get('element', {}), brief(response))
+        response = sd('swipe', '0.15', '0.8', '0.15', '0.3', '--until-label', 'No such row')
+        check('swipe --until stops at the end of the content', response.get('code') == 'no-element'
+              and 'at its end' in response.get('error', ''), brief(response))
         response = sd('swipe', '0.15', '0.3', '0.15', '0.9', '--duration', '200', '--until-id', 'play-button')
         check('swipe --until-id scrolls back', response.get('ok'), brief(response))
         time.sleep(1)

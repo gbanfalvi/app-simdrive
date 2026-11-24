@@ -44,6 +44,14 @@ struct ElementSelectorTests {
         #expect(error?.code == .elementOffscreen)
     }
 
+    @Test func theSignatureChangesWhenContentMovesAndNotOtherwise() {
+        let screen = [Self.placed(label: "Row 1", at: 0.5), Self.placed(label: "Row 2", at: 0.6)]
+        let same = [Self.placed(label: "Row 1", at: 0.5), Self.placed(label: "Row 2", at: 0.6)]
+        let scrolled = [Self.placed(label: "Row 1", at: 0.45), Self.placed(label: "Row 2", at: 0.55)]
+        #expect(PlacedElement.signature(of: screen) == PlacedElement.signature(of: same))
+        #expect(PlacedElement.signature(of: screen) != PlacedElement.signature(of: scrolled))
+    }
+
     @Test func anOffscreenMatchIsNotShown() {
         #expect(!ElementSelector.label("Row").isShown(in: [Self.placed(label: "Row", offscreen: true)]))
         #expect(ElementSelector.label("Row").isShown(in: [Self.placed(label: "Row")]))

@@ -8,8 +8,6 @@ final class DeviceSession {
     /// How long an app may take to come to the front after `simctl launch`, which returns seconds before it does. A
     /// freshly booted, busy simulator takes tens of seconds.
     private static let launchLimit: Duration = .seconds(30)
-    private static let scrollSettle: Duration = .milliseconds(400)
-
     private let udid: String
     private let device: SimulatorDevice
     private let bootedAt: Date?
@@ -211,22 +209,33 @@ final class DeviceSession {
         return .object(result)
     }
 
-    /// Swipes until the element is on screen, reading the tree first so a shown element costs no swipe.
+    /// Swipes until the element is on screen, reading the tree first so a shown element costs no swipe. Each swipe holds
+    /// still at its end before lifting, so the content moves the swipe's length and does not fling past the element; a
+    /// swipe that moves nothing means the content reached its end, so it stops there.
     private func swipe(through path: [ScreenPoint], duration: Duration, until selector: ElementSelector,
                        maxSwipes: Int) async throws -> JSONValue {
+        let segments = path.count - 1
+        // Each segment of a path takes equal time, so a repeated last point holds for one segment's time.
+        let restingPath = path + [path[path.count - 1]]
+        let restingDuration = duration * (segments + 1) / segments
         var swipes = 0
+        var before: String?
         while true {
-            if let found = try await readAccessibility({ try await self.accessibility.shownElement(selector) }) {
+            let seen = try await readAccessibility { try await self.accessibility.shownElementAtRest(selector) }
+            if let found = seen.found {
                 return ["element": found.json, "swipes": JSONValue(swipes)]
+            }
+            if seen.signature == before {
+                throw SimDriveError(.noElement, "No onscreen element matches \(selector.argument): swipe \(swipes) moved nothing, "
+                                    + "so the content is at its end; swipe the other way.")
             }
             guard swipes < maxSwipes else {
                 throw SimDriveError(.noElement, "No onscreen element matches \(selector.argument) after \(swipes) swipes; "
                                     + "swipe the other way, or raise --max-swipes.")
             }
-            _ = try await swipe(through: path, duration: duration, edge: nil, display: .automatic)
+            before = seen.signature
+            _ = try await swipe(through: restingPath, duration: restingDuration, edge: nil, display: .automatic)
             swipes += 1
-            // A list keeps scrolling briefly after the touch ends, and the tree would catch it moving.
-            try await Task.sleep(for: Self.scrollSettle)
         }
     }
 

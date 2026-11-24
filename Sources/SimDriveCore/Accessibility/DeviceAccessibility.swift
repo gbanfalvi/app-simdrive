@@ -7,6 +7,9 @@ final class DeviceAccessibility {
     private static let frontmostPollInterval: Duration = .milliseconds(100)
     /// A light tree read takes tens of milliseconds, so this keeps waits responsive without reading continuously.
     private static let elementPollInterval: Duration = .milliseconds(200)
+    /// How often, and how many times at most, the screen is read again until two reads match.
+    private static let restInterval: Duration = .milliseconds(150)
+    private static let restReads = 8
     /// A split app's window is about 0.49 of the screen wide, and a full one 1.
     private static let halfWidthLimit = 0.75
 
@@ -54,12 +57,27 @@ final class DeviceAccessibility {
         }
     }
 
-    /// The one onscreen element `selector` names now, or nil while none is on screen, though some may be scrolled away.
-    func shownElement(_ selector: ElementSelector) async throws -> (element: PlacedElement, json: JSONValue)? {
+    /// The one onscreen element `selector` names, or nil while none is on screen, read once the screen is at rest: once
+    /// two reads in a row have the same signature, which is returned too, so a scroll can tell whether it moved anything.
+    func shownElementAtRest(_ selector: ElementSelector)
+        async throws -> (found: (element: PlacedElement, json: JSONValue)?, signature: String) {
+        var (layout, elements) = try await placedElements()
+        var signature = PlacedElement.signature(of: elements)
+        for _ in 0..<Self.restReads {
+            try await Task.sleep(for: Self.restInterval)
+            let next = try await placedElements()
+            let nextSignature = PlacedElement.signature(of: next.elements)
+            (layout, elements) = next
+            guard nextSignature != signature else { break }
+            signature = nextSignature
+        }
+        guard selector.isShown(in: elements), let found = try selector.resolve(in: elements) else { return (nil, signature) }
+        return ((found, layout.summary(found)), signature)
+    }
+
+    private func placedElements() async throws -> (layout: AccessibilityLayout, elements: [PlacedElement]) {
         let (snapshot, _, layout) = try await read(detail: .light)
-        let elements = layout.placedElements(snapshot.element)
-        guard selector.isShown(in: elements), let found = try selector.resolve(in: elements) else { return nil }
-        return (found, layout.summary(found))
+        return (layout, layout.placedElements(snapshot.element))
     }
 
     /// Reads the light tree until `selector` names no onscreen element, failing with `element-still-shown` after `limit`.
