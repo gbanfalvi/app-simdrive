@@ -139,7 +139,9 @@ struct CommandParserTests {
         #expect(try CommandParser.parse(["setting", "appearance"]) == .setting(SettingCatalog.appearance, value: nil))
         #expect(try CommandParser.parse(["setting", "appearance", "dark"]) == .setting(SettingCatalog.appearance, value: "dark"))
         #expect(try CommandParser.parse(["setting", "glass-tint", "1"]) == .setting(SettingCatalog.setting(named: "glass-tint"), value: 1))
-        expectUsageError { try CommandParser.parse(["setting", "voiceover", "on"]) }
+        expectUsageError { try CommandParser.parse(["setting", "sepia-mode", "on"]) }
+        #expect(try CommandParser.parse(["setting", "color-filter", "deuteranopia"])
+            == .setting(SettingCatalog.setting(named: "color-filter"), value: "deuteranopia"))
         expectUsageError { try CommandParser.parse(["setting", "bold-text", "maybe"]) }
         expectUsageError { try CommandParser.parse(["setting", "bold-text", "on", "now"]) }
     }

@@ -921,7 +921,16 @@ NeoSimulator has none of these; `simctl` covers them.
 - **Do:** first check which simulators list the feature (`CoreDeviceRemote.supports`). If iPads do, add a driver and a command that holds the session in the daemon.
 - **Test:** the probe logs `SIZE w h` from `viewWillTransition(to:with:)`.
 
-### - [ ] N20. VoiceOver, color filters and look-and-feel settings (M)
+### - [x] N20. VoiceOver, color filters and look-and-feel settings (M)
+
+**Result:**
+- **New settings:** `voiceover`, `color-filter` (`off`, `grayscale`, `protanopia`, `deuteranopia`, `tritanopia`) and `color-filter-intensity` (0.25–1), on iOS 27 and later. They are a new `coreDevice` storage in `SettingCatalog`: `DeveloperTools.devicectl` reads them with `device info appearance|voiceover` and changes them with `device settings`, and `CoreDeviceSetting` maps between those and the setting values.
+- **Intensity:** `devicectl` takes an intensity only together with a type, so setting it reads the current filter first, and fails with `setting-unsupported` when none is on.
+- **Checks on iPhone 17, iOS 27.2:** each setting reads back what was set, `voiceover on|off` included, and a deuteranopia filter at 0.75 showed in a screenshot. Unit tests cover parsing the results and building the arguments.
+- **Left out:**
+  - `look-and-feel`: this iPhone lists only "Liquid Glass" as supported.
+  - `glass-opacity`: `devicectl`'s Liquid Glass opacity read 0.5 where `glass-tint` did, so it looks like the same value (unverified beyond that).
+- **Cost:** each `devicectl` call starts CoreDevice afresh, about 3 s, and listing every setting went from under a second to about 7 s. The in-process CoreDevice capability that `pasteboard` uses would avoid that (unverified). The probe and the matrix do not check these settings yet.
 
 - **Seen (2026-11-24, upstream review):** I10 is no longer needed for this. AXe sets VoiceOver, the color filter with its intensity, Liquid Glass opacity, text size and contrast with `xcrun devicectl device settings appearance|voiceover`, and reads them back with `devicectl device info appearance|voiceover` (`A:Sources/AXe/Utilities/DeviceSettings.swift:92-96,242,340-341 @1ffbd35`). `devicectl device settings` exists in the installed Xcode 27. Prefer calling the CoreDevice capability behind it in process, as `pasteboard` does (unverified that it is reachable that way), and fall back to running `devicectl` through `DeveloperTools`.
 

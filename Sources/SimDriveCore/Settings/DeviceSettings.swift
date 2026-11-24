@@ -39,6 +39,14 @@ final class DeviceSettings {
                 try await enableApplicationAccessibility()
                 try await start(service)
             }
+        case .coreDevice(let field):
+            let current = field.needsCurrentValue ? try await tools.devicectl(["device", "info", field.source.rawValue, "--device", udid]) : [:]
+            guard let arguments = field.arguments(for: value, current: current) else {
+                throw SimDriveError(.settingUnsupported, field.needsCurrentValue
+                    ? "Turn a color filter on with color-filter before setting its intensity."
+                    : "\(device.name) has no \(setting.name) setting.")
+            }
+            _ = try await tools.devicectl(["device", "settings"] + arguments + ["--device", udid])
         }
         return try await read(setting)
     }
@@ -61,6 +69,7 @@ final class DeviceSettings {
         let preferences = preferences
         let available = settings.filter(isAvailable)
         var keysByDomain: [String: [(setting: Setting, key: String)]] = [:]
+        var fieldsBySource: [CoreDeviceSetting.Source: [(setting: Setting, field: CoreDeviceSetting)]] = [:]
         var values = Dictionary(uniqueKeysWithValues: settings.filter { !available.contains($0) }.map {
             ($0.name, JSONValue.unsupported)
         })
@@ -68,13 +77,22 @@ final class DeviceSettings {
             switch setting.storage {
             case .interface(let option): values[setting.name] = setting.value(fromInterfaceChoice: device.interfaceChoice(option))
             case .preference(let domain, let key, _, _): keysByDomain[domain, default: []].append((setting, key))
+            case .coreDevice(let field): fieldsBySource[field.source, default: []].append((setting, field))
             }
         }
+        let tools = tools, udid = udid
         return try await withThrowingTaskGroup(of: [String: JSONValue].self) { [values] group in
             for (domain, keys) in keysByDomain {
                 group.addTask {
                     let stored = try await preferences.export(domain)
                     return Dictionary(uniqueKeysWithValues: keys.map { ($0.setting.name, $0.setting.value(fromPreference: stored[$0.key])) })
+                }
+            }
+            // One `devicectl device info` per source, which takes about 3 s; a device it cannot read lacks the settings.
+            for (source, fields) in fieldsBySource {
+                group.addTask {
+                    let result = try? await tools.devicectl(["device", "info", source.rawValue, "--device", udid])
+                    return Dictionary(uniqueKeysWithValues: fields.map { ($0.setting.name, result.map($0.field.value) ?? .unsupported) })
                 }
             }
             var values = values
