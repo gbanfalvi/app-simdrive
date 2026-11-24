@@ -1,0 +1,24 @@
+#!/usr/bin/env python3
+"""Claude Code hook: reminds the agent, on every prompt, which repo skill to invoke for the work ahead.
+
+Registered under `hooks.UserPromptSubmit` in `.claude/settings.json`. It ignores the hook's stdin and prints
+Claude Code's hook JSON, whose `additionalContext` is added to the prompt. Keep the reminder to one line: it's
+paid for on every message. The skills are in `.claude/skills/`; the routing table is in AGENTS.md.
+"""
+
+import json
+
+REMINDER = (
+    "Repo skills: invoke the matching one before starting each activity — architect (designing or planning), "
+    "write-code (any code or test change), refactor (behavior-preserving restructuring), review (reviews, and "
+    "self-review before reporting work done); if one can't be invoked, read .claude/skills/<name>/SKILL.md. "
+    "Anything found but left undone goes into roadmap/backlog.md (backlog skill) before reporting done."
+)
+
+
+def main() -> None:
+    print(json.dumps({"hookSpecificOutput": {"hookEventName": "UserPromptSubmit", "additionalContext": REMINDER}}))
+
+
+if __name__ == "__main__":
+    main()

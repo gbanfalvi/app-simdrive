@@ -10,13 +10,43 @@ The agent skill in [skills/simdrive/SKILL.md](skills/simdrive/SKILL.md) teaches 
 2. Copy `skills/simdrive/` into your skills directory: `~/.cursor/skills/` for Cursor, `~/.claude/skills/` for Claude Code, or your agent's own.
 3. In the copy, replace `<simdrive>` with the absolute path of `.build/release/simdrive` in this clone.
 
-Reinstall after changing the skill here; the repo copy is the source.
+Reinstall after changing the skill here; the repo copy is the source. Other repos keep their own copies: app_mono's `scripts/simdrive --sync-skill` recopies it there.
+
+## Skills for working on simdrive
+
+`skills/simdrive/` is the skill simdrive ships to its users. The skills for changing simdrive itself live in `.claude/skills/`; `.cursor/skills/` links to them. Invoke the matching one before starting each activity, and again when the work shifts to another one. They hold the detailed principles and checklists; this file only holds what applies all the time.
+
+| Skill | Invoke before… |
+|---|---|
+| `architect` | designing or planning anything non-trivial: a command or capability, a driver, module boundaries, daemon changes, architecture reviews, phased plans |
+| `write-code` | writing or changing code or tests, however small, including the matrix and the probe app |
+| `review` | reviewing a diff, PR, module or plan, and self-reviewing before telling the user work is done |
+| `refactor` | restructuring, renaming, moving, deleting or deduplicating code without changing behavior |
+| `backlog` | recording work left undone (findings, extras, deferred fixes, unverified devices or runtimes), and when an item lands |
+
+They chain: a design ends in a backlog item's plan that `write-code` carries out, every implementation or refactor ends with a `review` pass, and whatever any of them leaves undone ends in the backlog. If a skill can't be invoked (in a subagent, or a session started before the skill existed), read `.claude/skills/<name>/SKILL.md` and follow it. `.claude/hooks/skill-reminder` repeats this table in one line on every Claude Code prompt.
+
+To drive a simulator while working here, follow `skills/simdrive/SKILL.md` with `<simdrive>` read as `.build/release/simdrive`.
+
+## Working agreements
+
+- **Size the work first.** Its complexity decides how many levels (package, module, type, member) you work at.
+- **Hunt edge cases up front.** Assume they were missed and the docs skipped them; raise or handle each one. Devices, postures, runtimes and boot timing are where simdrive's bugs have come from.
+- **Fix root causes, never symptoms.** Trace every problem to its source; a retry or a longer sleep hides one.
+- **Decide consequential things with the user.** Verify what can be verified first, then give options with pros and cons. Don't guess on decisions that shape later work, such as a new private dependency or a change to commands, JSON or error codes.
+- **Push back.** If a request has problems, say so and explain why before doing it.
+- **Leave it better (scout's rule).** No placeholders, TODOs or compromises that limit scalability.
+- **Nothing found gets lost.** Anything that could be done but isn't done in this work (a possible bug, a device not checked, a review finding not fixed, a feature extra, a cut step) goes into `roadmap/backlog.md` before reporting done, following the `backlog` skill. Say which items you added.
+- **Fix the environment, not just the instance.** Turn recurring fixes into mechanisms (tests, matrix checks, scripts) rather than written reminders. Automate repeated work.
+- **Verify against the real thing.** Run it on a simulator, test it, measure it; say plainly what wasn't verified, and on which devices and runtimes it was.
+- **Communicate concisely**, with the context needed to decide.
 
 ## Working on simdrive
 
 - Builds need Xcode 27 and macOS 26. Set `DEVELOPER_DIR` to the Xcode in use, such as `/Applications/Xcode_27_2.app/Contents/Developer`, when `xcode-select` points elsewhere.
 - Build with `swift build`, test with `swift test`, and release with `swift build -c release`.
-- Planned work, with context for each item, is in [roadmap/backlog.md](roadmap/backlog.md).
+- Planned work, with context for each item, is in [roadmap/backlog.md](roadmap/backlog.md). What the code doesn't say (architecture, design decisions and the alternatives that failed, private APIs, device behavior) is in [docs/](docs/README.md); read the relevant page before changing that area, and update it in the same commit.
+- `swift build`, `swift test` and read-only git commands are pre-approved in `.claude/settings.json`.
 - Modules, lowest first. Each uses only the one below:
   - `SimDriveNative`: private-framework drivers for CoreSimulator, the guest's HID and device-control services, CoreDevice, and AccessibilityPlatformTranslation. `Guest*` types reach the guest's Mach services directly; `CoreDevice*` types go through CoreDevice.
   - `SimDriveCore`: commands and their parser, the per-device session, screen geometry, device logs, and the per-device daemon.

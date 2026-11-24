@@ -1,0 +1,27 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(swift build)",
+      "Bash(swift build *)",
+      "Bash(swift test)",
+      "Bash(swift test *)",
+      "Bash(git status)",
+      "Bash(git status *)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/skill-reminder"
+          }
+        ]
+      }
+    ]
+  }
+}
