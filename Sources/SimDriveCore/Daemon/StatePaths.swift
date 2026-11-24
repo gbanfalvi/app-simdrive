@@ -1,5 +1,6 @@
 import Darwin
 import Foundation
+import SimDriveNative
 
 /// Per-user files: each device's daemon socket and log, screenshot records, calibration image and log cursors.
 enum StatePaths {
@@ -15,8 +16,21 @@ enum StatePaths {
     static func calibration(for udid: String) -> URL { directory.appendingPathComponent("\(udid).calibration.png") }
     static func logCursors(for udid: String) -> URL { directory.appendingPathComponent("\(udid).logs.json") }
 
+    /// Creates the directory, or checks the one there. Its name is predictable in a directory every user can write to,
+    /// so another user could create it first and redirect the socket, the log or the records written into it.
     static func prepare() throws {
+        try prepare(directory)
+    }
+
+    static func prepare(_ directory: URL) throws {
         try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true,
                                                 attributes: [.posixPermissions: privateDirectoryMode])
+        var status = stat()
+        guard lstat(directory.path, &status) == 0, status.st_mode & S_IFMT == S_IFDIR, status.st_uid == getuid() else {
+            throw SimDriveError(.stateDirectory, "\(directory.path) is not a directory of your own; remove it, then retry.")
+        }
+        if status.st_mode & 0o077 != 0, chmod(directory.path, mode_t(privateDirectoryMode)) != 0 {
+            throw SimDriveError(.stateDirectory, "\(directory.path) is open to other users and could not be made private.")
+        }
     }
 }

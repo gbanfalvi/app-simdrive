@@ -23,6 +23,7 @@ enum DaemonClient {
 
     /// Stops the device's daemon, if one runs.
     static func stop(udid: String, tools: DeveloperTools) async throws -> CommandResponse {
+        try StatePaths.prepare()
         guard let socketDescriptor = UnixSocket.connect(to: StatePaths.socket(for: udid).path) else {
             return .success(["stopped": false])
         }
@@ -48,9 +49,10 @@ enum DaemonClient {
     }
 
     private static func connection(udid: String, tools: DeveloperTools) async throws -> Int32 {
+        // Checked before connecting, since a socket in another user's directory may not be simdrive's.
+        try StatePaths.prepare()
         let path = StatePaths.socket(for: udid).path
         if let socketDescriptor = UnixSocket.connect(to: path) { return socketDescriptor }
-        try StatePaths.prepare()
         try spawnDaemon(udid: udid, tools: tools)
         let deadline = ContinuousClock.now + startLimit
         while ContinuousClock.now < deadline {
@@ -84,7 +86,7 @@ enum DaemonClient {
         posix_spawnattr_setflags(&attributes, Int16(POSIX_SPAWN_SETSID))
         posix_spawn_file_actions_addopen(&actions, STDIN_FILENO, "/dev/null", O_RDONLY, 0)
         posix_spawn_file_actions_addopen(&actions, STDOUT_FILENO, StatePaths.log(for: udid).path,
-                                         O_WRONLY | O_CREAT | O_APPEND, logMode)
+                                         O_WRONLY | O_CREAT | O_APPEND | O_NOFOLLOW, logMode)
         posix_spawn_file_actions_adddup2(&actions, STDOUT_FILENO, STDERR_FILENO)
         let arguments = [executable, udid, serveCommand].map { strdup($0) } + [nil]
         let environment = tools.pinnedEnvironment.map { strdup("\($0.key)=\($0.value)") } + [nil]

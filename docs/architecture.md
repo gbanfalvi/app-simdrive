@@ -97,7 +97,7 @@ flowchart LR
 
 ## State files
 
-All live in `/tmp/simdrive-<uid>/`, mode 0700. `$TMPDIR` is not used: a Unix socket path is limited to 104 bytes, which `$TMPDIR` plus a UDID can exceed.
+All live in `/tmp/simdrive-<uid>/`, mode 0700. `$TMPDIR` is not used: a Unix socket path is limited to 104 bytes, which `$TMPDIR` plus a UDID can exceed. Since any user can create that name in `/tmp`, `StatePaths.prepare` refuses, with `state-directory`, a directory that is a symlink or belongs to another user, and makes its own private if it is not. The client checks it before connecting to a socket there, and the daemon's log is opened without following symlinks.
 
 | File | Holds |
 | --- | --- |

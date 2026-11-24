@@ -278,7 +278,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** hold an exclusive `flock` on `<udid>.lock` for the daemon's whole life; a daemon that can't take it exits. Have `shutdown` unlink only while it holds the lock.
 - **Test:** a unit test that starts two listeners on the same path in a temporary directory. By hand, run eight `simdrive <udid> doctor` calls at once from a cold start, then check that `pgrep -f "<udid> serve"` finds one daemon.
 
-### - [ ] F26. The state directory in `/tmp` is trusted without checking its owner (S)
+### - [x] F26. The state directory in `/tmp` is trusted without checking its owner (S)
+
+**Result:** `StatePaths.prepare` checks `/tmp/simdrive-<uid>` with `lstat`. It refuses one that is a symlink or belongs to another user, failing with the new `state-directory` code, and sets its own back to 0700 when it is open to others. The client now prepares it before connecting to a socket there, including for `stop`, and opens the daemon's log with `O_NOFOLLOW`. `StatePathsTests` covers a new directory, an open one of your own and a symlink; the symlink test fails without the check. A directory owned by another user was not tested, since that needs a second account.
 
 - **Problem:** found in the architecture review (2026-11-24). `StatePaths.directory` is `/tmp/simdrive-<uid>`, a predictable name in a directory every user can write to. `prepare()` accepts the directory if it already exists, whoever made it, and the daemon's log is opened with `O_CREAT | O_APPEND`, which follows symlinks. On a Mac with several users, another user who creates the directory first can redirect the log onto any file the victim can write, or answer on the socket in the daemon's place.
 - **Read:** `S:SimDriveCore/Daemon/StatePaths.swift`, `S:SimDriveCore/Daemon/DaemonClient.swift` (`spawnDaemon`).

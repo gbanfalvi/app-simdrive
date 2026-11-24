@@ -44,6 +44,7 @@ extension ErrorCode {
     static let daemonStart = ErrorCode(rawValue: "daemon-start")
     static let daemonRunning = ErrorCode(rawValue: "daemon-running")
     static let daemonSocket = ErrorCode(rawValue: "daemon-socket")
+    static let stateDirectory = ErrorCode(rawValue: "state-directory")
 }
 
 extension SimDriveError {
