@@ -30,7 +30,7 @@ simdrive <udid|booted> <command>
 | `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] --until-label <text> \| --until-id <identifier> [--max-swipes N]` | Repeats the swipe until the element is on screen, 10 times at most; no swipe when it already is |
 | `pinch <x> <y> <scale> [--duration ms] [--display D]` | Two fingers around the point spread to `scale` times their distance, or close below 1 |
 | `rotate <x> <y> <degrees> [--duration ms] [--display D]` | Two fingers turn around the point, clockwise when positive |
-| `button <name> [--repeat N] [--hold ms]` | Hardware or Apple TV Remote button, held 100 ms by default |
+| `button <name> [--repeat N] [--hold ms] [--legacy]` | Hardware or Apple TV Remote button, held 100 ms by default. `--legacy` presses through `IndigoButtonEvent`, the route before Xcode 27.3 removed it |
 | `posture [closed\|half\|open]` | Sets or reads a foldable's hinge; returns once the hinge settles |
 | `split left\|right\|full [--from left\|right\|full]` | Moves the iPhone Duo inner screen's app to a half or the whole screen; see [Foldables](#foldables) |
 | `orientation [portrait\|landscape-left\|landscape-right\|upside-down]` | Sets or reads the device orientation |
@@ -98,6 +98,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `no-screenshot`, `stale-screenshot` | Pixel coordinates need a screenshot taken since the device or the interface last rotated; take one | no |
 | `screenshot`, `screenshot-read`, `screenshot-scale`, `screenshot-write` | A screenshot could not be captured, read, scaled or written | no |
 | `single-display`, `unknown-display` | `--display` names a display the device lacks | no |
+| `legacy-buttons-unavailable` | `button --legacy` needs `IndigoButtonEvent`, which Xcode 27.3 removed; press without `--legacy` | no |
 | `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `setting-unsupported`, `accessibility-unsupported` | The device lacks the capability | no |
 | `posture-timeout` | The hinge did not reach or settle at the posture | yes |
 | `split-unsupported` | Split view needs a Duo's inner screen, unfolded and in landscape | no |

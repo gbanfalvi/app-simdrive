@@ -93,8 +93,17 @@ final class GuestConnection {
 
     /// Sends a message that has no reply. The service receives a connection's messages in order.
     func post(_ type: GuestMessageCodec.MessageType, _ payload: NativeSwiftValue) throws {
+        try post(try codec.message(type, to: feature, payload: payload))
+    }
+
+    /// Posts a message whose payload its sender encoded.
+    func post(_ type: GuestMessageCodec.MessageType, encoded payload: xpc_object_t) throws {
+        try post(codec.message(type, to: feature, encoded: payload))
+    }
+
+    private func post(_ message: xpc_object_t) throws {
         if let failure { throw failure }
-        xpc_connection_send_message(connection, try codec.message(type, to: feature, payload: payload))
+        xpc_connection_send_message(connection, message)
         lastPost = .now
     }
 

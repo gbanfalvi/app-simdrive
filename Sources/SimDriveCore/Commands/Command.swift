@@ -37,7 +37,8 @@ enum Command: Equatable, Sendable {
     case pinch(center: ScreenPoint, scale: Double, duration: Duration, display: DisplaySelector)
     /// Two fingers turn around `center`, clockwise for positive degrees.
     case rotate(center: ScreenPoint, degrees: Double, duration: Duration, display: DisplaySelector)
-    case button(HardwareButton, count: Int, hold: Duration)
+    /// `legacy` presses through `remote.hid.button` and `IndigoButtonEvent`, which Xcode 27.3 removed.
+    case button(HardwareButton, count: Int, hold: Duration, legacy: Bool)
     /// Sets the posture, or reads the hinge without one.
     case posture(DevicePosture?)
     /// Moves the inner screen's app to a layout; `from` overrides the one simdrive last set.

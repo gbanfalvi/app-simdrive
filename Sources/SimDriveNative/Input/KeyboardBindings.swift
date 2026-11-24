@@ -128,7 +128,12 @@ enum CoreDeviceUniversalHID {
 
     /// `HIDReport` wraps the report's `Data`, whose two words its exported members pass directly. Needs ``load()`` first.
     static func reportABI(runtime: ABIRuntime) throws -> (type: NativeSwiftType, abi: NativeType) {
-        let type = try runtime.resolveAndWait(.swift(.type("UniversalHID.HIDReport")), in: .path(url), loading: .loadedOnly)
+        let type = try self.type(named: "HIDReport", runtime: runtime)
         return (type, try .dataABI(type))
+    }
+
+    /// A type of this module, not the system's of the same name. Needs ``load()`` first.
+    static func type(named name: String, runtime: ABIRuntime) throws -> NativeSwiftType {
+        try runtime.resolveAndWait(.swift(.type("UniversalHID." + name)), in: .path(url), loading: .loadedOnly)
     }
 }

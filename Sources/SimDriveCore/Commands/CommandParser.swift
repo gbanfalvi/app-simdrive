@@ -78,14 +78,14 @@ enum CommandParser {
             return .rotate(center: try point(values[0], values[1]), degrees: degrees, duration: try gestureDuration(list),
                            display: try display(list.option("display")))
         case "button":
-            let list = try ArgumentList(rest, options: ["repeat", "hold"])
+            let list = try ArgumentList(rest, options: ["repeat", "hold"], flags: ["legacy"])
             let value = try list.single("a button")
             guard let button = HardwareButton(rawValue: value) else {
                 throw SimDriveError.usage(
                     "Unknown button \"\(value)\"; use \(HardwareButton.allCases.map(\.rawValue).joined(separator: ", "))")
             }
             let hold = try list.positiveInteger("hold").map { Duration.milliseconds($0) } ?? defaultButtonHold
-            return .button(button, count: try list.positiveInteger("repeat") ?? 1, hold: hold)
+            return .button(button, count: try list.positiveInteger("repeat") ?? 1, hold: hold, legacy: list.flag("legacy"))
         case "posture":
             guard let value = try ArgumentList(rest).optionalSingle() else { return .posture(nil) }
             guard let posture = postureNames[value] else {
@@ -345,7 +345,8 @@ enum CommandParser {
                                               two fingers spread to scale times their distance, or close below 1
           rotate <x> <y> <degrees> [--duration ms] [--display D]
                                               two fingers turn around the point, clockwise when positive
-          button <name> [--repeat N] [--hold ms]
+          button <name> [--repeat N] [--hold ms] [--legacy]
+                 --legacy presses through the route Xcode 27.3 removed, for older runtimes it may suit better
                  home|lock|volume-up|volume-down|siri; Apple TV Remote: menu|select|play-pause|up|down|left|right|
                  channel-up|channel-down, with home as the TV button
           posture [closed|half|open]          reads the hinge angle without an argument

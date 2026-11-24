@@ -41,7 +41,8 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 | --- | --- | --- |
 | `remote.universalhidservice` | `Request` | `DDIUniversalHIDServicePayload.Request`: `createService(HIDServiceDescriptor)`, `send(Data, HIDServiceID)`, `removeService(HIDServiceID)` |
 | `remote.hid.digitizer` | `IndigoDigitizerEvent` | `IndigoDigitizerEvent(pointOne:pointTwo:eventType:edge:target:)` |
-| `remote.hid.button` | `IndigoButtonEvent` | `IndigoButtonEvent(usagePage:usageCode:state:)` |
+| `remote.universalhidservice` (buttons) | `Request` | A `HIDServiceType.mainScreenButtons` service, created with its `descriptor()` given the type's `serviceID`, sent `CustomButtonReport(usage: HIDUsage(page:usage:), down:).report`. Carries the iPhone's buttons and, on tvOS 18, the Apple TV Remote's (observed). |
+| `remote.hid.button` (`button --legacy`) | `IndigoButtonEvent` | `IndigoButtonEvent(usagePage:usageCode:state:)`. Xcode 27.3 (CoreDeviceUtilities 699.2) removed the type, so it is resolved only when `--legacy` asks for it. |
 | `remote.devicecontrol.orientation` | `OrientationRequest` | `currentOrientation` or `changeOrientation(DeviceOrientation)`; the reply is `OrientationInfo` |
 
 ### Keyboard
@@ -90,7 +91,7 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreDevice.framework`.
 
 ### Hinge
 
-- Present only when the hardware model is `v68`, `v68ap` or `v68dev` (the iPhone Duo) and the device supports `remote.hid.vendordefined`, `monitormotion` and `remote.universalhidservice`, and `motionManager().supportsHingeAngle` is true.
+- Present only when CoreSimulator lists more than one screen for the device (the iPhone Duo), and the device supports `remote.hid.vendordefined`, `monitormotion` and `remote.universalhidservice`, and `motionManager().supportsHingeAngle` is true.
 - Reading: `MonitorMotionProtocol.motionManager().monitorHingeAngle(config: HingeAngleStreamConfig(changeThreshold:updateInterval:))` returns an `AsyncThrowingStream<[DeviceHingeAngleSnapshot], Error>`; each snapshot has `isAngleValid` and `angle` (`Measurement<UnitAngle>`). The returned owner must stay alive while the stream is read.
 - Setting: `HIDVendorDefined.send(usagePage: 0xFF61, usage: 0x5B, version: 0, data:)`, where `data` is an `IOCFSerialize` binary dictionary: `provider` `com.apple.Virtualization.VirtualMachines`, `source` `hinge-slider-control`, `type` `range`, `value` the angle in degrees.
 - The hinge animates toward the angle and settles near it. simdrive sends 0, 130 and 180 and reads below 15° as closed and above 175° as open.

@@ -85,8 +85,8 @@ final class DeviceSession {
             return try await twoFingerGesture(around: center, duration: duration, display: display, result: ["degrees": .number(degrees)]) {
                 TwoFingerGesture.rotation(around: $0, degrees: degrees, screen: $1)
             }
-        case .button(let button, let count, let hold):
-            return try await press(button, count: count, hold: hold)
+        case .button(let button, let count, let hold, let legacy):
+            return try await press(button, count: count, hold: hold, legacy: legacy)
         case .posture(let posture?):
             return try await setPosture(posture)
         case .posture(nil):
@@ -230,8 +230,8 @@ final class DeviceSession {
         }
     }
 
-    private func press(_ button: HardwareButton, count: Int, hold: Duration) async throws -> JSONValue {
-        try await inputs.press(button, count: count, hold: hold)
+    private func press(_ button: HardwareButton, count: Int, hold: Duration, legacy: Bool) async throws -> JSONValue {
+        try await inputs.press(button, count: count, hold: hold, legacy: legacy)
         if button == .home { screens.forgetScreenshots() }
         return ["button": .string(button.rawValue), "count": JSONValue(count)]
     }

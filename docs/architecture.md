@@ -119,7 +119,7 @@ The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.s
 | --- | --- | --- |
 | Keyboard | Guest `remote.universalhidservice`: a main keyboard HID service, fed reports from UniversalHIDKit's `EventObserver` | — |
 | Touches | Guest `remote.hid.digitizer` | tvOS (decided by runtime) |
-| Buttons, Apple TV Remote | Guest `remote.hid.button`, consumer usage page | — |
+| Buttons, Apple TV Remote | Guest `remote.universalhidservice`: a main-screen buttons HID service, sent consumer-page `CustomButtonReport`s; `--legacy` uses `remote.hid.button` | — |
 | Orientation | Guest `remote.devicecontrol.orientation` | tvOS |
 | Interface orientation | CoreSimulator's framebuffer screen adapter, in process | — |
 | Screenshots | CoreSimulator's framebuffer surfaces, in process, else `simctl` | — |

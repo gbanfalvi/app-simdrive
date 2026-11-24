@@ -36,6 +36,7 @@ $S <udid> pinch 0.5 0.5 2                       # zoom in; below 1 zooms out. ro
 $S <udid> button home                  # home | lock | volume-up | volume-down | siri
 $S <udid> button down --repeat 3       # Apple TV Remote: menu (Back) | select | play-pause | up | down | left | right | channel-up | channel-down; home is the TV button
 $S <udid> button select --hold 1000    # long press
+$S <udid> button home --legacy         # the route before Xcode 27.3; only if a button misbehaves without it
 $S <udid> orientation landscape-left   # no argument reads it
 $S <udid> pasteboard                   # items with their types and text
 $S <udid> pasteboard "Grüße 東京"       # then: key v --mods cmd

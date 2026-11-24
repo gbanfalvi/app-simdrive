@@ -44,6 +44,7 @@ extension ErrorCode {
     package static let guestConnection = ErrorCode(rawValue: "guest-connection", retryable: true)
     static let guestServiceTimeout = ErrorCode(rawValue: "guest-service-timeout", retryable: true)
     static let hidServiceRemoved = ErrorCode(rawValue: "hid-service-removed")
+    static let legacyButtonsUnavailable = ErrorCode(rawValue: "legacy-buttons-unavailable")
     static let keyboardEvent = ErrorCode(rawValue: "keyboard-event")
     static let keyboardReport = ErrorCode(rawValue: "keyboard-report")
     static let coreDeviceIdentity = ErrorCode(rawValue: "coredevice-identity")

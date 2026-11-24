@@ -101,9 +101,11 @@ struct CommandParserTests {
     }
 
     @Test func buttonDefaultsAndOptions() throws {
-        #expect(try CommandParser.parse(["button", "home"]) == .button(.home, count: 1, hold: CommandParser.defaultButtonHold))
+        #expect(try CommandParser.parse(["button", "home"]) == .button(.home, count: 1, hold: CommandParser.defaultButtonHold, legacy: false))
         #expect(try CommandParser.parse(["button", "play-pause", "--repeat", "2", "--hold", "800"])
-            == .button(.playPause, count: 2, hold: .milliseconds(800)))
+            == .button(.playPause, count: 2, hold: .milliseconds(800), legacy: false))
+        #expect(try CommandParser.parse(["button", "lock", "--legacy"])
+            == .button(.lock, count: 1, hold: CommandParser.defaultButtonHold, legacy: true))
         expectUsageError { try CommandParser.parse(["button", "select", "--hold", "0"]) }
         expectUsageError { try CommandParser.parse(["button", "power"]) }
     }

@@ -1,3 +1,6 @@
+import ABIBridge
+import XPC
+
 /// Hardware and Apple TV Remote buttons, named as the command line spells them.
 package enum HardwareButton: String, CaseIterable, Sendable {
     case home, lock, volumeUp = "volume-up", volumeDown = "volume-down", siri
@@ -30,28 +33,119 @@ package enum HardwareButton: String, CaseIterable, Sendable {
 /// A button's state, by CoreDevice `HIDButtonState` case.
 enum ButtonState: String { case down, up }
 
-/// The guest's hardware buttons, which on an Apple TV are its remote's.
+/// Presses a button and lets it go, as either of the guest's button routes does.
 @MainActor
-package final class GuestButtons {
-    private static let feature = "com.apple.coredevice.feature.remote.hid.button"
-    private let connection: GuestConnection
-    private let codec: GuestMessageCodec
+package protocol ButtonPresser: AnyObject {
+    var hasFailed: Bool { get }
+    func press(_ button: HardwareButton, hold: Duration) async throws
+    func close() async
+}
 
-    private init(connection: GuestConnection, codec: GuestMessageCodec) {
+/// The guest's hardware buttons, which on an Apple TV are its remote's: a main-screen button service on the universal HID
+/// service, sent CoreDevice's `CustomButtonReport`s, as Xcode 27.3 requires.
+@MainActor
+package final class GuestButtons: ButtonPresser {
+    private let connection: GuestConnection
+    private let service: GuestHIDService
+    private let report: (UInt16, UInt16, Bool) throws -> NativeSwiftValue
+
+    private init(connection: GuestConnection, service: GuestHIDService, report: @escaping (UInt16, UInt16, Bool) throws -> NativeSwiftValue) {
         self.connection = connection
-        self.codec = codec
+        self.service = service
+        self.report = report
     }
 
+    /// Creates the guest's button service and waits until the guest takes its presses.
     package static func open(guest: SimulatorGuest) async throws -> GuestButtons {
-        GuestButtons(connection: try await guest.connection(to: feature), codec: guest.codec)
+        let runtime = ABIRuntime.shared
+        let report = try await runtime.prepare { try await Self.reports(runtime: $0) }
+        let descriptor = try await runtime.prepare { try await Self.mainScreenButtons(runtime: $0) }
+        let connection = try await guest.connection(to: GuestHIDService.universalHIDFeature)
+        let buttons = GuestButtons(connection: connection, service: try await connection.createService(descriptor), report: report)
+        await pause(GuestInputTiming.settle)
+        return buttons
     }
 
     package var hasFailed: Bool { connection.hasFailed }
 
     package func press(_ button: HardwareButton, hold: Duration) async throws {
-        try connection.post(.buttonEvent, codec.buttonEvent(button, state: .down))
+        try service.send(report(HardwareButton.usagePage, button.usage, true))
         await pause(hold)
-        try connection.post(.buttonEvent, codec.buttonEvent(button, state: .up))
+        try service.send(report(HardwareButton.usagePage, button.usage, false))
+        try await connection.flush()
+    }
+
+    /// Removes the guest's button service, which releases a button it still holds.
+    package func close() async {
+        try? await service.remove()
+        try? await connection.flush()
+    }
+
+    /// `CustomButtonReport(usage:down:).report`, an `HIDReport` of CoreDevice's own UniversalHID module.
+    private static func reports(runtime: ABIRuntime) async throws -> (UInt16, UInt16, Bool) throws -> NativeSwiftValue {
+        try await CoreDeviceUniversalHID.load()
+        let usage = try CoreDeviceUniversalHID.type(named: "HIDUsage", runtime: runtime)
+        let button = try await runtime.resolve(.swift(.type("CoreDeviceUtilities.CustomButtonReport")))
+        let report = try CoreDeviceUniversalHID.reportABI(runtime: runtime)
+        let abis: [NativeSwiftType: NativeType] = [usage: try .structure(named: usage.name, fields: [.uint32]),
+                                                  button: try .opaque(named: button.name), report.type: report.abi]
+        let makeUsage = try await usage.resolve(.swift(.initializer("init(page:usage:)", as: ((Int, Int) -> NativeSwiftValue).self,
+                                                                    valueABIs: abis)))
+        let makeButton = try await button.resolve(.swift(.initializer("init(usage:down:)",
+            as: ((NativeSwiftValue, Bool) -> NativeSwiftValue).self, valueABIs: abis)))
+        let readReport = try await button.resolve(.swift(.getter("report", as: (() -> NativeSwiftValue).self, valueABIs: abis,
+                                                                 receiverABI: abis[button])))
+        return { page, usage, down in
+            try unsafe readReport.unsafeInvoke(on: makeButton.unsafeInvoke(makeUsage.unsafeInvoke(Int(page), Int(usage)), down))
+        }
+    }
+
+    /// The descriptor of `HIDServiceType.mainScreenButtons`, carrying that service type's ID.
+    private static func mainScreenButtons(runtime: ABIRuntime) async throws -> NativeSwiftValue {
+        let serviceType = try await runtime.resolve(.swift(.type("CoreDeviceUtilities.HIDServiceType")))
+        let descriptorType = try await runtime.resolve(.swift(.type("CoreDevice.HIDServiceDescriptor")))
+        let serviceIDType = try await runtime.resolve(.swift(.type("CoreDevice.HIDServiceID")))
+        let abis: [NativeSwiftType: NativeType] = [serviceType: try .opaque(named: serviceType.name),
+            descriptorType: try .opaque(named: descriptorType.name), serviceIDType: try .opaque(named: serviceIDType.name)]
+        let makeDescriptor = try await serviceType.resolve(.swift(.method("descriptor()", as: (() -> NativeSwiftValue).self,
+            valueABIs: abis, receiverABI: abis[serviceType])))
+        let serviceID = try await serviceType.resolve(.swift(.getter("serviceID", as: (() -> NativeSwiftValue).self,
+            valueABIs: abis, receiverABI: abis[serviceType])))
+        let setServiceID = try await descriptorType.resolve(.swift(.setter("serviceID", as: ((NativeSwiftValue) -> Void).self,
+            valueABIs: abis, receiverABI: abis[descriptorType])))
+        let service = try serviceType.makeEnumCase(named: "mainScreenButtons")
+        let descriptor = try unsafe makeDescriptor.unsafeInvoke(on: service)
+        // descriptor() supplies the service's properties, with its ID unassigned.
+        try unsafe setServiceID.unsafeInvoke(on: descriptor, serviceID.unsafeInvoke(on: service))
+        return descriptor
+    }
+}
+
+/// The guest's buttons through `remote.hid.button` and `IndigoButtonEvent`, the route before Xcode 27.3 removed that type.
+/// Kept for `button --legacy`, in case the universal HID route misbehaves on an older runtime.
+@MainActor
+package final class LegacyGuestButtons: ButtonPresser {
+    private static let feature = "com.apple.coredevice.feature.remote.hid.button"
+    private let connection: GuestConnection
+    private let event: (UInt16, UInt16, ButtonState) throws -> xpc_object_t
+
+    private init(connection: GuestConnection, event: @escaping (UInt16, UInt16, ButtonState) throws -> xpc_object_t) {
+        self.connection = connection
+        self.event = event
+    }
+
+    /// Fails with `legacy-buttons-unavailable` on Xcode 27.3 and later.
+    package static func open(guest: SimulatorGuest) async throws -> LegacyGuestButtons {
+        let event = try await ABIRuntime.shared.prepare { try await GuestMessageCodec.indigoButtonEvents(runtime: $0) }
+        return LegacyGuestButtons(connection: try await guest.connection(to: feature), event: event)
+    }
+
+    package var hasFailed: Bool { connection.hasFailed }
+
+    package func press(_ button: HardwareButton, hold: Duration) async throws {
+        try connection.post(.buttonEvent, encoded: event(HardwareButton.usagePage, button.usage, .down))
+        await pause(hold)
+        try connection.post(.buttonEvent, encoded: event(HardwareButton.usagePage, button.usage, .up))
         try await connection.flush()
     }
 

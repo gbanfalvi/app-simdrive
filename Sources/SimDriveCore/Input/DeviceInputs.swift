@@ -16,6 +16,7 @@ final class DeviceInputs {
     private let keyboard: LazyCapability<GuestKeyboard>
     private let touchscreen: LazyCapability<GuestTouchscreen>
     private let buttons: LazyCapability<GuestButtons>
+    private let legacyButtons: LazyCapability<LegacyGuestButtons>
     private lazy var idle = IdleRelease(after: Timing.idleRelease) { [weak self] in await self?.release() }
 
     init(guest: SimulatorGuest) {
@@ -29,6 +30,9 @@ final class DeviceInputs {
         }
         buttons = LazyCapability(isUsable: { !$0.hasFailed }, close: { await $0.close() }) {
             try await GuestButtons.open(guest: guest)
+        }
+        legacyButtons = LazyCapability(isUsable: { !$0.hasFailed }, close: { await $0.close() }) {
+            try await LegacyGuestButtons.open(guest: guest)
         }
     }
 
@@ -64,9 +68,10 @@ final class DeviceInputs {
         try await idle.hold { try await Self.connected(touchscreen).drag(through: first, and: second, duration: duration, target: target) }
     }
 
-    func press(_ button: HardwareButton, count: Int, hold: Duration) async throws {
+    /// `legacy` presses through the route Xcode 27.3 removed, which fails there with `legacy-buttons-unavailable`.
+    func press(_ button: HardwareButton, count: Int, hold: Duration, legacy: Bool) async throws {
         try await idle.hold {
-            let buttons = try await Self.connected(buttons)
+            let buttons: any ButtonPresser = legacy ? try await Self.connected(legacyButtons) : try await Self.connected(buttons)
             for index in 0..<count {
                 if index > 0 { await pause(Timing.repeatGap) }
                 try await buttons.press(button, hold: hold)
@@ -86,6 +91,7 @@ final class DeviceInputs {
         await keyboard.close()
         await touchscreen.close()
         await buttons.close()
+        await legacyButtons.close()
     }
 
     /// Inputs open or throw, so they are never missing.

@@ -23,7 +23,6 @@ struct GuestMessageCodec {
     private let payloadKey: String
     private let encoders: [MessageType: Encode]
     private let makeDigitizerEvent: (CGPoint, CGPoint?, String, String, String) throws -> NativeSwiftValue
-    private let makeButtonEvent: (UInt16, UInt16, String) throws -> NativeSwiftValue
     private let requestType: NativeSwiftType
     private let readReportData: (NativeSwiftValue) throws -> Data
     private let readCreatedService: Decode
@@ -44,8 +43,6 @@ struct GuestMessageCodec {
 
         let digitizer = try await Self.digitizerEvents(runtime: runtime)
         makeDigitizerEvent = digitizer.make
-        let button = try await Self.buttonEvents(runtime: runtime)
-        makeButtonEvent = button.make
         let request = try await Self.serviceRequests(runtime: runtime, replies: replies)
         requestType = request.type
         readReportData = request.readReportData
@@ -55,16 +52,21 @@ struct GuestMessageCodec {
         orientationType = orientation.orientationType
         readOrientation = orientation.read
         encoders = try await Self.encoders(runtime: runtime, payloadTypes: [
-            .digitizerEvent: digitizer.type, .buttonEvent: button.type, .request: request.type, .orientation: orientation.type,
+            .digitizerEvent: digitizer.type, .request: request.type, .orientation: orientation.type,
         ])
     }
 
     func message(_ type: MessageType, to feature: String, payload: NativeSwiftValue) throws -> xpc_object_t {
         guard let encode = encoders[type] else { throw SimDriveError(.guestMessage, "\(type.rawValue) has no encoder.") }
+        return message(type, to: feature, encoded: try encode(payload))
+    }
+
+    /// A message whose payload is already encoded, as the legacy button events encode their own.
+    func message(_ type: MessageType, to feature: String, encoded payload: xpc_object_t) -> xpc_object_t {
         let message = xpc_dictionary_create(nil, nil, 0)
         xpc_dictionary_set_string(message, featureKey, feature)
         xpc_dictionary_set_string(message, messageTypeKey, type.rawValue)
-        xpc_dictionary_set_value(message, payloadKey, try encode(payload))
+        xpc_dictionary_set_value(message, payloadKey, payload)
         return message
     }
 
@@ -81,9 +83,6 @@ struct GuestMessageCodec {
         try makeDigitizerEvent(point, second, phase.rawValue, edge?.rawValue ?? Self.noEdge, target.description)
     }
 
-    func buttonEvent(_ button: HardwareButton, state: ButtonState) throws -> NativeSwiftValue {
-        try makeButtonEvent(HardwareButton.usagePage, button.usage, state.rawValue)
-    }
 
     func createService(_ descriptor: NativeSwiftValue) async throws -> NativeSwiftValue {
         try await requestType.makeEnumCase(named: "createService", payload: descriptor)
@@ -135,13 +134,24 @@ struct GuestMessageCodec {
         })
     }
 
-    private static func buttonEvents(runtime: ABIRuntime) async throws
-        -> (type: NativeSwiftType, make: (UInt16, UInt16, String) throws -> NativeSwiftValue) {
+    /// The Indigo button events that `remote.hid.button` takes, encoded, for `button --legacy`. Resolved only on request:
+    /// Xcode 27.3 removed `IndigoButtonEvent`, and resolving it with the other families stopped every guest connection.
+    static func indigoButtonEvents(runtime: ABIRuntime) async throws -> (UInt16, UInt16, ButtonState) throws -> xpc_object_t {
         let buttonState = try await runtime.resolve(.swift(.type("CoreDevice.HIDButtonState")))
-        let button = try await runtime.resolve(.swift(.type("CoreDeviceUtilities.IndigoButtonEvent")))
+        let button: NativeSwiftType
+        do {
+            button = try await runtime.resolve(.swift(.type("CoreDeviceUtilities.IndigoButtonEvent")))
+        } catch {
+            throw SimDriveError(.legacyButtonsUnavailable, "This Xcode has no IndigoButtonEvent, which Xcode 27.3 removed; "
+                                + "press buttons without --legacy.")
+        }
         let makeButton = try await button.resolve(.swift(.initializer("init(usagePage:usageCode:state:)",
             as: ((UInt16, UInt16, NativeSwiftValue) -> NativeSwiftValue).self, valueABIs: try NativeType.opaqueABIs(for: [buttonState, button]))))
-        return (button, { page, usage, state in try unsafe makeButton.unsafeInvoke(page, usage, buttonState.makeEnumCase(named: state)) })
+        let encode = try await encoders(runtime: runtime, payloadTypes: [.buttonEvent: button])[.buttonEvent]
+        guard let encode else { throw SimDriveError(.guestMessage, "IndigoButtonEvent has no encoder.") }
+        return { page, usage, state in
+            try encode(unsafe makeButton.unsafeInvoke(page, usage, buttonState.makeEnumCase(named: state.rawValue)))
+        }
     }
 
     /// The universal HID service's requests, which create services, send them reports and remove them.

@@ -21,7 +21,18 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 ## 1. Fixes
 
-### - [ ] F28. Xcode 27.3 removes `IndigoButtonEvent`, which every guest connection resolves (S–M, do first)
+### - [x] F28. Xcode 27.3 removes `IndigoButtonEvent`, which every guest connection resolves (S–M, do first)
+
+**Result:**
+- **The fix:** buttons now go through a `mainScreenButtons` service on `remote.universalhidservice`, sent `CustomButtonReport`s, as NeoSimulator's d0a049b does. The service is created on the first press and kept until the idle release.
+- **Codec:** `GuestMessageCodec.init` no longer resolves `IndigoButtonEvent`.
+- **Legacy route:** kept, at the user's request, behind `button --legacy` (`LegacyGuestButtons`). It resolves the old type only when asked for, and fails with the new `legacy-buttons-unavailable` code where the type is gone.
+- **iPhone 17, iOS 27.2:** the matrix's `buttons` and `basics` sections pass 15/15, volume included, judged from its HUD screenshot. The `tree`, `tap`, `keys` and `misc` sections pass 61/61 with the slimmer codec. `button home`, with and without `--legacy`, sends the probe to the background.
+- **Apple TV 4K, tvOS 18.0:** the `tv` section passes 15/15. On the new route, down, up, select and menu (Back) all move focus as expected in Settings, and `--legacy` still works.
+- **Not done:**
+  - Not run on Xcode 27.3, which is not installed. That the other families survive there rests on NeoSimulator's report.
+  - Step 3's lazy resolution was done only for the button family. Digitizer, request and orientation still resolve together, since 27.3 keeps them.
+  - tvOS 26 and 27 runtimes are not installed.
 
 - **Problem:** NeoSimulator #631 and PR #632 reproduce it on Xcode 27.3 (27C5035i), whose CoreDeviceUtilities 699.2.0 no longer has `CoreDeviceUtilities.IndigoButtonEvent`.
   - simdrive resolves that type in `GuestMessageCodec.init` (`S:SimDriveNative/Guest/GuestMessageCodec.swift`, `buttonEvents`), and every `SimulatorGuest` builds that codec. So on 27.3, opening any guest service fails, and keys, taps, orientation and buttons would all stop working, not just `button`. That part is inferred from the code; simdrive has not been run on 27.3.
