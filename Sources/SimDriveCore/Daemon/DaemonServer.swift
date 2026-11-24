@@ -28,6 +28,11 @@ final class DaemonServer {
 
     func run() async throws {
         try StatePaths.prepare()
+        // Two clients can each start a daemon; without the lock, the second would replace the first's socket, and the
+        // first would remove the second's when it exits.
+        guard FileLock(url: StatePaths.daemonLock(for: udid)).holdForLife() else {
+            throw SimDriveError(.daemonRunning, "Another daemon already serves \(udid).")
+        }
         let listener = try UnixSocket.listen(at: StatePaths.socket(for: udid).path)
         self.listener = listener
         installSignalHandlers()

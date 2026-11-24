@@ -103,6 +103,7 @@ All live in `/tmp/simdrive-<uid>/`, mode 0700. `$TMPDIR` is not used: a Unix soc
 | --- | --- |
 | `<udid>.sock` | The daemon's socket. |
 | `<udid>.log` | The daemon's log. |
+| `<udid>.daemon.lock` | Locked by the device's daemon for its whole life, so a second daemon started by a concurrent client exits before it touches the socket. |
 | `<udid>.screens.json` | The device's displays and each screen's last screenshot record, so one-shot runs and the daemon share calibration. Discarded when the boot date changes. |
 | `<udid>.calibration.png` | The full-resolution screenshot taken when fractions need a screen size, none is recorded and the framebuffer cannot be read. |
 | `<udid>.logs.json` | The app `launch` last started (bundle ID, pid, launch time, executable, output files) and each log cursor's position. `launch` replaces it. The command line and the daemon both write it, each under `<udid>.logs.json.lock`, and a write read before the latest `launch` is dropped. |

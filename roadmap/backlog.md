@@ -269,7 +269,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** give the translator, its bridge and one serial queue a single owner for the whole process. Keep each read's state per request, keyed by the token the callbacks already receive.
 - **Test:** reboot a simulator you created while `tree` runs in a loop through the daemon, then check that the next `tree` answers; run once with Thread Sanitizer (`swift build -c release --sanitize=thread`).
 
-### - [ ] F25. Two daemons can start for one device, and a stopping daemon removes another daemon's socket (S, unverified)
+### - [x] F25. Two daemons can start for one device, and a stopping daemon removes another daemon's socket (S)
+
+**Result:** confirmed. Eight cold `doctor` calls at once start several daemons, and the lock turned six away over three rounds. Each daemon now takes an exclusive `flock` on `<udid>.daemon.lock` before it listens, and holds it until it exits, so a daemon that does not get it exits with `daemon-running` and never touches the socket. Three rounds on iPhone 17, iOS 27.2 each left one daemon and its socket. `FileLockTests` fail without the lock.
 
 - **Problem:** found in the architecture review (2026-11-24). Two cold calls at once each spawn a daemon. `UnixSocket.listen` checks with `connect`, then unlinks and binds. If both daemons pass that check before either listens, the second unlinks the first daemon's socket. The orphaned daemon goes idle after 10 minutes, and its `shutdown()` then unlinks the socket path, which is by then the live daemon's. The next call starts a third daemon while the second still holds the guest's inputs.
 - **Read:** `S:SimDriveCore/Daemon/UnixSocket.swift` (`listen`), `S:SimDriveCore/Daemon/DaemonServer.swift` (`run`, `shutdown`), `S:SimDriveCore/Daemon/DaemonClient.swift` (`connection`).
