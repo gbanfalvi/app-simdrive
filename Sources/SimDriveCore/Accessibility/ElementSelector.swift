@@ -40,6 +40,26 @@ enum ElementSelector: Equatable, Sendable {
         }
     }
 
+    /// Whether a hit test at a target's tap point reached it: the hit is the target, or a part of it, in the same app. A
+    /// hit in another app is an alert over it. A hit that is another of the screen's elements, such as a key of the
+    /// keyboard, covers it even inside its frame. One outside its frame is a sheet or another view. A target without a
+    /// frame says nothing, so it counts as reached.
+    static func hitReaches(_ target: AccessibilityElement, in targetPID: Int32?, hit: AccessibilityElement, in hitPID: Int32?,
+                           among elements: [PlacedElement] = []) -> Bool {
+        guard hitPID == targetPID else { return false }
+        guard !target.frame.isEmpty, !isSame(hit, as: target) else { return true }
+        guard !elements.contains(where: { isSame(hit, as: $0.element) }) else { return false }
+        return target.frame.insetBy(dx: -hitTolerance, dy: -hitTolerance).contains(hit.frame)
+    }
+
+    /// Elements read separately compare by what identifies them on screen.
+    private static func isSame(_ one: AccessibilityElement, as other: AccessibilityElement) -> Bool {
+        one.frame == other.frame && one.label == other.label && one.identifier == other.identifier
+    }
+
+    /// In points, so a part whose frame touches the target's edge still counts as inside it.
+    private static let hitTolerance: CGFloat = 1
+
     /// Whether the selector names an element that is on screen, which is what `wait` waits for.
     func isShown(in elements: [PlacedElement]) -> Bool {
         elements.contains { !$0.isOffscreen && matches($0.element) }

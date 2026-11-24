@@ -645,7 +645,18 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** compare the light tree's signature before and after each swipe, and fail with `no-element` naming "reached the end" when nothing moved. Replace the fixed settle with reads until two in a row match, bounded at about 1 s. Add a resting tail to the swipe's path. AXe is GPL-3.0: reimplement, don't copy.
 - **Test:** the matrix scrolls past the probe's last row and expects the end-of-content failure after 2 or 3 swipes, not 10.
 
-### - [ ] I23. `tap --label|--id`: refuse a target that a keyboard, sheet or alert covers (S)
+### - [x] I23. `tap --label|--id`: refuse a target that a keyboard, sheet or alert covers (S)
+
+**Result:**
+- **The check:** before tapping, `DeviceAccessibility.checkReachable` hit-tests the element's tap point. `ElementSelector.hitReaches` accepts the hit only when it is in the same app and is the target, or a part of it inside its frame that is not another of the screen's light-tree elements. Otherwise the tap fails with the new `element-covered` code, naming what covers it.
+- **First version too weak:** it checked frames alone and let a tap on the probe's 200×80 Glass button through, typing "g": the key fitted inside the button's frame. The rule that another light-tree element covers the target even inside its frame fixed that.
+- **Checks on iPhone 17, iOS 27.2,** with the software keyboard up:
+  - `tap --label "Row 1"` is refused, covered by the space bar.
+  - `tap --label Glass` is refused, covered by the "g" key.
+  - `tap --id play-button` taps.
+  - The matrix's `tap` section, whose element taps all go through the check, passes 42/42.
+- **Unit tests:** they cover a hit in another app, a key inside a large button, and a part of the target, and fail when the app check is removed.
+- **Not checked:** alerts and sheets presented by the system. The rule treats a hit in another app as covering.
 
 - **Why:** found in the upstream review (2026-11-24). The light tree can list an element under the software keyboard or a sheet, and `tap --label` then taps whatever covers it. AXe's agent mode refuses with `targetCovered` or `keyboardCovered`, and its scroll-until counts an element as visible only when a hit test at its centre finds it.
 - **Read:** `A:Sources/AXe/Utilities/ScrollUntil.swift @1ffbd35` (its visibility check); in simdrive, `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`element(at:)`, which already hit-tests a point).

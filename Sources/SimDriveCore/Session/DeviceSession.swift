@@ -180,6 +180,7 @@ final class DeviceSession {
     /// Taps the element's tap point, and reports the element, whose `point` says where.
     private func tap(_ selector: ElementSelector, within limit: Duration) async throws -> JSONValue {
         let found = try await readAccessibility { try await self.accessibility.element(selector, within: limit) }
+        try await accessibility.checkReachable(found.element, in: found.pid, among: found.screen, as: selector)
         let screen = try await screens.touchscreen(.automatic, usesPixels: false)
         try await inputs.tap(at: screen.digitizerPoint(.normalized(found.element.fraction)), on: screen.digitizerTarget)
         return ["display": JSONValue(screen.display?.index), "element": found.json]

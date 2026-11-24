@@ -108,6 +108,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `ambiguous-element` | Several onscreen elements have the label or identifier | no |
 | `element-offscreen` | The only matching elements are scrolled out of view | no |
 | `element-still-shown` | `wait --absent` timed out | no |
+| `element-covered` | Something else, such as the keyboard, an alert or a sheet, is at the element's tap point | no |
 | `accessibility-timeout` | The guest's accessibility server did not answer in time | yes |
 | `accessibility-unavailable`, `accessibility-translation` | CoreSimulator cannot reach the accessibility server, or the app has no hierarchy yet | no |
 | `app-accessibility-off` | The app launched while app accessibility was off; relaunch it with `launch` | no |
@@ -161,7 +162,7 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 
 `tree <x> <y>` returns the element VoiceOver finds at a point, with its descendants under `--full`, or fails with `no-element`. On a foldable, both refer to the panel in use.
 
-`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view; `swipe … --until-label` scrolls one into view. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
+`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view; `swipe … --until-label` scrolls one into view. Before tapping, they hit-test the point and fail with `element-covered` when something else is there, such as a key of the software keyboard or an alert. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
 
 ### Settings
 

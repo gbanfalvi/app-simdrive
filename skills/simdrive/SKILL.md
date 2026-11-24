@@ -26,7 +26,7 @@ $S <udid> key tab                      # names: tab return escape delete space l
 $S <udid> key f --mods cmd,shift --repeat 2
 $S <udid> type "hello, world"          # on the simulator's keyboard layout
 $S <udid> tap 0.5 0.5
-$S <udid> tap --label "Sign In"         # or --id <identifier>; exact match on screen, waits up to --timeout 5000 ms
+$S <udid> tap --label "Sign In"         # element-covered if the keyboard or an alert is over it; or --id <identifier>; exact match on screen, waits up to --timeout 5000 ms
 $S <udid> wait --id spinner --absent    # or until an element appears without --absent; --timeout ms
 $S <udid> swipe 0.5 0.8 0.5 0.3 --until-label "Row 30"   # scrolls until it is on screen; --max-swipes 10 by default
 $S <udid> swipe 0.5 0.8 0.5 0.2 --duration 300

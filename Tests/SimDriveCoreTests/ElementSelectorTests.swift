@@ -52,6 +52,36 @@ struct ElementSelectorTests {
         #expect(PlacedElement.signature(of: screen) != PlacedElement.signature(of: scrolled))
     }
 
+    private static func element(_ frame: CGRect) -> AccessibilityElement {
+        var element = AccessibilityElement()
+        element.frame = frame
+        return element
+    }
+
+    @Test func aHitOnTheTargetOrInsideItReachesIt() {
+        let row = Self.element(CGRect(x: 0, y: 100, width: 400, height: 44))
+        #expect(ElementSelector.hitReaches(row, in: 1, hit: row, in: 1))
+        #expect(ElementSelector.hitReaches(row, in: 1, hit: Self.element(CGRect(x: 10, y: 110, width: 30, height: 20)), in: 1))
+    }
+
+    @Test func aHitElsewhereOrInAnotherAppIsCovered() {
+        let row = Self.element(CGRect(x: 0, y: 600, width: 400, height: 44))
+        let key = Self.element(CGRect(x: 0, y: 580, width: 40, height: 50))
+        #expect(!ElementSelector.hitReaches(row, in: 1, hit: key, in: 1))
+        #expect(!ElementSelector.hitReaches(row, in: 1, hit: row, in: 2))
+    }
+
+    /// A key of the keyboard can fit inside a large button's frame, and is still not part of it.
+    @Test func anotherElementInsideTheTargetsFrameCoversIt() {
+        let button = Self.element(CGRect(x: 100, y: 500, width: 200, height: 80))
+        var key = Self.element(CGRect(x: 180, y: 510, width: 40, height: 50))
+        key.label = "g"
+        let screen = [PlacedElement(element: button, fraction: .zero, isOffscreen: false),
+                      PlacedElement(element: key, fraction: .zero, isOffscreen: false)]
+        #expect(!ElementSelector.hitReaches(button, in: 1, hit: key, in: 1, among: screen))
+        #expect(ElementSelector.hitReaches(button, in: 1, hit: button, in: 1, among: screen))
+    }
+
     @Test func anOffscreenMatchIsNotShown() {
         #expect(!ElementSelector.label("Row").isShown(in: [Self.placed(label: "Row", offscreen: true)]))
         #expect(ElementSelector.label("Row").isShown(in: [Self.placed(label: "Row")]))

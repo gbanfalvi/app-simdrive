@@ -36,6 +36,7 @@ extension ErrorCode {
     static let ambiguousElement = ErrorCode(rawValue: "ambiguous-element")
     static let elementOffscreen = ErrorCode(rawValue: "element-offscreen")
     static let elementStillShown = ErrorCode(rawValue: "element-still-shown")
+    static let elementCovered = ErrorCode(rawValue: "element-covered")
     static let appAccessibilityOff = ErrorCode(rawValue: "app-accessibility-off")
     static let settingUnsupported = ErrorCode(rawValue: "setting-unsupported")
     static let guestPreferences = ErrorCode(rawValue: "guest-preferences")

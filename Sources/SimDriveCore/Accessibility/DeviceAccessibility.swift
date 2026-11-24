@@ -42,12 +42,14 @@ final class DeviceAccessibility {
 
     /// Reads the light tree until `selector` names one onscreen element, and returns it with its summary. Fails with
     /// `no-element` when none appears within `limit`; reads once when `limit` is zero.
-    func element(_ selector: ElementSelector, within limit: Duration) async throws -> (element: PlacedElement, json: JSONValue) {
+    func element(_ selector: ElementSelector, within limit: Duration)
+        async throws -> (element: PlacedElement, json: JSONValue, pid: Int32?, screen: [PlacedElement]) {
         let deadline = ContinuousClock.now + limit
         while true {
             let (snapshot, _, layout) = try await read(detail: .light)
-            if let found = try selector.resolve(in: layout.placedElements(snapshot.element)) {
-                return (found, layout.summary(found))
+            let elements = layout.placedElements(snapshot.element)
+            if let found = try selector.resolve(in: elements) {
+                return (found, layout.summary(found), snapshot.application.pid, elements)
             }
             guard ContinuousClock.now < deadline else {
                 throw SimDriveError(.noElement, "No onscreen element matches \(selector.argument) within \(Self.milliseconds(limit)) "
@@ -108,6 +110,26 @@ final class DeviceAccessibility {
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen,
                                          appOrigin: appOrigin(fillsHalf: fillsHalf, pid: snapshot.application.pid))
         return (snapshot, screen, layout)
+    }
+
+    /// Fails with `element-covered` when something else is at the element's tap point, such as the keyboard, an alert or
+    /// a sheet, so a tap there would reach that instead. Nothing at the point counts as clear.
+    func checkReachable(_ target: PlacedElement, in targetPID: Int32?, among screenElements: [PlacedElement],
+                        as selector: ElementSelector) async throws {
+        let accessibility = try await connected()
+        let screen = try await screens.screen(.automatic, usesPixels: false)
+        let scale = device.screenScale
+        let fraction = target.fraction
+        let panelPoint: @Sendable (CGSize) -> CGPoint = {
+            AccessibilityLayout(appSize: $0, scale: scale, screen: screen).panelPoint(fraction)
+        }
+        guard let hit = try await accessibility.snapshot(at: panelPoint, display: screen.display?.index ?? 0, detail: .light),
+              !ElementSelector.hitReaches(target.element, in: targetPID, hit: hit.element, in: hit.application.pid,
+                                          among: screenElements) else { return }
+        let cover = hit.element.label ?? hit.element.identifier ?? hit.element.type.map { "a \($0)" } ?? "another element"
+        let owner = hit.application.pid == targetPID ? "" : " of \(hit.application.name ?? "another app")"
+        throw SimDriveError(.elementCovered, "\(selector.argument) is covered by \(cover)\(owner) at its tap point; dismiss it "
+                            + "first, as with key escape or by tapping outside it.")
     }
 
     /// The element VoiceOver finds at a point, with its descendants when full.
