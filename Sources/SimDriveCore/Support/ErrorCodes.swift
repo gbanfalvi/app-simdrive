@@ -4,6 +4,7 @@ extension ErrorCode {
     static let usage = ErrorCode(rawValue: "usage")
     static let ambiguousDevice = ErrorCode(rawValue: "ambiguous-device")
     static let notBooted = ErrorCode(rawValue: "not-booted")
+    static let simulatorStarting = ErrorCode(rawValue: "simulator-starting", retryable: true)
     static let notADeviceCommand = ErrorCode(rawValue: "not-a-device-command")
     static let developerDirectory = ErrorCode(rawValue: "developer-directory")
     static let simctl = ErrorCode(rawValue: "simctl")

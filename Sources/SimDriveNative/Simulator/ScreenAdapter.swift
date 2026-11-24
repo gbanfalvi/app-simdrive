@@ -48,6 +48,30 @@ struct ScreenAdapter {
         return orientations
     }
 
+    /// Whether a screen has started: early in a boot every screen's backlight state reads unknown (-101), and the main
+    /// panel reports a state about 85 s into a cold iPhone boot, 25 s after its interface orientation. A runtime that
+    /// reports no backlight counts as started. Apple TV never reports one, so callers skip it.
+    func hasStartedScreen() async throws -> Bool {
+        let enumerate = unsafeBitCast(adapter.method(for: Self.enumerateSelector), to: EnumerateFunction.self)
+        return try await waitForCompletion(within: Self.enumerationLimit,
+                                           timeout: SimDriveError(.screenAdapterTimeout, "CoreSimulator did not list the screens.")) { done in
+            enumerate(adapter, Self.enumerateSelector, Self.replies) { screens in
+                done(Self.hasStartedScreen(backlightStates: (screens as? [NSObject] ?? []).map { screen in
+                    Self.object(screen, "screenProperties").flatMap { Self.object($0, "backlight") }.flatMap { Self.uint32($0, "state") }
+                        .map { Int32(bitPattern: $0) }
+                }))
+            }
+        }
+    }
+
+    /// The decision alone, for tests: any known state, or none reported at all.
+    nonisolated static func hasStartedScreen(backlightStates: [Int32?]) -> Bool {
+        let reported = backlightStates.compactMap { $0 }
+        return reported.isEmpty || reported.contains { $0 != unknownBacklightState }
+    }
+
+    private nonisolated static let unknownBacklightState: Int32 = -101
+
     nonisolated static func object(_ receiver: NSObject, _ getter: String) -> NSObject? {
         let selector = NSSelectorFromString(getter)
         guard receiver.responds(to: selector) else { return nil }

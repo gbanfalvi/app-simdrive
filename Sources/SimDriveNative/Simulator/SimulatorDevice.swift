@@ -179,6 +179,11 @@ package final class SimulatorDevice {
 
     /// Each connected screen's interface orientation by screen ID, as `simctl io enumerate` lists them; screens without
     /// one are left out.
+    /// Whether the guest has started a screen, before which an accessibility read can leave the server unanswering.
+    package func hasStartedScreen() async throws -> Bool {
+        try await ScreenAdapter(device: device).hasStartedScreen()
+    }
+
     package func interfaceOrientations() async throws -> [Int: InterfaceOrientation] {
         try await ScreenAdapter(device: device).interfaceOrientations()
     }

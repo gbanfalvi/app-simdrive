@@ -12,6 +12,9 @@ final class DeviceAccessibility {
     private static let restReads = 8
     /// A split app's window is about 0.49 of the screen wide, and a full one 1.
     private static let halfWidthLimit = 0.75
+    /// A cold iPhone boot started its screen about 85 s in, but a command usually arrives after `bootstatus`, later.
+    private static let startLimit: Duration = .seconds(60)
+    private static let startPoll: Duration = .milliseconds(250)
 
     private let device: SimulatorDevice
     private let screens: Screens
@@ -22,7 +25,26 @@ final class DeviceAccessibility {
         self.device = device
         self.screens = screens
         self.split = split
-        accessibility = LazyCapability { try await SimulatorAccessibility.open(device: device) }
+        accessibility = LazyCapability {
+            try await Self.waitForStartedScreen(of: device)
+            return try await SimulatorAccessibility.open(device: device)
+        }
+    }
+
+    /// Holds back the first accessibility read until the guest has started a screen. A read sent earlier in a boot is
+    /// what left the Duo's server unanswering until a reboot (F15), as AXe also found. Apple TV reports no started screen,
+    /// and its reads were never affected, so it does not wait.
+    private static func waitForStartedScreen(of device: SimulatorDevice) async throws {
+        guard device.hasTouchscreen else { return }
+        let deadline = ContinuousClock.now + startLimit
+        while try await !device.hasStartedScreen() {
+            guard ContinuousClock.now < deadline else {
+                throw SimDriveError(.simulatorStarting, "\(device.name) has not started its screen within \(startLimit.components.seconds) s, "
+                                    + "so its accessibility was not read: a read this early can stop it answering until a reboot. Retry "
+                                    + "once a screenshot shows the Home screen or an app.")
+            }
+            try await Task.sleep(for: startPoll)
+        }
     }
 
     /// Starts the guest's accessibility server, whose first read takes about 10 s, without waiting for it.

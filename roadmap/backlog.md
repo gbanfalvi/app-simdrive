@@ -198,7 +198,19 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** time the framebuffer read, the display listing and the orientation read separately right after boot; skip or bound whichever waits on the guest.
 - **Test:** on a Duo you created, `screenshot` within a second of `bootstatus` returning, on three boots; then the matrix's `basics` and `orientation` sections.
 
-### - [ ] F15. The Duo's accessibility server stops answering until a reboot (M, cause unknown)
+### - [x] F15. The Duo's accessibility server stops answering until a reboot (M, cause unknown)
+
+**Result:**
+- **"Do first" is done:** before the session's first accessibility read, including the background one a session sends as it opens, `DeviceAccessibility` waits until a screen has started, polling every 250 ms for up to 60 s. Past that, it fails with the new, retryable `simulator-starting` code.
+- **The signal, measured:** CoreSimulator's screen properties report a backlight state of -101 (unknown) on every screen early in a boot. On a cold iPhone, iOS 27.2, the main panel reported 2 at 85 s, 25 s after its interface orientation (at 60 s). Settled devices:
+  - An iOS 17.0 iPhone reports 2.
+  - A Duo reports 2 on its cover panel and -101 on its inner panel, so any started screen counts.
+  - An Apple TV, tvOS 18, reports -101 even when settled, so it skips the wait. Its reads were never affected.
+- **Checks:**
+  - A `tree` 3 s into a cold iPhone boot waited, then returned the Home screen after 55 s, and the next read was instant.
+  - On a cold Duo, the first `tree` failed after 60 s with `simulator-starting`, and every later read worked.
+  - `ScreenAdapterTests` cover the decision.
+- **Not reproduced:** the stuck state itself, so this fix rests on AXe's diagnosis and F15's timing clues. If it recurs, follow "Research next time it happens" below before rebooting.
 
 - **Problem:** seen twice on a Duo iOS 27.2 under Xcode 27.2 (`688B6C57`), never on an iPhone. Every read went unanswered for minutes while the probe showed in front: `tree` failed with `accessibility-timeout` after its 20 s deadline, and `launch` with `launch-not-frontmost`, since `becomesFrontmost` reads the same server. A fresh daemon and `--no-daemon` failed alike, so it is the guest's state, not simdrive's session. Screenshots, taps and `posture` kept working. A reboot cleared it both times; reinstalling the probe neither caused nor cleared it.
 - **What came before:**

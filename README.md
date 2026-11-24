@@ -89,6 +89,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `usage`, `step-invalid` | The command line or a `run` step is malformed | no |
 | `ambiguous-device` | `booted` was given while none or several simulators are booted; pass a UDID | no |
 | `not-booted` | The simulator is not booted | no |
+| `simulator-starting` | The simulator has not started its screen, so its accessibility was not read yet | yes |
 | `developer-directory` | No Xcode is selected | no |
 | `state-directory` | `/tmp/simdrive-<uid>` is a symlink or belongs to another user | no |
 | `simctl` | A `simctl` call failed; the message has its output | no |
