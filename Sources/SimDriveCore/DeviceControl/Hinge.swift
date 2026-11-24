@@ -12,17 +12,22 @@ final class Hinge {
 
     private let driver: CoreDeviceHinge
     private var observation: Task<Void, Never>?
+    /// Why the last observation ended, which a wait that sees no angle reports.
+    private var observationFailure: (any Error)?
     private(set) var angle: Double?
 
     var posture: DevicePosture? { DevicePosture(angle: angle) }
+
+    /// Whether the hinge's CoreDevice record stopped answering, so the session opens the hinge again.
+    var hasFailed: Bool { driver.hasFailed }
 
     private init(driver: CoreDeviceHinge) {
         self.driver = driver
     }
 
-    /// The hinge of `remote`'s device, or nil when it has none.
-    static func open(remote: CoreDeviceRemote) async throws -> Hinge? {
-        guard let driver = try await CoreDeviceHinge.open(remote: remote) else { return nil }
+    /// The device's hinge, or nil when it has none. `remote` is asked for only when the device may fold.
+    static func open(device: SimulatorDevice, remote: @MainActor () async throws -> CoreDeviceRemote?) async throws -> Hinge? {
+        guard let driver = try await CoreDeviceHinge.open(device: device, remote: remote) else { return nil }
         let hinge = Hinge(driver: driver)
         hinge.observe()
         return hinge
@@ -48,8 +53,13 @@ final class Hinge {
     /// Follows the angle until the device stops reporting it; the next wait follows it again.
     private func observe() {
         guard observation == nil else { return }
+        observationFailure = nil
         observation = Task { [weak self, driver] in
-            try? await driver.observe { self?.angle = $0 }
+            do {
+                try await driver.observe { self?.angle = $0 }
+            } catch {
+                self?.observationFailure = error
+            }
             self?.angle = nil
             self?.observation = nil
         }
@@ -59,6 +69,8 @@ final class Hinge {
         observe()
         let deadline = ContinuousClock.now + Timing.limit
         while !condition(angle) {
+            // An observation that failed explains a missing angle better than the timeout would.
+            if let observationFailure, !(observationFailure is CancellationError) { throw observationFailure }
             guard ContinuousClock.now < deadline else {
                 throw SimDriveError(.postureTimeout, "The hinge did not report the expected angle; it reads \(describedAngle).")
             }

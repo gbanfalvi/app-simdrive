@@ -16,7 +16,7 @@ final class LazyCapability<Service> {
     private var openWaiters: [CheckedContinuation<Void, Never>]?
 
     /// `open` returns nil when the device lacks the capability. When it throws, the next use tries again.
-    /// A service that is no longer usable, such as one whose guest connection ended, is opened again on next use.
+    /// A service that is no longer usable, such as one whose guest connection ended, is closed and opened again on next use.
     init(isUsable: @escaping @MainActor (Service) -> Bool = { _ in true },
          close: @escaping @MainActor (Service) async -> Void = { _ in },
          _ open: @escaping @MainActor () async throws -> Service?) {
@@ -42,6 +42,11 @@ final class LazyCapability<Service> {
                 let waiters = openWaiters ?? []
                 openWaiters = nil
                 waiters.forEach { $0.resume() }
+            }
+            // A service that is no longer usable may still hold resources, such as an observation of the device.
+            if case .available(let stale) = state {
+                state = .unknown
+                await release(stale)
             }
             let service = try await open()
             state = service.map { .available($0) } ?? .unavailable

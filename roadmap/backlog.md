@@ -294,6 +294,13 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** after `createDirectory`, `lstat` the directory and refuse, with a new `state-directory` code, unless it is a real directory owned by `getuid()` with mode 0700. Open the log with `O_NOFOLLOW`.
 - **Test:** a unit test pointing `prepare` at a directory with mode 0777 and at a symlink.
 
+### - [ ] F27. The matrix's `openurl` checks miss the URL prompt on an iPhone Duo (S)
+
+- **Problem:** found verifying I19 (2026-11-24) on a fresh Duo, iOS 27.2. `openurl from-home` and `openurl in-front` fail: `openurl` returns `ok`, but the "Open in “AXProbe”?" alert stays on the inner screen, so the probe never logs the URL. `accept_url_prompt` reads the tree 1 s after `openurl` and finds no element starting with "Open in". `tap --label Open` dismisses the same alert.
+- **Read:** `Evaluation/matrix.py` (`accept_url_prompt`, `misc_checks`).
+- **Do:** replace the tree scan with `tap --label Open --timeout 2000`, treating `no-element` as no prompt.
+- **Test:** the matrix's `misc` section on a fresh Duo and a fresh iPhone.
+
 ## 2. Improvements to existing commands
 
 ### - [x] I1. Type without per-key delays (S)
@@ -515,7 +522,15 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** one Core helper, `poll(every:within:)` with `withDeadline`, whose deadline also bounds the inner call and cancels what it started. Move the waits above onto it, and share `events(until:)`'s attach handling with `entry`.
 - **Test:** unit tests for the helper with an injected clock. The matrix's `basics`, `posture` and `logs` sections.
 
-### - [ ] I19. Rule out missing capabilities in the driver, before CoreDevice starts (S)
+### - [x] I19. Rule out missing capabilities in the driver, before CoreDevice starts (S)
+
+**Result:**
+- **Hinge check:** `CoreDeviceHinge.open` now rules out a device with one screen, using CoreSimulator's screen list in process, before it asks for the CoreDevice record. It takes the remote lazily, as the pasteboard does, and the `v68` model check is gone, leaving the decision to `supportsHingeAngle`.
+- **iPhone:** `posture` right after a fresh boot answers `posture-unsupported` in 4.6 s, daemon start included, and 0.5 s warm. Before, it could wait up to 35 s on CoreDevice.
+- **Reopening:** a hinge whose record stopped answering reads `hasFailed`, so the session reopens it. `LazyCapability` now closes a service it replaces, which stops the old observation; `LazyCapabilityTests` fail without that.
+- **Errors:** a failed observation is rethrown from the wait instead of ending as `posture-timeout`.
+- **Duo:** fresh Duos on iOS 27.2 read, close and open. On one of two first boots, under load from eight booted simulators, the first `posture open` timed out reading 0, then passed on retry; the previous build passed its one try. The matrix's `posture,misc` sections pass 18/20 on a fresh Duo; the two `openurl` failures are F27.
+- **Not done:** `GuestTouchscreen.open` still opens on tvOS, and `hasTouchscreen` still decides from the runtime's name (moved to I21).
 
 - **Why:** found in the architecture review (2026-11-24). Drivers don't follow one pattern for "the device lacks this":
   - `CoreDeviceHinge.open` needs a connected `CoreDeviceRemote` before it looks at the hardware model. So `posture` on an iPhone, iPad or Apple TV pays for starting CoreDevice (up to 30 s), and while CoreDevice isn't ready it fails with `coredevice-not-ready` instead of `posture-unsupported`.
@@ -548,6 +563,8 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Test:** prove each new test can fail by breaking the code it covers.
 
 ### - [ ] I21. Move `launch` out of `DeviceSession`, and keep private shapes in Native (S)
+
+- **Seen (2026-11-24, I19):** `GuestTouchscreen.open` never returns nil on tvOS, and `SimulatorDevice.hasTouchscreen` decides from the runtime's name. Have the driver return nil there and delete `hasTouchscreen`, checking the matrix's `tv` section on an Apple TV.
 
 - **Why:** found in the architecture review (2026-11-24).
   - `DeviceSession.launch` runs the whole launch: it enables app accessibility, prepares the output files, runs `simctl launch`, parses the pid, forgets screen records and waits for the app to come to the front. That is logic beyond calling a driver, while `DeviceApps` stays thin. `readAccessibility`'s error mapping belongs in `DeviceAccessibility`.

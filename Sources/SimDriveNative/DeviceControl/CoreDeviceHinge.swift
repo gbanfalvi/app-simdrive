@@ -38,7 +38,6 @@ package final class CoreDeviceHinge {
     private static let motionFeature = "com.apple.coredevice.feature.monitormotion"
     private static let vendorFeature = "com.apple.coredevice.feature.remote.hid.vendordefined"
     private static let features: Set<String> = [vendorFeature, motionFeature, GuestHIDService.universalHIDFeature]
-    private static let hardwareModels: Set<String> = ["v68", "v68ap", "v68dev"]
     private static let hingeUsagePage: UInt16 = 0xFF61
     private static let hingeUsage: UInt16 = 0x5B
     private static let hingeReportVersion: UInt32 = 0
@@ -53,11 +52,15 @@ package final class CoreDeviceHinge {
     private let readAngle: NativeSwiftMethod<() -> Measurement<UnitAngle>>
     private var vendorSend: (@MainActor (Data) throws -> Void)?
 
-    /// The hinge of `remote`'s device, or nil when it has none.
-    package static func open(remote: CoreDeviceRemote) async throws -> CoreDeviceHinge? {
-        let model = try await remote.hardwareModel()?.lowercased() ?? ""
-        let supported = try features.allSatisfy { try remote.supports($0) }
-        guard hardwareModels.contains(model), supported else { return nil }
+    /// Whether the hinge's CoreDevice record failed to answer, so it should be opened again.
+    package var hasFailed: Bool { remote.hasFailed }
+
+    /// The device's hinge, or nil when it has none. Only a device with several screens folds, so others are ruled out
+    /// before `openRemote` starts CoreDevice, which takes up to 30 s; CoreDevice's own motion manager decides the rest.
+    package static func open(device: SimulatorDevice,
+                             remote openRemote: @MainActor () async throws -> CoreDeviceRemote?) async throws -> CoreDeviceHinge? {
+        guard try await device.interfaceOrientations().count > 1, let remote = try await openRemote(),
+              try features.allSatisfy({ try remote.supports($0) }) else { return nil }
         let implementation = try await remote.implementation(capability: "MonitorMotionCapability", feature: motionFeature)
         return try await open(remote: remote, implementation: implementation, failure: try await remote.errorSample())
     }

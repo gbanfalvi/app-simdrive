@@ -78,6 +78,19 @@ struct LazyCapabilityTests {
         #expect(try await capability.value()?.number == 2)
     }
 
+    @Test func reopeningClosesTheServiceItReplaces() async throws {
+        var opens = 0
+        let capability = LazyCapability<Service>(isUsable: { $0.isUsable }, close: { $0.isClosed = true }) {
+            opens += 1
+            return Service(opens)
+        }
+        let first = try #require(try await capability.value())
+        first.isUsable = false
+        let second = try #require(try await capability.value())
+        #expect(first.isClosed)
+        #expect(!second.isClosed)
+    }
+
     @Test func closingReleasesTheServiceUntilTheNextUse() async throws {
         var opens = 0
         let capability = LazyCapability<Service>(close: { $0.isClosed = true }) {

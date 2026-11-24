@@ -129,13 +129,6 @@ package final class CoreDeviceRemote {
         return try unsafe rawValue.unsafeInvoke(on: state.unsafeInvoke(on: info)) == rawValue.unsafeInvoke(on: connected)
     }
 
-    func hardwareModel() async throws -> String? {
-        let deviceInfo = try await type.resolve(.swift(.getter("deviceInfo", as: (() -> NativeSwiftValue).self)))
-        let info = try unsafe deviceInfo.unsafeInvoke(on: object)
-        let hardware = try await info.type.resolve(.swift(.getter("hardwareModel", as: (() -> String?).self)))
-        return try unsafe hardware.unsafeInvoke(on: info)
-    }
-
     func implementation(capability name: String, feature: String) async throws -> NativeSwiftValue {
         guard try supports(feature) else {
             throw SimDriveError(.coreDeviceCapability, "The device does not expose \(feature).")
