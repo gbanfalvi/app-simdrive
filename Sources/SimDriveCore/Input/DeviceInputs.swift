@@ -16,7 +16,7 @@ final class DeviceInputs {
     private let keyboard: LazyCapability<GuestKeyboard>
     private let touchscreen: LazyCapability<GuestTouchscreen>
     private let buttons: LazyCapability<GuestButtons>
-    private var idleRelease: Task<Void, Never>?
+    private lazy var idle = IdleRelease(after: Timing.idleRelease) { [weak self] in await self?.release() }
 
     init(guest: SimulatorGuest) {
         let keyboardBindings = LazyCapability<KeyboardBindings> { try await KeyboardBindings() }
@@ -33,45 +33,45 @@ final class DeviceInputs {
     }
 
     func press(_ stroke: KeyStroke, modifiers: NSEvent.ModifierFlags, count: Int) async throws {
-        let keyboard = try await Self.connected(keyboard)
-        let flags = stroke.needsShift ? modifiers.union(.shift) : modifiers
-        for index in 0..<count {
-            if index > 0 { await pause(Timing.repeatGap) }
-            try await keyboard.press(keyCode: stroke.keyCode, flags: flags)
+        try await idle.hold {
+            let keyboard = try await Self.connected(keyboard)
+            let flags = stroke.needsShift ? modifiers.union(.shift) : modifiers
+            for index in 0..<count {
+                if index > 0 { await pause(Timing.repeatGap) }
+                try await keyboard.press(keyCode: stroke.keyCode, flags: flags)
+            }
+            try await keyboard.flush()
         }
-        try await keyboard.flush()
-        scheduleRelease()
     }
 
     func type(_ keys: [KeyboardLayout.Key]) async throws {
-        let keyboard = try await Self.connected(keyboard)
-        try keyboard.type(keys)
-        try await keyboard.flush()
-        scheduleRelease()
+        try await idle.hold {
+            let keyboard = try await Self.connected(keyboard)
+            try keyboard.type(keys)
+            try await keyboard.flush()
+        }
     }
 
     func tap(at point: CGPoint, on target: DigitizerTarget) async throws {
-        try await Self.connected(touchscreen).tap(at: point, target: target)
-        scheduleRelease()
+        try await idle.hold { try await Self.connected(touchscreen).tap(at: point, target: target) }
     }
 
     func drag(through path: [CGPoint], duration: Duration, edge: ScreenEdge?, on target: DigitizerTarget) async throws {
-        try await Self.connected(touchscreen).drag(through: path, duration: duration, edge: edge, target: target)
-        scheduleRelease()
+        try await idle.hold { try await Self.connected(touchscreen).drag(through: path, duration: duration, edge: edge, target: target) }
     }
 
     func drag(through first: [CGPoint], and second: [CGPoint], duration: Duration, on target: DigitizerTarget) async throws {
-        try await Self.connected(touchscreen).drag(through: first, and: second, duration: duration, target: target)
-        scheduleRelease()
+        try await idle.hold { try await Self.connected(touchscreen).drag(through: first, and: second, duration: duration, target: target) }
     }
 
     func press(_ button: HardwareButton, count: Int, hold: Duration) async throws {
-        let buttons = try await Self.connected(buttons)
-        for index in 0..<count {
-            if index > 0 { await pause(Timing.repeatGap) }
-            try await buttons.press(button, hold: hold)
+        try await idle.hold {
+            let buttons = try await Self.connected(buttons)
+            for index in 0..<count {
+                if index > 0 { await pause(Timing.repeatGap) }
+                try await buttons.press(button, hold: hold)
+            }
         }
-        scheduleRelease()
     }
 
     /// Prepares the key translation that the keyboard needs, without attaching a keyboard to the guest.
@@ -82,21 +82,10 @@ final class DeviceInputs {
     /// Closes every input connection, so the guest no longer counts a hardware keyboard and takes other clients' touches.
     /// The next input opens them again.
     func release() async {
-        idleRelease?.cancel()
-        idleRelease = nil
+        idle.cancel()
         await keyboard.close()
         await touchscreen.close()
         await buttons.close()
-    }
-
-    private func scheduleRelease() {
-        idleRelease?.cancel()
-        idleRelease = Task { [weak self] in
-            try? await Task.sleep(for: Timing.idleRelease)
-            guard !Task.isCancelled, let self else { return }
-            idleRelease = nil
-            await release()
-        }
     }
 
     /// Inputs open or throw, so they are never missing.
