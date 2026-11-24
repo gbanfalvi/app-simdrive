@@ -151,6 +151,7 @@ final class DaemonServer {
             await session.close()
         }
         let opened = try await DeviceSession.open(udid: udid, tools: tools)
+        opened.warmUpAccessibility()
         session = opened
         return opened
     }

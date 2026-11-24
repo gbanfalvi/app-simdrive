@@ -46,7 +46,6 @@ final class DeviceSession {
         accessibility = DeviceAccessibility(device: device, screens: screens, split: split)
         logs = DeviceLogs(udid: udid, tools: tools)
         splitView = SplitView(screens: screens, state: split, inputs: inputs, accessibility: accessibility, logs: logs)
-        accessibility.prepare()
         settings = DeviceSettings(udid: udid, device: device, tools: tools)
         apps = DeviceApps(udid: udid, tools: tools)
     }
@@ -59,6 +58,12 @@ final class DeviceSession {
         let guest = try await SimulatorGuest(device: device)
         try StatePaths.prepare()
         return DeviceSession(udid: udid, device: device, tools: tools, guest: guest)
+    }
+
+    /// Starts the guest's accessibility server in the background, for a session that outlives its first command. A
+    /// one-shot run must not: it exits while the read runs on the translator's queue, which crashed in `AXPTranslator`.
+    func warmUpAccessibility() {
+        accessibility.prepare()
     }
 
     func execute(_ command: Command, workingDirectory: String) async throws -> JSONValue {
