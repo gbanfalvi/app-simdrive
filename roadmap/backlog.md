@@ -559,13 +559,22 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - agent-device's `--settle` returns a +/−/= diff with fresh references after an action (`D:README.md:55-75`).
 - **Do:** add `hash` to `tree` results and `tree --since <hash>`, answering `{"unchanged": true}`; then `--diff` against the last tree the daemon returned. **Test:** unit tests for the hash and diff; time `tree` with and without.
 
-### - [ ] I16. Start the accessibility server in under a second on iOS 27 (M, unverified)
+### - [ ] I16. Start the accessibility server in under a second on iOS 27 (M, tried and rejected)
+
+- **Tried (2026-11-24), not adopted:** AXe's bootstrap was implemented and measured on an iPhone 17, iOS 27.2, after F15's screen wait. It loaded XCTDaemonControl and XCUIAutomation from the selected Xcode's `SharedFrameworks`, then `connectionProviderForSimDevice:`, `requestSessionWithDaemonConnectionProvider:completion:`, `enableAutomationModeWithError:`, `loadAccessibilityWithTimeout:reply:` and `invalidate`. Three things ruled it out:
+  - On a settled device it worked in 0.83 s, where no bootstrap is needed.
+  - After a reboot, when it would matter, the session did not start within 5 s on three boots, nor within 20 s on another. It made the first `tree` slower: 30 s against 17–30 s without.
+  - On one boot the daemon died during it, with nothing in its log.
+- **Measured instead:** with F15's wait, the first `tree` after `bootstatus` took 3.1 to 30 s across five reboots. The screen wait accounts for 0–10 s of that, and the server's own start for the rest, up to about 12 s.
+- **What could still work, unverified:** run the bootstrap only after the first direct read fails or comes back empty, as AXe's `readingDirectlyFirst` does. Alternatively, find what in the guest the automation session waits for after a boot (`testmanagerd`?) and start that early.
 
 - **Problem:** the first `tree` after boot takes 14–18 s (F7).
 - **Read:** on iOS 27, when a direct read fails or returns an empty tree, AXe opens an automation session through XCTest's daemon: `XCUIDeviceRemoteDaemonConnectionProvider connectionProviderForSimDevice:`, `XCUIDeviceRemoteAutomationSession requestSessionWithDaemonConnectionProvider:`, `enableAutomationModeWithError:` and `loadAccessibilityWithTimeout:reply:`, then invalidates it. It takes 0.15–0.45 s, within a 5 s limit (`A:Packages/IDBKit/FBSimulatorControl/Utility/FBSimulatorControlFrameworkLoader.m:221-433`, `A:Sources/AXe/Utilities/AccessibilityFetcher.swift:171-189`).
 - **Do:** after F15's display wait, add the bootstrap as a driver in `SimDriveNative/Accessibility/`, loading `XCTDaemonControl` and `XCUIAutomation` from the selected Xcode. **Test:** the first `tree` after `bootstatus` on several boots of an iPhone and a Duo, against F7's numbers.
 
 ### - [ ] I17. Recover a stuck accessibility server without rebooting (M, needs F15's research)
+
+- **Seen (2026-11-24):** still needs a stuck server to test against. F15's screen wait now holds back the early read thought to cause it, and the stuck state was not reproduced, so no restart was added blind. If it recurs, F15's "Research next time it happens" comes first.
 
 - **Read:**
   - On "channel disconnected" AXe runs `simctl spawn <udid> launchctl kickstart -k user/foreground/com.apple.testmanagerd` and retries once; when SpringBoard died (zero frame, dead pid) it restarts `com.apple.CoreSimulator.bridge` (`A:Sources/AXe/Utilities/AccessibilityFetcher.swift:281-356`, `A:Packages/IDBKit/FBSimulatorControl/Commands/FBSimulatorAccessibilityCommands.swift:214-273`).
