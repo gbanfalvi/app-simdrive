@@ -7,6 +7,8 @@ enum CommandParser {
     static let defaultGestureDuration: Duration = .milliseconds(500)
     private static let pinchScales: ClosedRange<Double> = 0.1...10
     static let defaultButtonHold: Duration = .milliseconds(100)
+    /// As long as `logs --until` waits by default.
+    static let defaultElementTimeout: Duration = .milliseconds(5000)
     private static let postureNames: [String: DevicePosture] = [
         "closed": .closed, "half": .partiallyOpen, "partially-open": .partiallyOpen, "partiallyOpen": .partiallyOpen, "open": .open,
     ]
@@ -32,8 +34,16 @@ enum CommandParser {
         case "type":
             return .type(text: try ArgumentList(rest).single("the text"))
         case "tap":
-            let list = try ArgumentList(rest, options: ["display"])
-            let values = try list.exactly(2, "x and y")
+            let list = try ArgumentList(rest, options: ["display", "label", "id", "timeout"])
+            if let selector = try elementSelector(list) {
+                try list.none()
+                guard list.option("display") == nil else {
+                    throw SimDriveError.usage("tap --label and --id read the frontmost app, so they take no --display")
+                }
+                return .tapElement(selector, timeout: try elementTimeout(list))
+            }
+            guard list.option("timeout") == nil else { throw SimDriveError.usage("--timeout needs --label or --id") }
+            let values = try list.exactly(2, "x and y, or --label or --id")
             return .tap(try point(values[0], values[1]), display: try display(list.option("display")))
         case "swipe":
             let list = try ArgumentList(rest, options: ["display", "duration", "edge"])
@@ -123,7 +133,15 @@ enum CommandParser {
             }
             return .openURL(text)
         case "wait":
-            guard let milliseconds = Int(try ArgumentList(rest).single("milliseconds")), milliseconds >= 0 else {
+            let list = try ArgumentList(rest, options: ["label", "id", "timeout"], flags: ["absent"])
+            if let selector = try elementSelector(list) {
+                try list.none()
+                return .waitForElement(selector, gone: list.flag("absent"), timeout: try elementTimeout(list))
+            }
+            guard list.option("timeout") == nil, !list.flag("absent") else {
+                throw SimDriveError.usage("--timeout and --absent need --label or --id")
+            }
+            guard let milliseconds = Int(try list.single("milliseconds, or --label or --id")), milliseconds >= 0 else {
                 throw SimDriveError.usage("wait needs milliseconds")
             }
             return .wait(milliseconds: milliseconds)
@@ -239,6 +257,27 @@ enum CommandParser {
         return point
     }
 
+    /// `--label` or `--id`, at most one of them, and not empty.
+    private static func elementSelector(_ list: ArgumentList) throws -> ElementSelector? {
+        switch (list.option("label"), list.option("id")) {
+        case (nil, nil): return nil
+        case (_?, _?): throw SimDriveError.usage("Pass --label or --id, not both")
+        case (let label?, nil):
+            guard !label.isEmpty else { throw SimDriveError.usage("--label needs text") }
+            return .label(label)
+        case (nil, let identifier?):
+            guard !identifier.isEmpty else { throw SimDriveError.usage("--id needs an identifier") }
+            return .identifier(identifier)
+        }
+    }
+
+    /// How long an element command waits; 0 reads the tree once.
+    private static func elementTimeout(_ list: ArgumentList) throws -> Duration {
+        guard let milliseconds = try list.integer("timeout") else { return defaultElementTimeout }
+        guard milliseconds >= 0 else { throw SimDriveError.usage("--timeout must not be negative") }
+        return .milliseconds(milliseconds)
+    }
+
     private static func gestureDuration(_ list: ArgumentList) throws -> Duration {
         try list.positiveInteger("duration").map { Duration.milliseconds($0) } ?? defaultGestureDuration
     }
@@ -285,6 +324,9 @@ enum CommandParser {
           key <name|char> [--mods cmd,shift,alt,ctrl] [--repeat N]
           type <text>                         on the simulator's keyboard layout; paste anything else
           tap <x> <y> [--display D]
+          tap --label <text> | --id <identifier> [--timeout ms]
+                                              taps the onscreen element with that exact label or identifier,
+                                              waiting for it 5000 ms by default
           swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top|bottom|left|right] [--display D]
           pinch <x> <y> <scale> [--duration ms] [--display D]
                                               two fingers spread to scale times their distance, or close below 1
@@ -306,6 +348,8 @@ enum CommandParser {
           uninstall <bundle-id>
           openurl <url>                       opens a URL or deep link in the app that handles it
           wait <ms>
+          wait --label <text> | --id <identifier> [--absent] [--timeout ms]
+                                              waits until the element is on screen, or with --absent until it is not
           logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until <regex> [--timeout ms]]
                [--limit N] [--width N]        the launched app's log entries, stdout, stderr and crashes since the
                                               cursor's last read; --until waits for a matching entry, 5000 ms by default

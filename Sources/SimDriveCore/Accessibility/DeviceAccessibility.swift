@@ -5,6 +5,8 @@ import SimDriveNative
 @MainActor
 final class DeviceAccessibility {
     private static let frontmostPollInterval: Duration = .milliseconds(100)
+    /// A light tree read takes tens of milliseconds, so this keeps waits responsive without reading continuously.
+    private static let elementPollInterval: Duration = .milliseconds(200)
     /// A split app's window is about 0.49 of the screen wide, and a full one 1.
     private static let halfWidthLimit = 0.75
 
@@ -24,6 +26,52 @@ final class DeviceAccessibility {
     }
 
     func tree(detail: TreeDetail) async throws -> JSONValue {
+        let (snapshot, screen, layout) = try await read(detail: detail)
+        let app = snapshot.application.json
+        let display = JSONValue(screen.display?.index)
+        switch detail {
+        case .light: return ["app": app, "display": display, "elements": layout.elements(snapshot.element)]
+        case .full: return ["app": app, "display": display, "root": layout.json(application: snapshot.element)]
+        }
+    }
+
+    /// Reads the light tree until `selector` names one onscreen element, and returns it with its summary. Fails with
+    /// `no-element` when none appears within `limit`; reads once when `limit` is zero.
+    func element(_ selector: ElementSelector, within limit: Duration) async throws -> (element: PlacedElement, json: JSONValue) {
+        let deadline = ContinuousClock.now + limit
+        while true {
+            let (snapshot, _, layout) = try await read(detail: .light)
+            if let found = try selector.resolve(in: layout.placedElements(snapshot.element)) {
+                return (found, layout.summary(found))
+            }
+            guard ContinuousClock.now < deadline else {
+                throw SimDriveError(.noElement, "No onscreen element matches \(selector.argument) within \(Self.milliseconds(limit)) "
+                                    + "ms; read the tree to see the labels and identifiers on screen.")
+            }
+            try await Task.sleep(for: Self.elementPollInterval)
+        }
+    }
+
+    /// Reads the light tree until `selector` names no onscreen element, failing with `element-still-shown` after `limit`.
+    func waitUntilGone(_ selector: ElementSelector, within limit: Duration) async throws {
+        let deadline = ContinuousClock.now + limit
+        while true {
+            let (snapshot, _, layout) = try await read(detail: .light)
+            guard selector.isShown(in: layout.placedElements(snapshot.element)) else { return }
+            guard ContinuousClock.now < deadline else {
+                throw SimDriveError(.elementStillShown, "\(selector.argument) is still on screen after "
+                                    + "\(Self.milliseconds(limit)) ms.")
+            }
+            try await Task.sleep(for: Self.elementPollInterval)
+        }
+    }
+
+    private static func milliseconds(_ duration: Duration) -> Int {
+        Int((duration / .milliseconds(1)).rounded())
+    }
+
+    /// The frontmost app's hierarchy and the layout that places it on the screen.
+    private func read(detail: TreeDetail) async throws -> (AccessibilitySnapshot, Screen, AccessibilityLayout) {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)
         let snapshot = try await accessibility.snapshot(detail: detail)
@@ -31,12 +79,7 @@ final class DeviceAccessibility {
         let fillsHalf = fullLayout.spansUnder(Self.halfWidthLimit, windows: snapshot.element.children.map(\.frame))
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen,
                                          appOrigin: appOrigin(fillsHalf: fillsHalf))
-        let app = snapshot.application.json
-        let display = JSONValue(screen.display?.index)
-        switch detail {
-        case .light: return ["app": app, "display": display, "elements": layout.elements(snapshot.element)]
-        case .full: return ["app": app, "display": display, "root": layout.json(application: snapshot.element)]
-        }
+        return (snapshot, screen, layout)
     }
 
     /// The element VoiceOver finds at a point, with its descendants when full.

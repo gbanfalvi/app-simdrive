@@ -68,6 +68,8 @@ final class DeviceSession {
             return try await type(text)
         case .tap(let point, let display):
             return try await tap(point, display: display)
+        case .tapElement(let selector, let timeout):
+            return try await tap(selector, within: timeout)
         case .swipe(let path, let duration, let edge, let display):
             return try await swipe(through: path, duration: duration, edge: edge, display: display)
         case .pinch(let center, let scale, let duration, let display):
@@ -118,6 +120,12 @@ final class DeviceSession {
         case .wait(let milliseconds):
             try await Task.sleep(for: .milliseconds(milliseconds))
             return ["waited": JSONValue(milliseconds)]
+        case .waitForElement(let selector, gone: false, let timeout):
+            let found = try await readAccessibility { try await self.accessibility.element(selector, within: timeout) }
+            return ["element": found.json]
+        case .waitForElement(let selector, gone: true, let timeout):
+            try await readAccessibility { try await self.accessibility.waitUntilGone(selector, within: timeout) }
+            return ["absent": true]
         case .logs(let query):
             return try await logs.read(query)
         case .run(let steps, let attachesLogs):
@@ -164,6 +172,14 @@ final class DeviceSession {
         let screen = try await screens.touchscreen(display, usesPixels: point.usesPixels)
         try await inputs.tap(at: screen.digitizerPoint(point), on: screen.digitizerTarget)
         return ["display": JSONValue(screen.display?.index), "point": screen.json(point)]
+    }
+
+    /// Taps the element's tap point, and reports the element, whose `point` says where.
+    private func tap(_ selector: ElementSelector, within limit: Duration) async throws -> JSONValue {
+        let found = try await readAccessibility { try await self.accessibility.element(selector, within: limit) }
+        let screen = try await screens.touchscreen(.automatic, usesPixels: false)
+        try await inputs.tap(at: screen.digitizerPoint(.normalized(found.element.fraction)), on: screen.digitizerTarget)
+        return ["display": JSONValue(screen.display?.index), "element": found.json]
     }
 
     private func twoFingerGesture(around center: ScreenPoint, duration: Duration, display: DisplaySelector, result: [String: JSONValue],
@@ -252,7 +268,7 @@ final class DeviceSession {
     }
 
     /// An app launched while app accessibility was off has an empty frame until it relaunches.
-    private func readAccessibility(_ read: () async throws -> JSONValue) async throws -> JSONValue {
+    private func readAccessibility<Value>(_ read: () async throws -> Value) async throws -> Value {
         do {
             return try await read()
         } catch let error as SimDriveError where error.code == .accessibilityTranslation {

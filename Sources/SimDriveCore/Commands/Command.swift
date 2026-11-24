@@ -27,6 +27,8 @@ enum Command: Equatable, Sendable {
     case key(name: String, modifiers: Set<KeyModifier>, count: Int)
     case type(text: String)
     case tap(ScreenPoint, display: DisplaySelector)
+    /// Taps the element a selector names, waiting up to `timeout` for it to appear.
+    case tapElement(ElementSelector, timeout: Duration)
     /// Drags through two or more points.
     case swipe(path: [ScreenPoint], duration: Duration, edge: ScreenEdge?, display: DisplaySelector)
     /// Two fingers spread to `scale` times their distance around `center`, or close below 1.
@@ -54,6 +56,8 @@ enum Command: Equatable, Sendable {
     /// Opens a URL, such as a deep link, in the app that handles it.
     case openURL(String)
     case wait(milliseconds: Int)
+    /// Waits up to `timeout` until the element a selector names is on screen, or, when `gone`, until it is not.
+    case waitForElement(ElementSelector, gone: Bool, timeout: Duration)
     case logs(LogQuery)
     /// With `attachesLogs`, each step's result lists the entries logged while it ran.
     case run(steps: [Step], attachesLogs: Bool)

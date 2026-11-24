@@ -839,7 +839,14 @@ NeoSimulator has none of these; `simctl` covers them.
   5. The device comes from the argument or `SIMDRIVE_UDID`, or the only booted simulator.
 - **Test:** unit tests for the JSON-RPC framing and the tool schemas; a scripted session against a booted simulator; add the server to Cursor's and Claude Code's MCP configuration and drive the probe. Document the setup in the README and skill.
 
-### - [ ] N27. Target elements by label or identifier: `tap --label|--id`, `wait`, `scroll --until` (M)
+### - [x] N27. Target elements by label or identifier: `tap --label|--id`, `wait`, `scroll --until` (M)
+
+**Result:**
+- **What landed:** `tap --label|--id [--timeout ms]` and `wait --label|--id [--absent] [--timeout ms]`.
+- **Selection:** `ElementSelector` picks the one onscreen light-tree element whose label or identifier matches exactly. `AccessibilityLayout.placedElements` now builds both the light tree and these lookups, so they place elements identically.
+- **Errors:** new codes `ambiguous-element`, `element-offscreen` and `element-still-shown`; none in time is `no-element`. Both commands wait 5000 ms by default, as `logs --until` does.
+- **Checks:** parser and selection tests, the latter shown to fail when offscreen matches count. The matrix's `tap` section, with new checks for `tap --id`, a `run` of `tap --label` and `wait --label`, both timeouts and an offscreen row, passes 38/38 on iPhone 17, iOS 27.2.
+- **Not done:** `swipe --until`, which moved to N32. Not run on a Duo, iPad or Apple TV.
 
 - **Why:** agents read the tree, then copy a point into `tap`; one call that resolves the element, and waits for it, removes a round trip and a race. Complements N15, which acts through accessibility instead of touches.
 - **Seen (2026-11-24, app_mono):** saved `run` step files can only tap fixed points, so a check written as `["tap 0.1977 0.1192", …]` breaks when a sidebar resizes; with `tap --label View` the same file survives layout changes. Inside `run`, there's no way to feed one step's `tree` result into the next.
@@ -874,6 +881,13 @@ NeoSimulator has none of these; `simctl` covers them.
   - idb's `axbridge` backend runs a helper inside the guest, reached over a Unix socket. It returns the whole tree in one round trip, sees content drawn by other processes, asserts automation mode, and reports modals (`I:FBSimulatorAX/README.md:15-100`, `I:SimulatorFrameworkBridge/`).
   - agent-device compiles a helper with `xcrun --sdk iphonesimulator clang`, starts it with `simctl spawn <udid> … serve <socket>`, and snapshots through `XCTAccessibilityFramework`'s `userTestingSnapshotForElement:`: warm snapshots take 8.6–118 ms (`D:apple/snapshot-bridge/README.md:10-24`, `D:docs/evidence/ios-snapshot-adr-0004-measurements-2026-11-06.md:25-27`).
 - **Do:** prototype the helper as a separate target built for the simulator SDK, spawned by the session; compare speed, coverage and failure modes with the translator before switching `tree` to it.
+
+### - [ ] N32. `swipe --until-label|--until-id --max-swipes n`: scroll an element into view (S, needs N27)
+
+- **Why:** split from N27. `tap --label` fails with `element-offscreen` for a row scrolled out of view, and the agent must then swipe and reread the tree by hand.
+- **Read:** N27's sources (AXe's `gesture scroll-* --until-id`, agent-device's `scroll --until`); `S:SimDriveCore/Accessibility/ElementSelector.swift` (`isShown`), `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`element(_:within:)`).
+- **Do:** repeat the swipe, then read the light tree, until the selector is shown or `--max-swipes` runs out; fail with `no-element` naming how many swipes ran. Return the element, as `wait --label` does.
+- **Test:** parser tests; the matrix's `tap` section scrolls the probe's list until its last row is on screen.
 
 ## Not planned
 

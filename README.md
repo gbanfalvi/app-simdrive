@@ -25,6 +25,7 @@ simdrive <udid|booted> <command>
 | `key <name\|char> [--mods cmd,shift,alt,ctrl] [--repeat N]` | Hardware key press: `tab`, `return`, `escape`, `left`, `f5`, `a`, `/`… |
 | `type <text>` | Types on the simulator's hardware keyboard layout; paste anything else |
 | `tap <x> <y> [--display D]` | Touch |
+| `tap --label <text> \| --id <identifier> [--timeout ms]` | Touches the onscreen element with exactly that label or accessibility identifier, waiting up to 5000 ms by default for it to appear |
 | `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top\|bottom\|left\|right] [--display D]` | Drag through the points, each segment taking equal time, so a repeated point holds; `--edge` starts a system edge gesture |
 | `pinch <x> <y> <scale> [--duration ms] [--display D]` | Two fingers around the point spread to `scale` times their distance, or close below 1 |
 | `rotate <x> <y> <degrees> [--duration ms] [--display D]` | Two fingers turn around the point, clockwise when positive |
@@ -42,6 +43,7 @@ simdrive <udid|booted> <command>
 | `openurl <url>` | Opens a URL or deep link in the app that handles it, returning once iOS accepts it |
 | `logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until regex [--timeout ms]] [--limit N] [--width N]` | Reads the launched app's new log entries, output and crashes, or waits for an entry; see [Logs](#logs) |
 | `wait <ms>` | Pauses, for `run` |
+| `wait --label <text> \| --id <identifier> [--absent] [--timeout ms]` | Waits until the element is on screen, or with `--absent` until it is not; 5000 ms by default |
 | `run <steps.json\|-> [--logs]` | Runs a JSON array of commands, such as `["tap 0.5 0.5", ["key", "tab"]]`, stopping at the first failure; `--logs` adds each step's log entries |
 | `doctor` | Reports the developer directory, displays, orientation, pasteboard, hinge, keyboard, frontmost app and appearance |
 | `stop` | Ends the device's daemon and releases its input services |
@@ -57,7 +59,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `list` | `[{"udid", "name", "runtime", "deviceType"}]` |
 | `key` | `{"key", "modifiers": [names], "count"}` |
 | `type` | `{"characters", "layout"}`; `layout` is the hardware keyboard layout typed on, such as `US` or `German` |
-| `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen |
+| `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen. With `--label` or `--id`: `{"display", "element"}`, the element as the light tree describes it, whose `point` is where it was tapped |
 | `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}`, with `"via": [{"x", "y"}]` for more points |
 | `pinch`, `rotate` | `{"display", "center": {"x", "y"}, "scale"}` or `"degrees"` |
 | `button` | `{"button", "count"}` |
@@ -72,7 +74,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `install`, `uninstall` | `{"bundleID"}` |
 | `openurl` | `{"url"}` |
 | `logs` | `{"since", "entries": [entry], "stdout": [lines], "stderr": [lines], "crashes": [crash], "dropped"}`, each source's key only when read. An entry is `{"ms", "message", "level", "process", "subsystem", "category", "repeats"}`, described under [Logs](#logs); a crash is `{"process", "pid", "time", "exception", "reason", "frames", "path"}` |
-| `wait` | `{"waited": milliseconds}` |
+| `wait` | `{"waited": milliseconds}`; with `--label` or `--id`, `{"element"}`, or `{"absent": true}` with `--absent` |
 | `run` | `{"steps": [each step's result]}`; with `--logs`, each step also has `"logs": [entry]`, and a failed read adds `"logsError"` |
 | `doctor` | `{"developerDirectory", "device", "state", "deviceType", "displays", "orientation", "pasteboard", "keyboard", "posture", "accessibility", "appearance"}`; `accessibility` is the frontmost app's `{"name", "pid"}`, and a failed check is `{"error"}` |
 | `stop` | `{"stopped": whether a daemon ran}` |
@@ -113,6 +115,8 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 - When set: `label`, `value`, `hint`, `identifier`, `placeholder`, `headingLevel`, `expanded`, `containerType`, `language`, `inputLabels` (Voice Control's names), `customActions`, `customContent` (`{"label", "value", "important"}`), `url`, `range` (an adjustable element's `{"min", "max", "value"}`), `focused` (the focus engine's focus, as on tvOS), `class`, `viewController` and `children`.
 
 `tree <x> <y>` returns the element VoiceOver finds at a point, with its descendants under `--full`, or fails with `no-element`. On a foldable, both refer to the panel in use.
+
+`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
 
 ### Settings
 

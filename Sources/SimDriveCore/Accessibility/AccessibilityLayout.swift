@@ -80,19 +80,24 @@ struct AccessibilityLayout: Equatable, Sendable {
 
     /// VoiceOver's elements in hierarchy order, as `summary` describes them.
     func elements(_ root: AccessibilityElement) -> JSONValue {
-        var elements: [JSONValue] = []
+        .array(placedElements(root).map(summary))
+    }
+
+    /// VoiceOver's elements in hierarchy order, placed on the screen.
+    func placedElements(_ root: AccessibilityElement) -> [PlacedElement] {
+        var elements: [PlacedElement] = []
         collect(root, visibleFrame: screenFrame, into: &elements)
-        return .array(elements)
+        return elements
     }
 
     /// The fields that find and act on an element.
     func summary(_ element: AccessibilityElement) -> JSONValue {
-        summary(element, visibleFrame: screenFrame)
+        summary(placed(element, visibleFrame: screenFrame))
     }
 
-    private func collect(_ element: AccessibilityElement, visibleFrame: CGRect, into elements: inout [JSONValue]) {
+    private func collect(_ element: AccessibilityElement, visibleFrame: CGRect, into elements: inout [PlacedElement]) {
         guard !element.isVoiceOverElement else {
-            elements.append(summary(element, visibleFrame: visibleFrame))
+            elements.append(placed(element, visibleFrame: visibleFrame))
             return
         }
         let childrenFrame = childrenFrame(of: element, in: visibleFrame)
@@ -101,10 +106,15 @@ struct AccessibilityLayout: Equatable, Sendable {
         }
     }
 
+    private func placed(_ element: AccessibilityElement, visibleFrame: CGRect) -> PlacedElement {
+        PlacedElement(element: element, fraction: fraction(point(of: element)), isOffscreen: isOffscreen(element, in: visibleFrame))
+    }
+
     /// Leaves out the value while it repeats the placeholder, as an empty text field's does, and the trait `type` names.
-    private func summary(_ element: AccessibilityElement, visibleFrame: CGRect) -> JSONValue {
+    func summary(_ placed: PlacedElement) -> JSONValue {
+        let element = placed.element
         let type = element.type.map { "\($0)" }
-        var fields: [String: JSONValue] = ["point": json(point(of: element))]
+        var fields: [String: JSONValue] = ["point": json(fraction: placed.fraction)]
         fields["type"] = type.map(JSONValue.string)
         fields["label"] = element.label.map(JSONValue.string)
         fields["value"] = element.value.flatMap { $0 == element.placeholder ? nil : .string($0) }
@@ -112,7 +122,7 @@ struct AccessibilityLayout: Equatable, Sendable {
         fields["placeholder"] = element.placeholder.map(JSONValue.string)
         fields["traits"] = Self.list(AccessibilityTrait.allCases.filter { element.traits.contains($0) && "\($0)" != type }
             .map { .string("\($0)") })
-        fields["offscreen"] = isOffscreen(element, in: visibleFrame) ? true : nil
+        fields["offscreen"] = placed.isOffscreen ? true : nil
         fields["focused"] = element.isFocused ? true : nil
         fields["expanded"] = element.isExpanded.map(JSONValue.bool)
         return .object(fields)
@@ -174,8 +184,17 @@ struct AccessibilityLayout: Equatable, Sendable {
         return .object(fields)
     }
 
+    /// An app point as a fraction of the screen, which `tap` takes.
+    private func fraction(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: (point.x + appOffset) / interfaceSize.width, y: point.y / interfaceSize.height)
+    }
+
     private func json(_ point: CGPoint) -> JSONValue {
-        ["x": Self.rounded((point.x + appOffset) / interfaceSize.width), "y": Self.rounded(point.y / interfaceSize.height)]
+        json(fraction: fraction(point))
+    }
+
+    private func json(fraction: CGPoint) -> JSONValue {
+        ["x": Self.rounded(fraction.x), "y": Self.rounded(fraction.y)]
     }
 
     private func json(_ frame: CGRect) -> JSONValue {

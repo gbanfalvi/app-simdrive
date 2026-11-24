@@ -23,6 +23,27 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["tap", "-1", "2"]) }
     }
 
+    @Test func tapTakesALabelOrAnIdentifierInsteadOfAPoint() throws {
+        #expect(try CommandParser.parse(["tap", "--label", "View"])
+            == .tapElement(.label("View"), timeout: CommandParser.defaultElementTimeout))
+        #expect(try CommandParser.parse(["tap", "--id", "play-button", "--timeout", "0"])
+            == .tapElement(.identifier("play-button"), timeout: .zero))
+        expectUsageError { try CommandParser.parse(["tap", "--label", "View", "--id", "view"]) }
+        expectUsageError { try CommandParser.parse(["tap", "--label", "View", "0.5", "0.5"]) }
+        expectUsageError { try CommandParser.parse(["tap", "--label", "View", "--display", "inner"]) }
+        expectUsageError { try CommandParser.parse(["tap", "--label", ""]) }
+        expectUsageError { try CommandParser.parse(["tap", "0.5", "0.5", "--timeout", "100"]) }
+    }
+
+    @Test func waitTakesMillisecondsOrAnElement() throws {
+        #expect(try CommandParser.parse(["wait", "--label", "Done"])
+            == .waitForElement(.label("Done"), gone: false, timeout: CommandParser.defaultElementTimeout))
+        #expect(try CommandParser.parse(["wait", "--id", "spinner", "--absent", "--timeout", "10000"])
+            == .waitForElement(.identifier("spinner"), gone: true, timeout: .milliseconds(10000)))
+        expectUsageError { try CommandParser.parse(["wait", "100", "--absent"]) }
+        expectUsageError { try CommandParser.parse(["wait", "--label", "Done", "--timeout", "-1"]) }
+    }
+
     @Test func pinchAndRotateTakeACenterAndAnAmount() throws {
         let center = ScreenPoint.normalized(CGPoint(x: 0.5, y: 0.5))
         #expect(try CommandParser.parse(["pinch", "0.5", "0.5", "2"])

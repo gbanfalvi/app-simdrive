@@ -251,6 +251,23 @@ def light_checks(full):
     check('tree light empty field has no value', email.get('placeholder') == 'Email' and 'value' not in email, json.dumps(email))
 
 
+def element_checks(full):
+    mark = log.mark()
+    response = sd('tap', '--id', 'play-button')
+    check('tap --id', response.get('ok') and log.wait(mark, r'TAP play'), brief(response))
+    mark = log.mark()
+    response = sd('run', '-', stdin=json.dumps(['tap --label Play', 'wait --label Probe --timeout 0']))
+    check('run with tap --label and wait --label', response.get('ok') and log.wait(mark, r'TAP play'), brief(response))
+    response = sd('wait', '--id', 'nowhere', '--timeout', '300')
+    check('wait --id (expect no-element)', response.get('code') == 'no-element', brief(response))
+    response = sd('wait', '--id', 'play-button', '--absent', '--timeout', '300')
+    check('wait --absent (expect element-still-shown)', response.get('code') == 'element-still-shown', brief(response))
+    offscreen = next((n.get('label') for n in voice_over(full) if (n.get('label') or '').startswith('Row ') and n.get('offscreen')), None)
+    if offscreen:
+        response = sd('tap', '--label', offscreen, '--timeout', '0')
+        check('tap --label offscreen (expect element-offscreen)', response.get('code') == 'element-offscreen', brief(response))
+
+
 def tap_checks(full):
     x, y = tap_point(element(full, 'Play'))
     mark = log.mark()
@@ -261,6 +278,7 @@ def tap_checks(full):
     mark = log.mark()
     response = sd('tap', x, y, daemon=False)
     check('tap --no-daemon', response.get('ok') and log.wait(mark, r'TAP play'), '' if response.get('ok') else brief(response))
+    element_checks(full)
     # Left of the centered buttons, since a drag that starts on a control does not scroll.
     mark = log.mark()
     response = sd('swipe', '0.15', '0.8', '0.15', '0.3', '--duration', '300')
