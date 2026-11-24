@@ -695,6 +695,13 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Read:** `A:Packages/IDBKit/FBSimulatorControl/HID/FBSimulatorDTUHIDTransport.swift:188-205 @1ffbd35`, `A:Packages/IDBKit/FBSimulatorControl/HID/DTUHIDModels.swift:76-91 @1ffbd35`. `IndigoKeyboardButtonEvent` is not a type CoreDeviceUtilities exports, even on 27.2 (checked with `nm`): AXe builds that XPC dictionary by hand (`XPCEncoder`), so simdrive would have to encode it the same way, outside its ABIBridge bindings. Check that the guest still takes it on Xcode 27.3, since F28's `IndigoButtonEvent` did not survive there.
 - **Do:** a spike. Send one key that way on 27.2, check that the probe logs `KEY`, and check whether the software keyboard still shows for a focused text field. Adopt it only if both answers favor it. Then record the result in `docs/private-apis.md`.
 
+### - [ ] I25. `tap --label|--id`: wait for the element to stop moving before tapping (S)
+
+- **Problem:** found after F27 (2026-11-24). An alert is in the light tree while it still animates in, and a tap then is dropped by the guest, though `tap --label Open` returns `ok`. On an iPhone 17, iOS 27.2, `openurl` followed at once by `tap --label Open` left the URL undelivered. The matrix now waits 1 s first, but agents do the same.
+- **Read:** `S:SimDriveCore/Session/DeviceSession.swift` (`tap(_:within:)`), `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`shownElementAtRest`, which I22 added).
+- **Do:** resolve the element from reads at rest, as `swipe --until` does: read until two reads in a row agree on the element's frame, bounded at about 1 s, then tap.
+- **Test:** `openurl` then `tap --label Open` with no wait; the probe logs the URL. Measure what it adds to `tap --label` on a still screen (`--timeout 0`).
+
 ## 3. New features
 
 Each new command needs a `Command` case, parsing, usage text, results JSON, an error code where it can fail, parser tests, a README row and a skill line, per AGENTS.md's "Adding a capability".
