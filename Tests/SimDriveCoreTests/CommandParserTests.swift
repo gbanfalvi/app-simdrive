@@ -35,6 +35,18 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["tap", "0.5", "0.5", "--timeout", "100"]) }
     }
 
+    @Test func swipeCanRepeatUntilAnElementIsShown() throws {
+        let path: [ScreenPoint] = [.normalized(CGPoint(x: 0.5, y: 0.8)), .normalized(CGPoint(x: 0.5, y: 0.3))]
+        #expect(try CommandParser.parse(["swipe", "0.5", "0.8", "0.5", "0.3", "--until-label", "Row 30"])
+            == .swipeUntil(path: path, duration: CommandParser.defaultSwipeDuration, selector: .label("Row 30"),
+                           maxSwipes: CommandParser.defaultMaxSwipes))
+        #expect(try CommandParser.parse(["swipe", "0.5", "0.8", "0.5", "0.3", "--until-id", "row-30", "--max-swipes", "3"])
+            == .swipeUntil(path: path, duration: CommandParser.defaultSwipeDuration, selector: .identifier("row-30"), maxSwipes: 3))
+        expectUsageError { try CommandParser.parse(["swipe", "0.5", "0.8", "0.5", "0.3", "--until-label", "Row", "--edge", "bottom"]) }
+        expectUsageError { try CommandParser.parse(["swipe", "0.5", "0.8", "0.5", "0.3", "--max-swipes", "3"]) }
+        expectUsageError { try CommandParser.parse(["swipe", "0.5", "0.8", "0.5", "0.3", "--until-label", "Row", "--max-swipes", "0"]) }
+    }
+
     @Test func waitTakesMillisecondsOrAnElement() throws {
         #expect(try CommandParser.parse(["wait", "--label", "Done"])
             == .waitForElement(.label("Done"), gone: false, timeout: CommandParser.defaultElementTimeout))

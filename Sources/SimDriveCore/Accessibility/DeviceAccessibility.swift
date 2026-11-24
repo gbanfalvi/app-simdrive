@@ -54,6 +54,14 @@ final class DeviceAccessibility {
         }
     }
 
+    /// The one onscreen element `selector` names now, or nil while none is on screen, though some may be scrolled away.
+    func shownElement(_ selector: ElementSelector) async throws -> (element: PlacedElement, json: JSONValue)? {
+        let (snapshot, _, layout) = try await read(detail: .light)
+        let elements = layout.placedElements(snapshot.element)
+        guard selector.isShown(in: elements), let found = try selector.resolve(in: elements) else { return nil }
+        return (found, layout.summary(found))
+    }
+
     /// Reads the light tree until `selector` names no onscreen element, failing with `element-still-shown` after `limit`.
     func waitUntilGone(_ selector: ElementSelector, within limit: Duration) async throws {
         let deadline = ContinuousClock.now + limit

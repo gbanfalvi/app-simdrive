@@ -889,7 +889,9 @@ NeoSimulator has none of these; `simctl` covers them.
   - agent-device compiles a helper with `xcrun --sdk iphonesimulator clang`, starts it with `simctl spawn <udid> … serve <socket>`, and snapshots through `XCTAccessibilityFramework`'s `userTestingSnapshotForElement:`: warm snapshots take 8.6–118 ms (`D:apple/snapshot-bridge/README.md:10-24`, `D:docs/evidence/ios-snapshot-adr-0004-measurements-2026-11-06.md:25-27`).
 - **Do:** prototype the helper as a separate target built for the simulator SDK, spawned by the session; compare speed, coverage and failure modes with the translator before switching `tree` to it.
 
-### - [ ] N32. `swipe --until-label|--until-id --max-swipes n`: scroll an element into view (S, needs N27)
+### - [x] N32. `swipe --until-label|--until-id --max-swipes n`: scroll an element into view (S, needs N27)
+
+**Result:** `swipe … --until-label|--until-id [--max-swipes N]` reads the light tree first, then swipes, waits 400 ms for the scroll to settle and reads again. It stops at the first read where one onscreen element matches, returning `{"element", "swipes"}`, or fails with `no-element` after `--max-swipes` (10 by default). It takes no `--edge` or `--display`. The matrix's `tap` section scrolls the probe to its last row (2 swipes) and back to Play (1), and passes 40/40 on iPhone 17, iOS 27.2.
 
 - **Why:** split from N27. `tap --label` fails with `element-offscreen` for a row scrolled out of view, and the agent must then swipe and reread the tree by hand.
 - **Read:** N27's sources (AXe's `gesture scroll-* --until-id`, agent-device's `scroll --until`); `S:SimDriveCore/Accessibility/ElementSelector.swift` (`isShown`), `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`element(_:within:)`).

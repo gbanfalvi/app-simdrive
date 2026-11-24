@@ -28,6 +28,7 @@ $S <udid> type "hello, world"          # on the simulator's keyboard layout
 $S <udid> tap 0.5 0.5
 $S <udid> tap --label "Sign In"         # or --id <identifier>; exact match on screen, waits up to --timeout 5000 ms
 $S <udid> wait --id spinner --absent    # or until an element appears without --absent; --timeout ms
+$S <udid> swipe 0.5 0.8 0.5 0.3 --until-label "Row 30"   # scrolls until it is on screen; --max-swipes 10 by default
 $S <udid> swipe 0.5 0.8 0.5 0.2 --duration 300
 $S <udid> swipe 0.5 0.999 0.5 0.5 --edge bottom   # go home from an app
 $S <udid> swipe 0.2 0.5 0.5 0.5 0.5 0.5 0.8 0.5   # more points bend the path; each segment takes equal time, so a repeated point holds

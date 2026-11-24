@@ -27,6 +27,7 @@ simdrive <udid|booted> <command>
 | `tap <x> <y> [--display D]` | Touch |
 | `tap --label <text> \| --id <identifier> [--timeout ms]` | Touches the onscreen element with exactly that label or accessibility identifier, waiting up to 5000 ms by default for it to appear |
 | `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top\|bottom\|left\|right] [--display D]` | Drag through the points, each segment taking equal time, so a repeated point holds; `--edge` starts a system edge gesture |
+| `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] --until-label <text> \| --until-id <identifier> [--max-swipes N]` | Repeats the swipe until the element is on screen, 10 times at most; no swipe when it already is |
 | `pinch <x> <y> <scale> [--duration ms] [--display D]` | Two fingers around the point spread to `scale` times their distance, or close below 1 |
 | `rotate <x> <y> <degrees> [--duration ms] [--display D]` | Two fingers turn around the point, clockwise when positive |
 | `button <name> [--repeat N] [--hold ms]` | Hardware or Apple TV Remote button, held 100 ms by default |
@@ -60,7 +61,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `key` | `{"key", "modifiers": [names], "count"}` |
 | `type` | `{"characters", "layout"}`; `layout` is the hardware keyboard layout typed on, such as `US` or `German` |
 | `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen. With `--label` or `--id`: `{"display", "element"}`, the element as the light tree describes it, whose `point` is where it was tapped |
-| `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}`, with `"via": [{"x", "y"}]` for more points |
+| `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}`, with `"via": [{"x", "y"}]` for more points. With `--until-label` or `--until-id`: `{"element", "swipes"}`, or `no-element` once `--max-swipes` run out |
 | `pinch`, `rotate` | `{"display", "center": {"x", "y"}, "scale"}` or `"degrees"` |
 | `button` | `{"button", "count"}` |
 | `posture` | `{"angle": degrees, "posture": "closed", "half" or "open"}` |
@@ -116,7 +117,7 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 
 `tree <x> <y>` returns the element VoiceOver finds at a point, with its descendants under `--full`, or fails with `no-element`. On a foldable, both refer to the panel in use.
 
-`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
+`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view; `swipe … --until-label` scrolls one into view. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
 
 ### Settings
 

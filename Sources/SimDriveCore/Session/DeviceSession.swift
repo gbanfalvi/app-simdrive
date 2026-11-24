@@ -8,6 +8,7 @@ final class DeviceSession {
     /// How long an app may take to come to the front after `simctl launch`, which returns seconds before it does. A
     /// freshly booted, busy simulator takes tens of seconds.
     private static let launchLimit: Duration = .seconds(30)
+    private static let scrollSettle: Duration = .milliseconds(400)
 
     private let udid: String
     private let device: SimulatorDevice
@@ -75,6 +76,8 @@ final class DeviceSession {
             return try await tap(selector, within: timeout)
         case .swipe(let path, let duration, let edge, let display):
             return try await swipe(through: path, duration: duration, edge: edge, display: display)
+        case .swipeUntil(let path, let duration, let selector, let maxSwipes):
+            return try await swipe(through: path, duration: duration, until: selector, maxSwipes: maxSwipes)
         case .pinch(let center, let scale, let duration, let display):
             return try await twoFingerGesture(around: center, duration: duration, display: display, result: ["scale": .number(scale)]) {
                 TwoFingerGesture.pinch(around: $0, scale: scale, screen: $1)
@@ -207,6 +210,25 @@ final class DeviceSession {
             result["via"] = .array(path.dropFirst().dropLast().map(screen.json))
         }
         return .object(result)
+    }
+
+    /// Swipes until the element is on screen, reading the tree first so a shown element costs no swipe.
+    private func swipe(through path: [ScreenPoint], duration: Duration, until selector: ElementSelector,
+                       maxSwipes: Int) async throws -> JSONValue {
+        var swipes = 0
+        while true {
+            if let found = try await readAccessibility({ try await self.accessibility.shownElement(selector) }) {
+                return ["element": found.json, "swipes": JSONValue(swipes)]
+            }
+            guard swipes < maxSwipes else {
+                throw SimDriveError(.noElement, "No onscreen element matches \(selector.argument) after \(swipes) swipes; "
+                                    + "swipe the other way, or raise --max-swipes.")
+            }
+            _ = try await swipe(through: path, duration: duration, edge: nil, display: .automatic)
+            swipes += 1
+            // A list keeps scrolling briefly after the touch ends, and the tree would catch it moving.
+            try await Task.sleep(for: Self.scrollSettle)
+        }
     }
 
     private func press(_ button: HardwareButton, count: Int, hold: Duration) async throws -> JSONValue {

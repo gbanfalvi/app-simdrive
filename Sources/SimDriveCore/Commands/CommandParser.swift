@@ -9,6 +9,7 @@ enum CommandParser {
     static let defaultButtonHold: Duration = .milliseconds(100)
     /// As long as `logs --until` waits by default.
     static let defaultElementTimeout: Duration = .milliseconds(5000)
+    static let defaultMaxSwipes = 10
     private static let postureNames: [String: DevicePosture] = [
         "closed": .closed, "half": .partiallyOpen, "partially-open": .partiallyOpen, "partiallyOpen": .partiallyOpen, "open": .open,
     ]
@@ -46,11 +47,20 @@ enum CommandParser {
             let values = try list.exactly(2, "x and y, or --label or --id")
             return .tap(try point(values[0], values[1]), display: try display(list.option("display")))
         case "swipe":
-            let list = try ArgumentList(rest, options: ["display", "duration", "edge"])
+            let list = try ArgumentList(rest, options: ["display", "duration", "edge", "until-label", "until-id", "max-swipes"])
             let values = try list.pairs(atLeast: 2, "x1 y1 x2 y2, then optionally more x y points")
             let duration = try list.positiveInteger("duration").map { Duration.milliseconds($0) } ?? defaultSwipeDuration
-            return .swipe(path: try values.map { try point($0.0, $0.1) }, duration: duration,
-                          edge: try edge(list.option("edge")), display: try display(list.option("display")))
+            let path = try values.map { try point($0.0, $0.1) }
+            if let selector = try elementSelector(list, label: "until-label", identifier: "until-id") {
+                guard list.option("display") == nil, list.option("edge") == nil else {
+                    throw SimDriveError.usage("swipe --until-label and --until-id read the frontmost app, so they take no --display "
+                                              + "or --edge")
+                }
+                return .swipeUntil(path: path, duration: duration, selector: selector,
+                                   maxSwipes: try list.positiveInteger("max-swipes") ?? defaultMaxSwipes)
+            }
+            guard list.option("max-swipes") == nil else { throw SimDriveError.usage("--max-swipes needs --until-label or --until-id") }
+            return .swipe(path: path, duration: duration, edge: try edge(list.option("edge")), display: try display(list.option("display")))
         case "pinch":
             let list = try ArgumentList(rest, options: ["display", "duration"])
             let values = try list.exactly(3, "x, y and a scale")
@@ -257,16 +267,17 @@ enum CommandParser {
         return point
     }
 
-    /// `--label` or `--id`, at most one of them, and not empty.
-    private static func elementSelector(_ list: ArgumentList) throws -> ElementSelector? {
-        switch (list.option("label"), list.option("id")) {
+    /// `--label` or `--id`, or the options named instead, at most one of them, and not empty.
+    private static func elementSelector(_ list: ArgumentList, label labelOption: String = "label",
+                                        identifier identifierOption: String = "id") throws -> ElementSelector? {
+        switch (list.option(labelOption), list.option(identifierOption)) {
         case (nil, nil): return nil
-        case (_?, _?): throw SimDriveError.usage("Pass --label or --id, not both")
+        case (_?, _?): throw SimDriveError.usage("Pass --\(labelOption) or --\(identifierOption), not both")
         case (let label?, nil):
-            guard !label.isEmpty else { throw SimDriveError.usage("--label needs text") }
+            guard !label.isEmpty else { throw SimDriveError.usage("--\(labelOption) needs text") }
             return .label(label)
         case (nil, let identifier?):
-            guard !identifier.isEmpty else { throw SimDriveError.usage("--id needs an identifier") }
+            guard !identifier.isEmpty else { throw SimDriveError.usage("--\(identifierOption) needs an identifier") }
             return .identifier(identifier)
         }
     }
@@ -328,6 +339,8 @@ enum CommandParser {
                                               taps the onscreen element with that exact label or identifier,
                                               waiting for it 5000 ms by default
           swipe <x1> <y1> <x2> <y2> [<x> <y> ...] [--duration ms] [--edge top|bottom|left|right] [--display D]
+          swipe <x1> <y1> <x2> <y2> [<x> <y> ...] --until-label <text> | --until-id <identifier> [--max-swipes N]
+                                              repeats the swipe until the element is on screen, 10 times at most
           pinch <x> <y> <scale> [--duration ms] [--display D]
                                               two fingers spread to scale times their distance, or close below 1
           rotate <x> <y> <degrees> [--duration ms] [--display D]

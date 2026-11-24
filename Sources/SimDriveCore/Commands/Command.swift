@@ -31,6 +31,8 @@ enum Command: Equatable, Sendable {
     case tapElement(ElementSelector, timeout: Duration)
     /// Drags through two or more points.
     case swipe(path: [ScreenPoint], duration: Duration, edge: ScreenEdge?, display: DisplaySelector)
+    /// Repeats a swipe until the element a selector names is on screen, at most `maxSwipes` times.
+    case swipeUntil(path: [ScreenPoint], duration: Duration, selector: ElementSelector, maxSwipes: Int)
     /// Two fingers spread to `scale` times their distance around `center`, or close below 1.
     case pinch(center: ScreenPoint, scale: Double, duration: Duration, display: DisplaySelector)
     /// Two fingers turn around `center`, clockwise for positive degrees.

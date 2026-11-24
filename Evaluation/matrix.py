@@ -294,6 +294,15 @@ def tap_checks(full):
     check('swipe scrolls (tree offscreen)', after.get('ok') and len(now) < len(before), f'{len(before)} -> {len(now)} offscreen rows')
     sd('swipe', '0.15', '0.3', '0.15', '0.9', '--duration', '200')
     time.sleep(1)
+    rows = [n.get('label') for n in voice_over(full) if (n.get('label') or '').startswith('Row ')]
+    if rows:
+        response = sd('swipe', '0.15', '0.8', '0.15', '0.3', '--until-label', rows[-1])
+        result = response.get('result', {})
+        check('swipe --until-label scrolls the last row into view', response.get('ok') and result.get('swipes', 0) > 0
+              and result.get('element', {}).get('label') == rows[-1] and 'offscreen' not in result.get('element', {}), brief(response))
+        response = sd('swipe', '0.15', '0.3', '0.15', '0.9', '--duration', '200', '--until-id', 'play-button')
+        check('swipe --until-id scrolls back', response.get('ok'), brief(response))
+        time.sleep(1)
     # Recognizers start after some movement, so they see a little less than the whole gesture.
     for command, amount, pattern, tolerance in [('pinch', 2, r'PINCH scale=([0-9.-]+)', 0.3), ('pinch', 0.5, r'PINCH scale=([0-9.-]+)', 0.1),
                                                 ('rotate', 90, r'ROTATE angle=([0-9.-]+)', 12), ('rotate', -45, r'ROTATE angle=([0-9.-]+)', 12)]:
