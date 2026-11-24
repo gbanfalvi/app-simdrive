@@ -17,6 +17,7 @@ final class DeviceSession {
     private let screens: Screens
     private let accessibility: DeviceAccessibility
     private let splitView: SplitView
+    private let split: SplitState
     private let settings: DeviceSettings
     private let logs: DeviceLogs
     private let apps: DeviceApps
@@ -42,9 +43,11 @@ final class DeviceSession {
         self.hinge = hinge
         inputs = DeviceInputs(guest: guest)
         screens = Screens(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
-        accessibility = DeviceAccessibility(device: device, screens: screens)
+        let split = SplitState()
+        self.split = split
+        accessibility = DeviceAccessibility(device: device, screens: screens, split: split)
         logs = DeviceLogs(udid: udid, tools: tools)
-        splitView = SplitView(screens: screens, inputs: inputs, accessibility: accessibility, logs: logs)
+        splitView = SplitView(screens: screens, state: split, inputs: inputs, accessibility: accessibility, logs: logs)
         accessibility.prepare()
         settings = DeviceSettings(udid: udid, device: device, tools: tools)
         apps = DeviceApps(udid: udid, tools: tools)
@@ -239,6 +242,8 @@ final class DeviceSession {
 
     private func setPosture(_ posture: DevicePosture) async throws -> JSONValue {
         let hinge = try await connectedHinge()
+        // Folding moves the app to the cover screen, and unfolding lays it out afresh.
+        split.forget()
         try await hinge.set(posture)
         return hinge.json
     }

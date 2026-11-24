@@ -12,11 +12,13 @@ final class DeviceAccessibility {
 
     private let device: SimulatorDevice
     private let screens: Screens
+    private let split: SplitState
     private let accessibility: LazyCapability<SimulatorAccessibility>
 
-    init(device: SimulatorDevice, screens: Screens) {
+    init(device: SimulatorDevice, screens: Screens, split: SplitState) {
         self.device = device
         self.screens = screens
+        self.split = split
         accessibility = LazyCapability { try await SimulatorAccessibility.open(device: device) }
     }
 
@@ -78,7 +80,7 @@ final class DeviceAccessibility {
         let fullLayout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen)
         let fillsHalf = fullLayout.spansUnder(Self.halfWidthLimit, windows: snapshot.element.children.map(\.frame))
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen,
-                                         appOrigin: appOrigin(fillsHalf: fillsHalf))
+                                         appOrigin: appOrigin(fillsHalf: fillsHalf, pid: snapshot.application.pid))
         return (snapshot, screen, layout)
     }
 
@@ -95,7 +97,8 @@ final class DeviceAccessibility {
         guard let snapshot = try await accessibility.snapshot(at: panelPoint, display: screen.display?.index ?? 0, detail: detail) else {
             throw noElement
         }
-        let origin = screens.splitLayout?.isHalf == true ? appOrigin(fillsHalf: try await fillsHalf()) : 0
+        let pid = snapshot.application.pid
+        let origin = split.layout(forApp: pid)?.isHalf == true ? appOrigin(fillsHalf: try await frontmostFill().fillsHalf, pid: pid) : 0
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: scale, screen: screen, appOrigin: origin)
         // Web content can answer with an element away from the point.
         guard layout.contains(fraction, in: snapshot.element) else { throw noElement }
@@ -107,17 +110,18 @@ final class DeviceAccessibility {
                 "element": element]
     }
 
-    /// Whether the frontmost app's windows fill one half of a split screen.
-    func fillsHalf() async throws -> Bool {
+    /// The frontmost app, and whether its windows fill one half of a split screen.
+    func frontmostFill() async throws -> (fillsHalf: Bool, pid: Int32?) {
         let screen = try await screens.screen(.automatic, usesPixels: false)
         let (application, frames) = try await connected().windows()
-        return AccessibilityLayout(appSize: application.screenSize, scale: device.screenScale, screen: screen)
+        let fillsHalf = AccessibilityLayout(appSize: application.screenSize, scale: device.screenScale, screen: screen)
             .spansUnder(Self.halfWidthLimit, windows: frames)
+        return (fillsHalf, application.pid)
     }
 
-    /// Only the half simdrive last set says which half a split app fills.
-    private func appOrigin(fillsHalf: Bool) -> CGFloat {
-        guard fillsHalf, let layout = screens.splitLayout, layout.isHalf else { return 0 }
+    /// Only the half simdrive set for this app says which half it fills; without one, frames start at the left edge.
+    private func appOrigin(fillsHalf: Bool, pid: Int32?) -> CGFloat {
+        guard fillsHalf, let layout = split.layout(forApp: pid), layout.isHalf else { return 0 }
         return layout.appOrigin
     }
 

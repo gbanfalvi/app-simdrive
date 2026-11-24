@@ -11,12 +11,14 @@ final class SplitView {
     }
 
     private let screens: Screens
+    private let state: SplitState
     private let inputs: DeviceInputs
     private let accessibility: DeviceAccessibility
     private let logs: DeviceLogs
 
-    init(screens: Screens, inputs: DeviceInputs, accessibility: DeviceAccessibility, logs: DeviceLogs) {
+    init(screens: Screens, state: SplitState, inputs: DeviceInputs, accessibility: DeviceAccessibility, logs: DeviceLogs) {
         self.screens = screens
+        self.state = state
         self.inputs = inputs
         self.accessibility = accessibility
         self.logs = logs
@@ -28,7 +30,10 @@ final class SplitView {
         guard screen.display?.role == SimulatorDisplay.innerRole, screen.record.image.isLandscape else {
             throw SimDriveError(.splitUnsupported, "Split view needs an iPhone Duo's inner screen, unfolded and in landscape.")
         }
-        let start = if let current { current } else { try await layout() }
+        let frontmost = try await accessibility.frontmostFill()
+        let start = try current ?? layout(of: frontmost)
+        // Until it is confirmed, the side is unknown, so a failed move leaves nothing stale behind.
+        state.forget()
         if let gesture = SplitGesture.moving(from: start, to: target) {
             let dragStart = Date.now
             let shown = try await logs.entry(subsystem: DisplayLayout.subsystem, category: DisplayLayout.category,
@@ -41,15 +46,16 @@ final class SplitView {
                 try await confirmLayout(target, since: dragStart)
             }
         }
-        screens.splitLayout = target
+        state.remember(target, forApp: frontmost.pid)
         return ["display": JSONValue(screen.display?.index), "from": .string(start.rawValue), "layout": .string(target.rawValue)]
     }
 
-    /// Accessibility tells a half from the whole screen but not which half, which only the last layout set tells.
-    private func layout() async throws -> SplitLayout {
-        guard try await accessibility.fillsHalf() else { return .full }
-        guard let remembered = screens.splitLayout, remembered.isHalf else {
-            throw SimDriveError(.splitSideUnknown, "The app fills a half that simdrive did not set; pass --from left or --from right.")
+    /// Accessibility tells a half from the whole screen but not which half, which only the layout set for this app tells.
+    private func layout(of frontmost: (fillsHalf: Bool, pid: Int32?)) throws -> SplitLayout {
+        guard frontmost.fillsHalf else { return .full }
+        guard let remembered = state.layout(forApp: frontmost.pid), remembered.isHalf else {
+            throw SimDriveError(.splitSideUnknown, "The app fills a half that simdrive did not set for it; pass --from left or "
+                                + "--from right.")
         }
         return remembered
     }

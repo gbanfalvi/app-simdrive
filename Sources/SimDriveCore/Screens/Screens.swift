@@ -18,8 +18,6 @@ final class Screens {
     private let orientation: LazyCapability<GuestOrientation>
     private let hinge: LazyCapability<Hinge>
     private let store: ScreenStore
-    /// Where the inner screen's app sits, as simdrive last set it; nil until it does.
-    var splitLayout: SplitLayout?
 
     init(udid: String, device: SimulatorDevice, tools: DeveloperTools, orientation: LazyCapability<GuestOrientation>,
          hinge: LazyCapability<Hinge>) {

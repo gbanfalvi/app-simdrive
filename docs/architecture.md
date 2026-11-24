@@ -32,7 +32,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes, on US or a `KeyboardLayout`. |
 | `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. |
 | `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes. |
-| `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs. |
+| `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs; `SplitState`, the half simdrive set, kept per app pid since reading SpringBoard's log for it takes seconds. |
 | `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |
 | `SimDriveCore/Settings` | `SettingCatalog` (one row per setting), `DeviceSettings`, `GuestPreferences`. |
 | `SimDriveCore/Logs` | `DeviceLogs`, `LogQuery`, `LogDigest`, `LogStore`, `LogEvent`, `CrashReports`. |

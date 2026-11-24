@@ -248,7 +248,14 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** give each cursor and the cached process name the `launchedAt` of the app they were read for. In `update`, drop a change whose launch no longer matches `contents.app`. Lock the file with `flock` around each read and write, since two processes write it.
 - **Test:** a `LogStore` unit test: read, record a new launch, write the stale cursor, and check that it was dropped. In the matrix, run `logs --until never --timeout 5000` in the background, relaunch the probe, then check that `logs` returns its `TAP play stdout`.
 
-### - [ ] F22. The split side is never reset (S, unverified)
+### - [x] F22. The split side is never reset (S)
+
+**Result:**
+- **Why remember:** reading SpringBoard's last `DisplayLayout` took 4 to 30 s with `--info --debug` on a Duo, iOS 27.2, too slow to derive the side on every `tree`, so it stays remembered.
+- **The fix:** the remembered side moved from `Screens`, which never used it, to `SplitState`. It now belongs to the pid of the app `split` moved, and is cleared when a move starts and on a posture change. `tree`, hit tests and `split` without `--from` ignore it for any other pid.
+- **Relaunch:** on the Duo, a relaunched probe came back full screen with a new pid, where the old code would have kept the stale half.
+- **Checks:** on a Duo you created, `split right --from full`, then `split left`, then a fold and unfold, each followed by `tap --id play-button`, which the probe saw every time. `split` after the fold asks for `--from`. `SplitStateTests` fail without the pid check.
+- **Left:** an app whose half simdrive did not set still reads as if on the left. Deriving the side from SpringBoard's log, only when `split-side-unknown` would be thrown, is the remaining option.
 
 - **Problem:** found in the architecture review (2026-11-24). `Screens.splitLayout` is set only by `split` and is never cleared: not on `launch`, `button home`, a posture change or a `split` that throws `split-dropped`. Example: after `split right` and `button home`, another app opening in the left half is read with the right half's origin, so `tree x y` misses (`no-element`) or its points shift by half the screen. The value lives in `Screens`, which never uses it; only `DeviceAccessibility` and `SplitView` read it.
 - **Read:** `S:SimDriveCore/Screens/Screens.swift`, `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`appOrigin`), `S:SimDriveCore/Split/SplitView.swift`, `S:SimDriveCore/Split/DisplayLayout.swift`.
