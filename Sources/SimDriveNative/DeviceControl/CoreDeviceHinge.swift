@@ -66,7 +66,7 @@ package final class CoreDeviceHinge {
                                             failure: Failure) async throws -> CoreDeviceHinge? {
         let getMotion = try await implementation.type.resolve(.swift(.method("CoreDevice.MonitorMotionProtocol.motionManager()",
             as: (() async throws(Failure) -> NativeSwiftValue).self)))
-        let motion = try await unsafe getMotion.unsafeInvoke(on: implementation)
+        let motion = try await remote.call("motionManager") { try await unsafe getMotion.unsafeInvoke(on: implementation) }
         let supportsHinge = try await motion.type.resolve(.swift(.getter("supportsHingeAngle", as: (() -> Bool).self)))
         guard try unsafe supportsHinge.unsafeInvoke(on: motion) else { return nil }
         return try await remote.runtime.prepare { _ in
@@ -103,7 +103,7 @@ package final class CoreDeviceHinge {
 
     /// Calls `update` with each hinge angle in degrees, or nil when the device reports none, until cancelled.
     package func observe(_ update: @escaping @MainActor (Double?) -> Void) async throws {
-        let owner = try await monitor(config)
+        let owner = try await remote.call("monitorHingeAngle") { [monitor, config] in try await monitor(config) }
         defer { withExtendedLifetime(owner) {} }
         guard let sequence = try owner.withCopy({ $0 as? any AsyncSequence }) else {
             throw SimDriveError(.hingeObservation, "The device's hinge angle could not be observed.")

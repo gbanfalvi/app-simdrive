@@ -20,16 +20,31 @@ struct SharedInitializationTests {
         #expect(runs == 1)
     }
 
-    @Test func aTimedOutRunIsForgotten() async throws {
+    @Test func aTimedOutRunIsWaitedOnAgainInsteadOfStartingAnother() async throws {
         var runs = 0
-        let shared = SharedInitialization(within: .milliseconds(50), timeout: Self.timeout) { () async throws -> Int in
+        let shared = SharedInitialization(within: .milliseconds(100), timeout: Self.timeout) { () async throws -> Int in
+            runs += 1
+            try await Task.sleep(for: .milliseconds(150))
+            return runs
+        }
+        await #expect(throws: Self.timeout) { try await shared.value() }
+        #expect(try await shared.value() == 1)
+        #expect(runs == 1)
+    }
+
+    @Test func aRunThatFailsAfterTimingOutIsForgotten() async throws {
+        var runs = 0
+        // The run outlasts the first caller's limit and fails well within the second's.
+        let shared = SharedInitialization(within: .milliseconds(100), timeout: Self.timeout) { () async throws -> Int in
             runs += 1
             if runs == 1 {
-                try await Task.sleep(for: .seconds(5))
+                try await Task.sleep(for: .milliseconds(150))
+                throw Self.failure
             }
             return runs
         }
         await #expect(throws: Self.timeout) { try await shared.value() }
+        await #expect(throws: Self.failure) { try await shared.value() }
         #expect(try await shared.value() == 2)
     }
 

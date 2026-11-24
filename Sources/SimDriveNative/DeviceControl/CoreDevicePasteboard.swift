@@ -18,6 +18,10 @@ package final class CoreDevicePasteboard {
     private let replace: @MainActor (NativeSwiftValue) async throws -> Void
     private let capture: @MainActor (NSPasteboard) async throws -> NativeSwiftValue
     private let write: @MainActor (NativeSwiftValue, NSPasteboard) throws -> Void
+    private let remote: CoreDeviceRemote
+
+    /// Whether a call went unanswered, so the pasteboard should be opened again.
+    package var hasFailed: Bool { remote.hasFailed }
 
     /// The simulator's pasteboard, or nil when it has none, as on tvOS. `remote` is only asked for when the guest has one.
     package static func open(guest: SimulatorGuest,
@@ -26,11 +30,13 @@ package final class CoreDevicePasteboard {
         let implementation = try await remote.implementation(capability: capability, feature: feature)
         let failure = try await remote.errorSample()
         return try await remote.runtime.prepare { runtime in
-            try await CoreDevicePasteboard(runtime: runtime, implementation: implementation, failure: failure)
+            try await CoreDevicePasteboard(runtime: runtime, remote: remote, implementation: implementation, failure: failure)
         }
     }
 
-    private init<Failure: Error>(runtime: ABIRuntime, implementation: NativeSwiftValue, failure: Failure) async throws {
+    private init<Failure: Error>(runtime: ABIRuntime, remote: CoreDeviceRemote, implementation: NativeSwiftValue,
+                                 failure: Failure) async throws {
+        self.remote = remote
         let snapshotType = try await runtime.resolve(.swift(.type("CoreDeviceUtilities.PasteboardSnapshot")))
         let policyType = try await runtime.resolve(.swift(.type("CoreDeviceUtilities.PasteboardDataInclusionPolicy")))
         let abis = try NativeType.opaqueABIs(for: [snapshotType, policyType])
@@ -48,10 +54,16 @@ package final class CoreDevicePasteboard {
             as: ((String, NativeSwiftValue) async throws(Failure) -> NativeSwiftValue).self, valueABIs: abis)))
         let name = Self.pasteboardName
         // An initializer owns its arguments, so each capture takes its own copy of the policy.
-        self.capture = { pasteboard in try await unsafe capture.unsafeInvoke(pasteboard, policy.copy()) }
+        self.capture = { pasteboard in
+            try await remote.call("PasteboardSnapshot(from:)") { try await unsafe capture.unsafeInvoke(pasteboard, policy.copy()) }
+        }
         self.write = { snapshot, pasteboard in _ = try unsafe write.unsafeInvoke(on: snapshot, pasteboard) }
-        self.current = { try await unsafe current.unsafeInvoke(on: implementation, name, policy) }
-        self.replace = { snapshot in _ = try await unsafe replace.unsafeInvoke(on: implementation, name, snapshot) }
+        self.current = {
+            try await remote.call("currentPasteboardSnapshot") { try await unsafe current.unsafeInvoke(on: implementation, name, policy) }
+        }
+        self.replace = { snapshot in
+            try await remote.call("setPasteboardContents") { _ = try await unsafe replace.unsafeInvoke(on: implementation, name, snapshot) }
+        }
     }
 
     package func read() async throws -> [PasteboardItem] {

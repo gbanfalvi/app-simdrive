@@ -26,6 +26,8 @@ struct DeveloperTools: Sendable {
     private static let developerDirectoryVariable = "DEVELOPER_DIR"
     /// simctl passes these variables, without the prefix, to the processes it starts.
     private static let childEnvironmentPrefix = "SIMCTL_CHILD_"
+    /// How long a tool may run before it is stopped, so a guest that never answers cannot hold up the device's daemon.
+    static let defaultLimit: Duration = .seconds(60)
 
     let developerDirectory: String
     private let simctlCommand: [String]
@@ -43,7 +45,7 @@ struct DeveloperTools: Sendable {
         if let directory = environment[developerDirectoryOverride] ?? environment[developerDirectoryVariable], !directory.isEmpty {
             return directory
         }
-        let result = try await run([xcodeSelect, "-p"], environment: environment)
+        let result = try await run([xcodeSelect, "-p"], environment: environment, limit: defaultLimit, name: "xcode-select")
         let directory = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard result.succeeded, !directory.isEmpty else {
             throw SimDriveError(.developerDirectory, "xcode-select has no developer directory: \(result.diagnostics)")
@@ -59,13 +61,16 @@ struct DeveloperTools: Sendable {
     }
 
     /// Runs `simctl` and returns its result, whether or not it succeeded. `childEnvironment` reaches what it launches.
-    func simctlResult(_ arguments: [String], childEnvironment: [String: String] = [:]) async throws -> ToolResult {
+    /// Past `limit` it is stopped, and the call fails with `tool-timeout`.
+    func simctlResult(_ arguments: [String], childEnvironment: [String: String] = [:],
+                      limit: Duration = defaultLimit) async throws -> ToolResult {
         var environment = ProcessInfo.processInfo.environment
         environment[Self.developerDirectoryVariable] = developerDirectory
         for (name, value) in childEnvironment {
             environment[Self.childEnvironmentPrefix + name] = value
         }
-        return try await Self.run(simctlCommand + arguments, environment: environment)
+        return try await Self.run(simctlCommand + arguments, environment: environment, limit: limit,
+                                  name: "simctl \(arguments.first ?? "")")
     }
 
     /// Starts `simctl`, whose standard output then arrives line by line.
@@ -77,8 +82,8 @@ struct DeveloperTools: Sendable {
 
     /// Runs `simctl` and throws its diagnostics when it fails.
     @discardableResult
-    func simctl(_ arguments: [String], childEnvironment: [String: String] = [:]) async throws -> ToolResult {
-        let result = try await simctlResult(arguments, childEnvironment: childEnvironment)
+    func simctl(_ arguments: [String], childEnvironment: [String: String] = [:], limit: Duration = defaultLimit) async throws -> ToolResult {
+        let result = try await simctlResult(arguments, childEnvironment: childEnvironment, limit: limit)
         guard result.succeeded else {
             throw SimDriveError(.simctl, "simctl \(arguments.first ?? "") failed: \(result.diagnostics)")
         }
@@ -87,18 +92,12 @@ struct DeveloperTools: Sendable {
 
     /// Extracts the members of a zip archive that match `pattern` into `directory`.
     func unzip(_ archive: String, members pattern: String, into directory: String) async throws -> ToolResult {
-        try await Self.run([Self.unzip, "-qq", "-o", archive, pattern, "-d", directory], environment: ProcessInfo.processInfo.environment)
+        try await Self.run([Self.unzip, "-qq", "-o", archive, pattern, "-d", directory], environment: ProcessInfo.processInfo.environment,
+                           limit: Self.defaultLimit, name: "unzip")
     }
 
-    private static func run(_ command: [String], environment: [String: String]) async throws -> ToolResult {
-        try await withCheckedThrowingContinuation { continuation in
-            DispatchQueue.global().async {
-                continuation.resume(with: Result { try runSynchronously(command, environment: environment) })
-            }
-        }
-    }
-
-    private static func runSynchronously(_ command: [String], environment: [String: String]) throws -> ToolResult {
+    /// Runs a tool to its end, or stops it after `limit` and fails with `tool-timeout`.
+    static func run(_ command: [String], environment: [String: String], limit: Duration, name: String) async throws -> ToolResult {
         let process = Process()
         process.executableURL = URL(fileURLWithPath: command[0])
         process.arguments = Array(command.dropFirst())
@@ -108,7 +107,26 @@ struct DeveloperTools: Sendable {
         process.standardOutput = output
         process.standardError = errors
         process.standardInput = FileHandle.nullDevice
-        try process.run()
+        let timeout = SimDriveError(.toolTimeout, "\(name) did not finish within \(limit.components.seconds) s and was stopped; retry, "
+                                    + "or take a screenshot to see whether the simulator responds.")
+        do {
+            // The wait is bounded on its own, since a process the tool started can keep its pipes open after it exits.
+            // `waitUntilExit` sees the exit only on the thread that launched the process, so both happen on one thread.
+            return try await waitForCompletion(within: limit, timeout: timeout) { done in
+                DispatchQueue.global().async {
+                    done(Result {
+                        try process.run()
+                        return collect(process, output: output, errors: errors)
+                    })
+                }
+            }.get()
+        } catch let error as SimDriveError where error == timeout {
+            if process.isRunning { process.terminate() }
+            throw error
+        }
+    }
+
+    private static func collect(_ process: Process, output: Pipe, errors: Pipe) -> ToolResult {
         // Both pipes drain while the process runs, so neither can fill and block it.
         nonisolated(unsafe) var errorData = Data()
         let group = DispatchGroup()

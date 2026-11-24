@@ -8,6 +8,8 @@ struct DeviceApps {
     private static let payloadDirectory = "Payload"
     private static let infoPlist = "Info.plist"
     private static let bundleIdentifierKey = "CFBundleIdentifier"
+    /// Large apps take minutes to copy and register.
+    private static let installLimit: Duration = .seconds(600)
 
     private let udid: String
     private let tools: DeveloperTools
@@ -19,7 +21,7 @@ struct DeviceApps {
 
     func install(_ path: String) async throws -> JSONValue {
         let bundleID = try await bundleIdentifier(of: URL(fileURLWithPath: path))
-        try await tools.simctl(["install", udid, path])
+        try await tools.simctl(["install", udid, path], limit: Self.installLimit)
         return ["bundleID": .string(bundleID)]
     }
 

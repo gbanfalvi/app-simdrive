@@ -62,12 +62,16 @@ enum CoreDeviceManager {
 package final class CoreDeviceRemote {
     private static let connectionLimit: Duration = .seconds(5)
     private static let connectionPollInterval: Duration = .milliseconds(250)
+    /// How long one capability call may take; they answer in milliseconds when CoreDevice works.
+    private static let callLimit: Duration = .seconds(15)
 
     let runtime: ABIRuntime
     private let type: NativeSwiftType
     private let object: NativeSwiftValue
     private let supportsFeature: NativeSwiftMethod<(String) -> Bool>
     private var cachedErrorSample: (any Error)?
+    /// Whether a call on this record went unanswered; its owner should open a new record.
+    package private(set) var hasFailed = false
 
     /// The CoreDevice record of `device` once CoreDevice connects to it; until then its features read as absent.
     package static func open(device: SimulatorDevice) async throws -> CoreDeviceRemote {
@@ -144,7 +148,22 @@ package final class CoreDeviceRemote {
         let get = try await type.resolve(.swift(.method("getImplementation(for:)",
             as: ((NativeSwiftValue) async throws -> NativeSwiftValue).self,
             genericArguments: [.type(capability)], valueABIs: abis)))
-        return try await unsafe get.unsafeInvoke(on: object, marker).copyUnderlyingValue()
+        return try await call("getImplementation") { [object] in
+            try await unsafe get.unsafeInvoke(on: object, marker).copyUnderlyingValue()
+        }
+    }
+
+    /// Runs a CoreDevice call that a stalled CoreDeviceService may never answer, failing with `coredevice-timeout`
+    /// after `callLimit`. A record with an unanswered call counts as failed.
+    func call<Value>(_ name: String, _ operation: @escaping @MainActor () async throws -> Value) async throws -> Value {
+        let timeout = SimDriveError(.coreDeviceTimeout, "CoreDevice did not answer \(name) within "
+                                    + "\(Self.callLimit.components.seconds) s; retry.")
+        do {
+            return try await withTimeLimit(Self.callLimit, timeout: timeout, operation)
+        } catch let error as SimDriveError where error == timeout {
+            hasFailed = true
+            throw error
+        }
     }
 
     /// A value of the CoreDevice error type that the capabilities' typed throws use, which binding them needs.

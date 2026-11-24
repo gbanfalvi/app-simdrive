@@ -77,7 +77,7 @@ flowchart LR
 2. `DeviceSession.tap` asks `Screens.touchscreen` for the `Screen` the point refers to. `Screens` picks the display: on a Duo, the hinge says whether the cover or inner panel is in use. It then finds that display's last screenshot record in `ScreenStore`, or takes a calibration screenshot when none matches the current orientation.
 3. `Screen.digitizerPoint` converts the fraction, which follows the interface's rotation as screenshots do, into the digitizer's unit coordinates, which follow the panel's native orientation (`ScreenMapping`).
 4. `DeviceInputs.tap` opens `GuestTouchscreen` through its `LazyCapability` if needed, which opens a `GuestConnection` to the guest's digitizer service. The touchscreen posts a touch-down and a touch-up, encoded by `GuestMessageCodec`, then flushes the connection.
-5. `DeviceInputs` restarts its 30 s idle timer, and the session returns the display and point as JSON.
+5. `DeviceInputs` starts its 30 s idle timer again, and the session returns the display and point as JSON.
 
 ### Following a tree
 
@@ -92,7 +92,7 @@ flowchart LR
 
 - Spawned with `posix_spawn` in its own session (`POSIX_SPAWN_SETSID`), so it outlives the client and its terminal. Its output goes to `<udid>.log`.
 - Each request carries `BuildStamp` (the executable's modification time) and the developer directory. A daemon that differs refuses with `stale-daemon` and exits; the client waits for its socket to go and retries once.
-- Exits after 10 idle minutes, on `stop`, or on SIGTERM, SIGINT or SIGHUP, releasing its input services first.
+- Exits after 10 idle minutes, on `stop`, or on SIGTERM, SIGINT or SIGHUP, releasing its input services first; it waits at most 3 s for them, since a guest that stopped answering cannot be released. `stop` is answered at once, ahead of the request queue, so a stuck request cannot keep the daemon alive; that request's client gets `daemon-ended`.
 - A `guest-connection` error releases every input, since a dead guest connection never recovers; the next command reconnects.
 
 ## State files
@@ -136,7 +136,7 @@ Guest services are reached the way CoreDevice's simulator plugin reaches them: `
 - **`Command`** is every command with its parsed arguments; `CommandParser` builds it and holds the usage text. Commands are values, so the parser is tested without a simulator.
 - **`DeviceSession`** owns one booted device's capabilities and runs commands against them. It is the only Core type that sees every capability; the others each own one subject.
 - **`LazyCapability<Service>`** opens a driver on first use and keeps it: nil means the device lacks it, for good; a throw is retried next time; `isUsable` reopens a failed one. Callers that arrive while it opens share that open.
-- **`DeviceInputs`** owns the keyboard, touchscreen and buttons, and releases all three after 30 s idle.
+- **`DeviceInputs`** owns the keyboard, touchscreen and buttons, and releases all three after 30 s idle. Each input holds an **`IdleRelease`** while it runs, so the release never closes a service mid-input.
 - **`Screens`** knows the device's displays and each one's last screenshot; it returns a **`Screen`**, which maps that display's points to the digitizer through **`ScreenMapping`**. `ScreenStore` persists the screenshot records across processes.
 - **`DeviceAccessibility`** places **`SimulatorAccessibility`**'s snapshots on the screen with **`AccessibilityLayout`**, and answers `becomesFrontmost` for `launch`.
 - **`SimulatorDevice`** wraps CoreSimulator's `SimDevice`; **`SimulatorGuest`** opens a **`GuestConnection`** per guest service, and a connection that ends reports `hasFailed`.
@@ -152,7 +152,11 @@ Every failure an agent can act on is a `SimDriveError`: an `ErrorCode`, the `cod
 
 - Core's stateful types and the drivers are `@MainActor`; value types such as `Command` and `LogQuery` are `Sendable`. The daemon serves one request at a time, so a command's awaits never interleave with another's.
 - `SimulatorAccessibility` runs translator calls on its own serial queue, since `AXPTranslator` calls its delegate synchronously and the delegate blocks until the guest replies.
-- `SharedInitialization` gives CoreDevice's process-wide start one bounded task that concurrent callers share; `waitForCompletion` bounds other waits on callbacks.
+- Every wait on something outside the process is bounded, since the daemon's queue waits behind it:
+  - `SharedInitialization` gives CoreDevice's process-wide start one task that concurrent callers share, each waiting at most 30 s. A start that outlasts a caller is kept for the next caller rather than started again.
+  - `CoreDeviceRemote.call` limits each capability call to 15 s and marks the record failed when one goes unanswered, so the session opens a new one.
+  - `DeveloperTools` stops a tool after its limit, 60 s by default, 120 s for `log show` and 10 minutes for `install`, and fails with `tool-timeout`.
+  - `waitForCompletion` and `withTimeLimit` bound the other waits on callbacks.
 - Sleeps that hold an input, such as a touch or a key, use `pause`, which cannot throw, so the release is always sent.
 
 ## Tests and evaluation

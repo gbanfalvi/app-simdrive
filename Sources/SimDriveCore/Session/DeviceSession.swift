@@ -29,13 +29,15 @@ final class DeviceSession {
         self.device = device
         bootedAt = device.lastBootedAt
         self.tools = tools
-        let coreDevice = LazyCapability { try await CoreDeviceRemote.open(device: device) }
+        let coreDevice = LazyCapability(isUsable: { !$0.hasFailed }) { try await CoreDeviceRemote.open(device: device) }
         let orientation = LazyCapability(isUsable: { !$0.hasFailed }) { try await GuestOrientation.open(guest: guest) }
         let hinge = LazyCapability<Hinge>(close: { $0.stop() }) {
             guard let remote = try await coreDevice.value() else { return nil }
             return try await Hinge.open(remote: remote)
         }
-        pasteboard = LazyCapability { try await CoreDevicePasteboard.open(guest: guest, remote: { try await coreDevice.value() }) }
+        pasteboard = LazyCapability(isUsable: { !$0.hasFailed }) {
+            try await CoreDevicePasteboard.open(guest: guest, remote: { try await coreDevice.value() })
+        }
         self.orientation = orientation
         self.hinge = hinge
         inputs = DeviceInputs(guest: guest)

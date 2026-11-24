@@ -9,6 +9,8 @@ struct DeviceLogs {
     private static let streamAttachLimit: Duration = .seconds(5)
     /// How long a stream outlives its wait should simdrive fail to stop it.
     private static let streamBackstop: Duration = .seconds(60)
+    /// `log show` over a long `--since` reads the guest's whole log store.
+    private static let showLimit: Duration = .seconds(120)
     /// Past the last entry read, so the next read starts after it.
     private static let cursorStep: TimeInterval = 0.000_001
     /// Apps log an input's effects after the input returns: about 100 ms after a tap on the Duo.
@@ -156,7 +158,7 @@ struct DeviceLogs {
     }
 
     private func show(_ query: LogQuery, target: LogTarget, since start: Date) async throws -> [LogEvent] {
-        let result = try await tools.simctlResult(query.showArguments(udid: udid, target: target, since: start))
+        let result = try await tools.simctlResult(query.showArguments(udid: udid, target: target, since: start), limit: Self.showLimit)
         guard result.succeeded else { throw SimDriveError(.logRead, "log show failed: \(result.diagnostics)") }
         return result.standardOutput.split(separator: "\n").compactMap { LogEvent(ndjson: String($0)) }.filter { $0.date >= start }
     }

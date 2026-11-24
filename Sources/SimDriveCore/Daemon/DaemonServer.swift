@@ -7,6 +7,8 @@ import SimDriveNative
 final class DaemonServer {
     private static let idleLimit: Duration = .seconds(600)
     private static let idleCheck: Duration = .seconds(5)
+    /// How long closing the session may take at shutdown, since a guest that stopped answering cannot be released.
+    private static let closeLimit: Duration = .seconds(3)
 
     private let udid: String
     private let tools: DeveloperTools
@@ -16,7 +18,8 @@ final class DaemonServer {
     private var pending: Task<Void, Never>?
     private var listener: Int32 = -1
     private var signalSources: [any DispatchSourceSignal] = []
-    private var isStopping = false
+    /// Set once shutdown starts; the idle loop, a `stop` request and a signal all await this one shutdown.
+    private var stopping: Task<Void, Never>?
 
     init(udid: String, tools: DeveloperTools) {
         self.udid = udid
@@ -31,7 +34,7 @@ final class DaemonServer {
         log("listening for \(udid) with \(tools.developerDirectory)")
         // accept() blocks, so it waits on a thread of its own and hands each request to the main actor.
         Thread.detachNewThread { [self] in Self.acceptConnections(on: listener, server: self) }
-        while !isStopping {
+        while stopping == nil {
             try? await Task.sleep(for: Self.idleCheck)
             if activeRequests == 0, ContinuousClock.now - lastActivity > Self.idleLimit {
                 log("idle; exiting")
@@ -62,6 +65,11 @@ final class DaemonServer {
     }
 
     private func respond(to message: Data?) async -> (Data, Bool) {
+        // `stop` skips the queue, so a request stuck on the guest cannot keep the daemon from stopping.
+        if Self.isStop(message) {
+            log("stopping on request")
+            return ((try? JSONEncoder.line.encode(CommandResponse.success(["stopped": true]))) ?? Data(), true)
+        }
         activeRequests += 1
         lastActivity = .now
         defer {
@@ -89,7 +97,6 @@ final class DaemonServer {
         }
         do {
             let command = try CommandParser.parse(request.arguments)
-            if command == .stop { return (.success(["stopped": true]), true) }
             let session = try await openSession()
             return (.success(try await session.execute(command, workingDirectory: request.workingDirectory)), false)
         } catch {
@@ -100,6 +107,12 @@ final class DaemonServer {
             // A shut-down device has nothing to serve; the next command starts a daemon once it boots.
             return (.failure(error), code == .notBooted)
         }
+    }
+
+    /// A daemon of any build stops when asked, so a client never needs to match its build to stop it.
+    private static func isStop(_ message: Data?) -> Bool {
+        guard let message, let request = try? JSONDecoder().decode(DaemonRequest.self, from: message) else { return false }
+        return (try? CommandParser.parse(request.arguments)) == .stop
     }
 
     private func openSession() async throws -> DeviceSession {
@@ -115,9 +128,25 @@ final class DaemonServer {
     }
 
     private func shutdown() async {
+        let stopping = self.stopping ?? Task { await closeAll() }
+        self.stopping = stopping
+        await stopping.value
+    }
+
+    private func closeAll() async {
+        if let session {
+            do {
+                try await waitForCompletion(within: Self.closeLimit, timeout: SimDriveError(.daemonSocket, "closing timed out")) { done in
+                    Task { @MainActor in
+                        await session.close()
+                        done(())
+                    }
+                }
+            } catch {
+                log("the session did not close within \(Self.closeLimit.components.seconds) s; exiting without it")
+            }
+        }
         guard listener >= 0 else { return }
-        isStopping = true
-        await session?.close()
         close(listener)
         listener = -1
         unlink(StatePaths.socket(for: udid).path)
