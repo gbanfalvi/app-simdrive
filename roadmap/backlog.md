@@ -206,6 +206,81 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Problem:** found driving Max on an iPad iOS 27.0. After `setting full-keyboard-access off`, `launch` failed with `launch-not-frontmost` though the app was in front, and `tree` with "The frontmost app has no frame yet; wait for it to finish launching" after its 20 s deadline, on every try. Turning Full Keyboard Access on brought both back.
 - **Test:** the matrix's `settings` section on iPhone iOS 17.0 and 27.2.
 
+### - [x] F19. The idle input release can close an input while a command is still using it (S)
+
+**Result:** every input in `DeviceInputs` now runs inside `IdleRelease.hold`, which stops the pending release when the input starts and starts the idle period again when it ends; the release also checks that no input holds it. `IdleReleaseTests` fail without these two guards. The matrix passes 116/116 on iPhone 17, iOS 27.2. The input that crosses t=30 s was not run in the matrix.
+
+- **Problem:** found in the architecture review (2026-11-24), read from the code but not run. `DeviceInputs.scheduleRelease()` runs only when an input finishes, so the timer from the previous input keeps running during the next one. The timer is a main-actor `Task`, which can run at the input's `pause` and `flush` awaits; serving one request at a time in the daemon doesn't stop that. Example: `tap` at t=0, then `key down --repeat 10`, `button lock --hold 2000` or a 1 s `swipe` that crosses t=30 s. `release()` removes the keyboard or drains the touchscreen partway through, and the command still returns `ok`.
+- **Read:** `S:SimDriveCore/Input/DeviceInputs.swift` (`scheduleRelease`, `release`), `S:SimDriveNative/Input/GuestKeyboard.swift` (`close`).
+- **Do:** cancel `idleRelease` when every input method starts, not only when it ends. Track inputs in flight, and skip the release while any is running.
+- **Test:** a unit test with a short, injected idle interval and a fake input that awaits across it. In the matrix's `keys` section, add `key down --repeat 20` started 29.5 s after a tap.
+
+### - [x] F20. One stuck tool or CoreDevice call blocks a device's daemon, `stop` included (M)
+
+**Result:**
+- **Tools:** `DeveloperTools.run` stops a tool past its limit and fails with `tool-timeout`: 60 s by default, 120 s for `log show`, 10 minutes for `install`. `Process.waitUntilExit` sees an exit only on the thread that launched the process, so launching on one thread and waiting on another hung about one `setting` read in 16; `toolsRunTogetherAllFinish` now catches that.
+- **CoreDevice:** capability calls go through `CoreDeviceRemote.call`, limited to 15 s. A record with an unanswered call reads `hasFailed`, and the session then reopens it and the pasteboard. `SharedInitialization` keeps a run that outlasted a caller, so later callers wait on it instead of starting another.
+- **`stop`:** answered ahead of the queue: 0.14 s while `run` with `wait 60000` was in progress, where it used to wait out the run. Shutdown waits at most 3 s for the session to close.
+- **Checks:** unit tests prove each part fails when broken. The matrix passes 116/116 on iPhone 17, iOS 27.2. No real CoreDevice stall was reproduced.
+- **Left:** the hinge keeps its record after a timeout (I19), the client still reads the reply without a limit (I9), and each running tool blocks two dispatch threads, so dozens at once in one process would stall until their limits (I18).
+
+- **Problem:** found in the architecture review (2026-11-24), read from the code but not run. The daemon serves one request at a time, and several waits on it have no limit:
+  - `DeveloperTools.runSynchronously` waits on `simctl` without one (`launch`, `spawn … defaults write`, `log show`, `io screenshot`, `get_app_container`).
+  - The CoreDevice capability calls have none: the pasteboard's `current`, `replace` and `capture`, `CoreDeviceRemote.getImplementation`, and the hinge's `motionManager`. F6 limited only `awaitFullInitialization`.
+  - `SharedInitialization.value()` forgets a run that timed out while it is still going, so each retry starts another `DeviceManager` and they pile up. On a Duo every tap passes through `hinge.value()`, so every tap waits 30 s.
+  - `stop` waits behind the stuck request, and `DaemonClient.exchange` reads without a timeout, so the agent's shell hangs as well. Only killing the daemon recovers.
+- **Read:** `S:SimDriveCore/Tools/DeveloperTools.swift`, `S:SimDriveCore/Daemon/DaemonServer.swift` (`respond`, `handle`), `S:SimDriveNative/DeviceControl/CoreDevicePasteboard.swift`, `S:SimDriveNative/CoreDevice/CoreDeviceRemote.swift`, `S:SimDriveNative/DeviceControl/CoreDeviceHinge.swift`, `S:SimDriveNative/Support/SharedInitialization.swift`; I9, which cancels requests whose client went away.
+- **Do:**
+  1. Give `simctlResult` a time limit, with a default per call, that terminates the process and fails with a new `tool-timeout` code.
+  2. Wrap each CoreDevice call in `waitForCompletion(within:timeout:)`. After a timeout, mark the remote unusable (`hasFailed`, with `isUsable` on its `LazyCapability`) so the next use reopens it.
+  3. Keep `SharedInitialization`'s run after a timeout, so later callers wait on it again; forget it only once it fails or finishes.
+  4. Answer `stop` outside the request queue: cancel the request in flight, release the inputs, and exit.
+- **Test:** unit tests for `SharedInitialization` keeping a run after a timeout, and for `simctlResult` killing a `sleep 60` stand-in. Check by hand: `stop` answers within 1 s while `run` with `wait 60000` is in progress.
+
+### - [ ] F21. `logs` in the command line writes a stale cursor and process name back after `launch` (S)
+
+- **Problem:** found in the architecture review (2026-11-24), read from the code but not run. A top-level `logs` runs in the client process. It reads `LogStore` when it starts and writes its cursor when it ends, so a `logs --until` running in the background, as the skill suggests, can span a `launch`.
+  - `recordLaunch` resets every cursor, but the client then writes back its earlier cursor, offsets into the old stdout file included. The new app's output goes to the same path, so the next `logs` skips its first bytes without saying so.
+  - `target(of:)` likewise writes the old app's process name into the new app's record, and later reads then filter on the wrong process.
+- **Read:** `S:SimDriveCore/Logs/DeviceLogs.swift` (`read`, `attach`, `target(of:)`), `S:SimDriveCore/Logs/LogStore.swift`.
+- **Do:** give each cursor and the cached process name the `launchedAt` of the app they were read for. In `update`, drop a change whose launch no longer matches `contents.app`. Lock the file with `flock` around each read and write, since two processes write it.
+- **Test:** a `LogStore` unit test: read, record a new launch, write the stale cursor, and check that it was dropped. In the matrix, run `logs --until never --timeout 5000` in the background, relaunch the probe, then check that `logs` returns its `TAP play stdout`.
+
+### - [ ] F22. The split side is never reset (S, unverified)
+
+- **Problem:** found in the architecture review (2026-11-24). `Screens.splitLayout` is set only by `split` and is never cleared: not on `launch`, `button home`, a posture change or a `split` that throws `split-dropped`. Example: after `split right` and `button home`, another app opening in the left half is read with the right half's origin, so `tree x y` misses (`no-element`) or its points shift by half the screen. The value lives in `Screens`, which never uses it; only `DeviceAccessibility` and `SplitView` read it.
+- **Read:** `S:SimDriveCore/Screens/Screens.swift`, `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`appOrigin`), `S:SimDriveCore/Split/SplitView.swift`, `S:SimDriveCore/Split/DisplayLayout.swift`.
+- **Do:** derive the side from the last `DisplayLayout` SpringBoard logged, with one short `log show` when `fillsHalf` is true. That also removes `split-side-unknown`. If that proves too slow, move the state into `SplitView`, and reset it wherever screen records are reset.
+- **Test:** on a Duo you created: `split right`, `button home`, launch the probe in the left half, then run `tree` at one of its elements.
+
+### - [ ] F23. Screen records outlive rotations of the interface alone (M, unverified)
+
+- **Problem:** found in the architecture review (2026-11-24). `Screens.screen` keeps using a record while the *device* orientation stays the same. Only `launch`, `openurl` and `button home` forget records, so these all leave a stale record that maps taps through the wrong rotation: tapping a landscape-only app's icon on SpringBoard, the app switcher, a video player that forces landscape, or a link handled inside the app. A pixel tap doesn't fail with `stale-screenshot` either. Keeping a value in sync this way, instead of deriving it, also spreads `forgetScreenshots` calls across `DeviceSession`.
+- **Read:** `S:SimDriveCore/Screens/Screens.swift` (`screen`, `forgetScreenshots`), `S:SimDriveCore/Session/DeviceSession.swift`, `S:SimDriveNative/Simulator/SimulatorDevice.swift` (the interface orientation).
+- **Do:** on each `screen()` call, read the screen's interface orientation in process and compare it with the record's. When they differ, recalibrate for fractions or throw `stale-screenshot` for pixels. Then delete the `forgetScreenshots` call sites. Measure what the extra read costs per tap first (`--timing`).
+- **Test:** add a landscape-only scene to the probe, open it from SpringBoard by tapping its icon, then tap a fraction and check the probe's `TOUCH` line.
+
+### - [ ] F24. Sessions share the accessibility translator, but each brings its own bridge and read state (M, unverified)
+
+- **Problem:** found in the architecture review (2026-11-24). `AXPTranslator.sharedInstance` has one `bridgeTokenDelegate`, but each `SimulatorAccessibility` has its own queue, `AccessibilityBridge` and `AccessibilityRead`. After a reboot, the daemon opens a new session, whose `prepare()` replaces the delegate while the old session's read, which can take up to 20 s, still runs on its own queue. That old read then goes through the new bridge, under the new read's deadline, and writes its failure into the new read from another thread: a data race on an `@unchecked Sendable` object.
+- **Read:** `S:SimDriveNative/Accessibility/SimulatorAccessibility.swift` (`open`, `init`, `AccessibilityBridge`, `AccessibilityRead`), `S:SimDriveCore/Daemon/DaemonServer.swift` (`openSession`).
+- **Do:** give the translator, its bridge and one serial queue a single owner for the whole process. Keep each read's state per request, keyed by the token the callbacks already receive.
+- **Test:** reboot a simulator you created while `tree` runs in a loop through the daemon, then check that the next `tree` answers; run once with Thread Sanitizer (`swift build -c release --sanitize=thread`).
+
+### - [ ] F25. Two daemons can start for one device, and a stopping daemon removes another daemon's socket (S, unverified)
+
+- **Problem:** found in the architecture review (2026-11-24). Two cold calls at once each spawn a daemon. `UnixSocket.listen` checks with `connect`, then unlinks and binds. If both daemons pass that check before either listens, the second unlinks the first daemon's socket. The orphaned daemon goes idle after 10 minutes, and its `shutdown()` then unlinks the socket path, which is by then the live daemon's. The next call starts a third daemon while the second still holds the guest's inputs.
+- **Read:** `S:SimDriveCore/Daemon/UnixSocket.swift` (`listen`), `S:SimDriveCore/Daemon/DaemonServer.swift` (`run`, `shutdown`), `S:SimDriveCore/Daemon/DaemonClient.swift` (`connection`).
+- **Do:** hold an exclusive `flock` on `<udid>.lock` for the daemon's whole life; a daemon that can't take it exits. Have `shutdown` unlink only while it holds the lock.
+- **Test:** a unit test that starts two listeners on the same path in a temporary directory. By hand, run eight `simdrive <udid> doctor` calls at once from a cold start, then check that `pgrep -f "<udid> serve"` finds one daemon.
+
+### - [ ] F26. The state directory in `/tmp` is trusted without checking its owner (S)
+
+- **Problem:** found in the architecture review (2026-11-24). `StatePaths.directory` is `/tmp/simdrive-<uid>`, a predictable name in a directory every user can write to. `prepare()` accepts the directory if it already exists, whoever made it, and the daemon's log is opened with `O_CREAT | O_APPEND`, which follows symlinks. On a Mac with several users, another user who creates the directory first can redirect the log onto any file the victim can write, or answer on the socket in the daemon's place.
+- **Read:** `S:SimDriveCore/Daemon/StatePaths.swift`, `S:SimDriveCore/Daemon/DaemonClient.swift` (`spawnDaemon`).
+- **Do:** after `createDirectory`, `lstat` the directory and refuse, with a new `state-directory` code, unless it is a real directory owned by `getuid()` with mode 0700. Open the log with `O_NOFOLLOW`.
+- **Test:** a unit test pointing `prepare` at a directory with mode 0777 and at a symlink.
+
 ## 2. Improvements to existing commands
 
 ### - [x] I1. Type without per-key delays (S)
@@ -338,6 +413,8 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   1. Add `"retry": true|false` to error JSON, from a category on each `ErrorCode` (`S:SimDriveNative/Support/SimDriveError.swift`).
   2. In `DaemonServer`, cancel the request's `Task` when the client's socket closes. Inputs must still release what they hold; `pause` already ignores cancellation.
 - **Test:** unit tests for the category table. Run `logs --until never --timeout 60000` inside `run`, kill the client, and check that the next command answers at once.
+- **Seen (2026-11-24, architecture review):** about 25 of Native's codes, including `coredevice-not-ready`, `coredevice-timeout`, `guest-service-timeout` and `guest-connection`, appear in neither the README nor the skill. Document them alongside the retry categories. F20 limits the calls themselves.
+- **Seen (2026-11-24, F20):** `DaemonClient.exchange` still reads the reply with no limit. Every wait in the daemon is now bounded, and `stop` skips the queue, but a daemon blocked in a private call that bypasses those limits would still hang the agent's shell. Give the read a limit above the longest command limit, such as `install`'s 10 minutes, or derive it from the command.
 
 ### - [ ] I10. Apply settings through the guest's own setting actions (L, unverified)
 
@@ -409,6 +486,68 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - On "channel disconnected" AXe runs `simctl spawn <udid> launchctl kickstart -k user/foreground/com.apple.testmanagerd` and retries once; when SpringBoard died (zero frame, dead pid) it restarts `com.apple.CoreSimulator.bridge` (`A:Sources/AXe/Utilities/AccessibilityFetcher.swift:281-356`, `A:Packages/IDBKit/FBSimulatorControl/Commands/FBSimulatorAccessibilityCommands.swift:214-273`).
   - idb reports `springBoardRestarting` for 30 s after a restart, and reconnects its own accessibility connection when CoreSimulatorBridge restarts (`I:FBSimulatorAX/Commands/SimulatorAccessibilityCommands.swift:222-293`, `I:FBSimulatorAX/Translation/AXTranslationTransport.swift:72-198`).
 - **Do:** once F15 shows which restart clears the stuck state, run it after repeated unanswered reads, once per session, and say so in the result.
+
+### - [ ] I18. One way to wait with a deadline (M)
+
+- **Why:** found in the architecture review (2026-11-24). Each subsystem waits in its own way, and they behave differently:
+  - `Hinge.waitForAngle` polls every 100 ms for 15 s.
+  - `DeviceAccessibility.becomesFrontmost` polls, but each `application()` it calls retries for up to 20 s, so `launch`'s 30 s limit can stretch to about 50 s.
+  - `Screens.knownDeviceOrientation(within:)` races two tasks and leaves one reading the guest after the command returns.
+  - `DeviceLogs.entry` and `events(until:)` are two stream-plus-deadline implementations, and only one of them waits for the stream to attach.
+  - Native has `waitForCompletion` as well.
+
+  Tasks left running, and `DeviceAccessibility.prepare()`'s background read, also undercut `docs/architecture.md`'s claim that a request's awaits never interleave with another's.
+- **Read:** the files named above, and `S:SimDriveNative/Support/` (`waitForCompletion`).
+- **Seen (2026-11-24, F20):** `DeveloperTools.collect` blocks two dispatch threads per running tool, one per pipe, so about 30 tools at once in one process exhaust the pool and stall until their limits. Reading both pipes with `readabilityHandler`, as `ToolLines` does, would block none.
+- **Do:** one Core helper, `poll(every:within:)` with `withDeadline`, whose deadline also bounds the inner call and cancels what it started. Move the waits above onto it, and share `events(until:)`'s attach handling with `entry`.
+- **Test:** unit tests for the helper with an injected clock. The matrix's `basics`, `posture` and `logs` sections.
+
+### - [ ] I19. Rule out missing capabilities in the driver, before CoreDevice starts (S)
+
+- **Why:** found in the architecture review (2026-11-24). Drivers don't follow one pattern for "the device lacks this":
+  - `CoreDeviceHinge.open` needs a connected `CoreDeviceRemote` before it looks at the hardware model. So `posture` on an iPhone, iPad or Apple TV pays for starting CoreDevice (up to 30 s), and while CoreDevice isn't ready it fails with `coredevice-not-ready` instead of `posture-unsupported`.
+  - Its `v68*` model check would also turn down another foldable that `supportsHingeAngle` accepts.
+  - `GuestTouchscreen.open` never returns nil on tvOS; Core decides from the runtime's name (`SimulatorDevice.hasTouchscreen`) instead.
+  - The pasteboard takes the remote as a lazy closure, and the hinge as a value.
+  - `Hinge` calls `observe` with `try?`, so a failed observation shows up as `posture-timeout`.
+- **Read:** `S:SimDriveNative/DeviceControl/CoreDeviceHinge.swift`, `S:SimDriveNative/Input/GuestTouchscreen.swift`, `S:SimDriveCore/DeviceControl/Hinge.swift`, `S:SimDriveCore/Session/DeviceSession.swift`.
+- **Do:**
+  - Rule out devices without a hinge from the device type or the display count, before touching CoreDevice, and drop the model check.
+  - Give both CoreDevice drivers the lazy remote.
+  - Return nil from `GuestTouchscreen.open` on tvOS, and delete `hasTouchscreen`.
+  - Keep the observation's error and rethrow it from `waitForAngle`.
+- **Test:** `posture` right after `simctl boot` on an iPhone returns `posture-unsupported` within 1 s. The matrix's `tv` and `posture` sections.
+- **Seen (2026-11-24, F20):** after a CoreDevice call times out, the session reopens the remote and the pasteboard, but `Hinge` keeps its driver and its old remote. Give `Hinge` an `isUsable` that follows its remote's `hasFailed`, and have `LazyCapability` close a service it replaces, so the old observation stops.
+
+### - [ ] I20. Unit tests for the pure logic inside I/O types, and for the daemon (M)
+
+- **Why:** found in the architecture review (2026-11-24). The decisions most likely to regress have no unit tests, because they sit inside `@MainActor` classes that do I/O:
+  - in `Screens`: whether to recalibrate or throw `stale-screenshot`, and which display a Duo's posture means;
+  - in `DeviceLogs`: which cursor start wins, and `newLines` offsets and truncation;
+  - `Hinge.waitUntilSettled`;
+  - the drag plan in `GuestTouchscreen.drag`, which indexes out of range and kills the daemon if two paths differ in length;
+  - in `KeyboardLayout`: inverting the layout, dead keys, and `UCHRValidation`;
+  - the daemon: `UnixSocket` framing, `listen` refusing when a daemon is running, the stale-build replacement, and serialized requests.
+
+  `GuestInputTests.buttonUsagesAreDistinct` wouldn't fail if a usage were wrong.
+- **Read:** the types named above; `Tests/`.
+- **Do:** extract `ScreenRecordPolicy`, `LogCursorStart`, a settle detector and `DragPlan` (which checks path lengths) as pure types. Add a layout fixture file for `KeyboardLayout`, a table test of button usages, and socket tests in a temporary directory.
+- **Test:** prove each new test can fail by breaking the code it covers.
+
+### - [ ] I21. Move `launch` out of `DeviceSession`, and keep private shapes in Native (S)
+
+- **Why:** found in the architecture review (2026-11-24).
+  - `DeviceSession.launch` runs the whole launch: it enables app accessibility, prepares the output files, runs `simctl launch`, parses the pid, forgets screen records and waits for the app to come to the front. That is logic beyond calling a driver, while `DeviceApps` stays thin. `readAccessibility`'s error mapping belongs in `DeviceAccessibility`.
+  - Native leaks a few shapes into Core:
+    - `KeyboardBindings.init(runtime: ABIRuntime = .shared)` puts an ABIBridge type in its signature;
+    - `SimulatorDevice.interfaceChoice` takes raw `Int`s in CoreSimulator's order;
+    - `GuestOrientationReading.physical` is a raw CoreDevice string that reaches the JSON.
+- **Read:** `S:SimDriveCore/Session/DeviceSession.swift`, `S:SimDriveCore/Apps/DeviceApps.swift`, `S:SimDriveNative/Input/KeyboardBindings.swift`, `S:SimDriveNative/Simulator/SimulatorDevice.swift`, `S:SimDriveNative/DeviceControl/GuestOrientation.swift`.
+- **Do:**
+  - Move launch and `openURL` into `DeviceApps`, with the pid parse as a pure, tested function, and the error mapping into `DeviceAccessibility`.
+  - Make the runtime parameter internal, and give each setting option a typed choice.
+  - Keep the `physical` JSON spelling while mapping it from an enum.
+- **Test:** `swift test`; the matrix's `basics`, `tree`, `settings` and `logs` sections.
 
 ## 3. New features
 
