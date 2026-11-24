@@ -268,6 +268,20 @@ def element_checks(full):
         check('tap --label offscreen (expect element-offscreen)', response.get('code') == 'element-offscreen', brief(response))
 
 
+def interface_turn_checks():
+    """A landscape-only screen turns the interface of an upright phone alone; taps must follow it (F23)."""
+    sd('launch', BUNDLE, '-probeLandscape')
+    sd('tap', '0.25', '0.3')
+    log.wait(log.mark(), r'LANDSCAPE', 6)
+    time.sleep(1)
+    mark = log.mark()
+    response = sd('tap', '0.25', '0.3')
+    lines = log.wait(mark, r'TOUCH began')
+    check('tap after the interface turns alone', response.get('ok') and touch_near(lines, 'began', 0.25, 0.3),
+          '; '.join(line.split(' ', 1)[1] for line in lines if 'TOUCH' in line)[:120] or brief(response))
+    sd('launch', BUNDLE)
+
+
 def tap_checks(full):
     x, y = tap_point(element(full, 'Play'))
     mark = log.mark()
@@ -762,6 +776,8 @@ def main():
             pasteboard_write_checks(full)
         if full and want('tap'):
             tap_checks(full)
+            if not is_foldable and 'iPhone' in (doctor['result'].get('deviceType') or ''):
+                interface_turn_checks()
         if full and want('keys'):
             key_checks(full)
         if full and want('logs'):

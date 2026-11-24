@@ -43,9 +43,10 @@ final class Screens {
         let display = try await display(for: selector)
         let orientation = await knownDeviceOrientation() ?? .portrait
         var record = store.record(for: DigitizerTarget(display: display))
-        if let existing = record, existing.orientation != orientation {
+        if let existing = record,
+           !existing.isCurrent(deviceOrientation: orientation, interfaceOrientation: await interfaceOrientation(of: display)) {
             guard !usesPixels else {
-                throw SimDriveError(.staleScreenshot, "The device rotated since the last screenshot; take a new one.")
+                throw SimDriveError(.staleScreenshot, "The device or its interface rotated since the last screenshot; take a new one.")
             }
             record = nil
         }

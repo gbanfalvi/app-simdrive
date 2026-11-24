@@ -45,6 +45,8 @@ It appends lines to `Documents/probe.log` in its data container:
 
 The log outlives runs. The matrix notes its line count before each action and matches only later lines.
 
+Launched with `-probeLandscape`, the probe presents a landscape-only screen 3 s after its scene becomes active and logs `LANDSCAPE interface=…`. On an upright iPhone that turns the interface alone, with no launch, URL or Home press, which the matrix's `tap` section uses to check that taps follow it.
+
 Launched with `-probeCrash`, the probe calls `fatalError("probe crash")` 2 s after its scene becomes active. ReportCrash reports a repeat of the same crash only by updating the earlier report, so the matrix falls back to `logs --since 24h` when no new report arrives within 90 s.
 
 `ORIENT` uses UIKit's numbering, so device `landscape-left` logs 3 and `landscape-right` 4: the reverse of CoreSimulator's `uiOrientation` for the same rotation.

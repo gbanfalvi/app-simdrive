@@ -95,7 +95,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `tool-timeout` | A `simctl` call ran past its limit and was stopped | yes |
 | `unknown-key`, `unsupported-character` | A key or character the keyboard layout cannot type; paste it instead | no |
 | `no-touchscreen` | The device has no touchscreen, as an Apple TV | no |
-| `no-screenshot`, `stale-screenshot` | Pixel coordinates need a screenshot of the current orientation; take one | no |
+| `no-screenshot`, `stale-screenshot` | Pixel coordinates need a screenshot taken since the device or the interface last rotated; take one | no |
 | `screenshot`, `screenshot-read`, `screenshot-scale`, `screenshot-write` | A screenshot could not be captured, read, scaled or written | no |
 | `single-display`, `unknown-display` | `--display` names a display the device lacks | no |
 | `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `setting-unsupported`, `accessibility-unsupported` | The device lacks the capability | no |

@@ -262,7 +262,14 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** derive the side from the last `DisplayLayout` SpringBoard logged, with one short `log show` when `fillsHalf` is true. That also removes `split-side-unknown`. If that proves too slow, move the state into `SplitView`, and reset it wherever screen records are reset.
 - **Test:** on a Duo you created: `split right`, `button home`, launch the probe in the left half, then run `tree` at one of its elements.
 
-### - [ ] F23. Screen records outlive rotations of the interface alone (M, unverified)
+### - [x] F23. Screen records outlive rotations of the interface alone (M)
+
+**Result:**
+- **Confirmed:** the probe's new `-probeLandscape` argument presents a landscape-only screen 3 s after launch, with no `launch`, URL or Home press, so nothing forgets the record. On an upright iPhone 17, iOS 27.2, the previous build sent `tap 0.25 0.3` to (0.300, 0.750).
+- **The fix:** `Screens.screen` reads each display's interface orientation in process, and `ScreenshotRecord.isCurrent` compares it with the record's. A turned interface recalibrates fractions and fails pixels with `stale-screenshot`, the same as a rotated device. The same tap now lands at (0.250, 0.300). `ScreenshotRecordTests` fail without the comparison.
+- **Cost:** `tap`'s median was 86 ms before. After, it was 198 ms, then 87 and 87 ms over three timing rounds. The first round ran right after a launch.
+- **Checks:** the matrix's `tap` section checks the turn on iPhones (`tap after the interface turns alone`).
+- **Not done:** the `forgetScreenshots` calls after `launch`, `openurl` and `button home` stay until the interface read is confirmed on iOS 17 and 18, where a nil reading skips the comparison. Not checked on iPad or Duo.
 
 - **Problem:** found in the architecture review (2026-11-24). `Screens.screen` keeps using a record while the *device* orientation stays the same. Only `launch`, `openurl` and `button home` forget records, so these all leave a stale record that maps taps through the wrong rotation: tapping a landscape-only app's icon on SpringBoard, the app switcher, a video player that forces landscape, or a link handled inside the app. A pixel tap doesn't fail with `stale-screenshot` either. Keeping a value in sync this way, instead of deriving it, also spreads `forgetScreenshots` calls across `DeviceSession`.
 - **Read:** `S:SimDriveCore/Screens/Screens.swift` (`screen`, `forgetScreenshots`), `S:SimDriveCore/Session/DeviceSession.swift`, `S:SimDriveNative/Simulator/SimulatorDevice.swift` (the interface orientation).

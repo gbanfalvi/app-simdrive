@@ -15,6 +15,15 @@ extension ScreenshotRecord {
     init(_ shot: Screenshot, orientation: DeviceOrientation, interfaceOrientation: InterfaceOrientation?) {
         self.init(full: shot.full, image: shot.image, orientation: orientation, interfaceOrientation: interfaceOrientation)
     }
+
+    /// Whether the screen still looks as it did at capture: the device has not rotated, and neither has the interface,
+    /// which turns alone when a landscape-only app opens on a phone held upright. An interface orientation that either
+    /// side cannot read is not compared.
+    func isCurrent(deviceOrientation: DeviceOrientation, interfaceOrientation now: InterfaceOrientation?) -> Bool {
+        guard orientation == deviceOrientation else { return false }
+        guard let now, let interfaceOrientation else { return true }
+        return interfaceOrientation == now
+    }
 }
 
 /// The device's displays and each screen's last screenshot record, kept in a file so one-shot runs share them. A reboot

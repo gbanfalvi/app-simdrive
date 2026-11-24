@@ -312,6 +312,22 @@ extension ProbeViewController: UIGestureRecognizerDelegate {
                            shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool { true }
 }
 
+/// A screen that shows only in landscape, which the probe presents with `-probeLandscape`.
+final class LandscapeViewController: UIViewController {
+    override var supportedInterfaceOrientations: UIInterfaceOrientationMask { .landscape }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemTeal
+        view.accessibilityIdentifier = "landscape"
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        Log.write("LANDSCAPE interface=\(view.window?.windowScene?.effectiveGeometry.interfaceOrientation.rawValue ?? 0)")
+    }
+}
+
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -333,6 +349,15 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // After `launch` sees the app in front.
         if ProcessInfo.processInfo.arguments.contains("-probeCrash") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { fatalError("probe crash") }
+        }
+        // Turns the interface alone, as a landscape-only screen does on an upright phone, without a launch or a URL.
+        if ProcessInfo.processInfo.arguments.contains("-probeLandscape"), let root = window?.rootViewController,
+           root.presentedViewController == nil {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                let landscape = LandscapeViewController()
+                landscape.modalPresentationStyle = .fullScreen
+                root.present(landscape, animated: false)
+            }
         }
     }
     func sceneWillResignActive(_ scene: UIScene) { Log.write("SCENE inactive") }

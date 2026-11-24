@@ -63,7 +63,7 @@ echo '["tap 0.5 0.3", "logs --until loaded", "screenshot /tmp/b.png"]' | $S <udi
 ## Rules
 
 - Fractions need a decimal point: `1 1` is a pixel, `1.0 1.0` is the bottom-right corner.
-- Pixel coordinates refer to the most recent screenshot of that display. After rotating, take a new screenshot; `launch` and `button home` also reset it.
+- Pixel coordinates refer to the most recent screenshot of that display. After the device or the interface rotates, as when a landscape-only screen opens, take a new screenshot or get `stale-screenshot`; `launch` and `button home` also reset it. Fractions follow rotations on their own.
 - On iPhone Air and iPhone Duo, `simctl bootstatus` reports a failed data migration and can return before SpringBoard is up; the device still works. Retry a first command that times out.
 - Foldables: commands target the cover panel when closed and the inner panel otherwise; `--display cover|inner` overrides that.
 - Writing the pasteboard replaces the user's Mac clipboard while DeviceHub or another syncing host runs, and reading it shows what the user copied. Write only for text `type` cannot enter, and tell the user.
