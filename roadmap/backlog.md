@@ -697,6 +697,7 @@ NeoSimulator has none of these; `simctl` covers them.
 ### - [ ] N27. Target elements by label or identifier: `tap --label|--id`, `wait`, `scroll --until` (M)
 
 - **Why:** agents read the tree, then copy a point into `tap`; one call that resolves the element, and waits for it, removes a round trip and a race. Complements N15, which acts through accessibility instead of touches.
+- **Seen (2026-11-24, app_mono):** saved `run` step files can only tap fixed points, so a check written as `["tap 0.1977 0.1192", …]` breaks when a sidebar resizes; with `tap --label View` the same file survives layout changes. Inside `run`, there's no way to feed one step's `tree` result into the next.
 - **Read:**
   - AXe: `tap --id|--label|--value` with `--element-type`, `--wait-timeout` and `--poll-interval`; `gesture scroll-* --until-id|--until-label --max-swipes` and `--inside-id` (`A:README.md`).
   - agent-device: selectors (`id=`, `label=`, `role=`) and refs (`@e12`) for every action; `wait text|@ref|selector|absent`; `scroll --until`, with typed failure reasons (`D:website/docs/docs/commands.md:442-470,580`).
