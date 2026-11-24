@@ -13,11 +13,31 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
   `A:` is AXe at `cb30a64`, `I:` idb at `5f5a5fb`, `D:` agent-device at `655ede2` and `M:` [MobileBuildMCP](https://github.com/getsentry/MobileBuildMCP) at `2998ac7`, each from the repository root.
 
+- **Upstream review of 2026-11-24**: items and notes from the second review cite NeoSimulator at `c9710cf` (v0.10.3 and 13 commits since `d467c60`) and AXe at `1ffbd35` (v2.1.1 and staging builds). AXe's relicense rewrote its history: `cb30a64` is no longer reachable, and `9dfd60d` holds the same code, so `A:` paths at `cb30a64` resolve there. Older `N:` and `A:` line numbers have drifted, but every file they cite still exists. **AXe is GPL-3.0-only since v2.1.0**; simdrive is MIT, so take ideas and measurements from it, never code.
+
 - **Every item** follows [AGENTS.md](../AGENTS.md): "Adding a capability" for structure, the README and skill for docs, and [docs/](../docs) for what was learned. Verify on simulators you created with `swift build -c release`, then `Evaluation/matrix.py <udid>`. Measure speed claims with `--timing --label <name>` before and after (`SIMDRIVE=<path>` runs another build).
 - **Unverified** marks a claim taken from NeoSimulator's code or CoreSimulator's strings that nobody has run in simdrive.
 - Tick an item when it is merged, and move what was learned into `docs/`.
 
 ## 1. Fixes
+
+### - [ ] F28. Xcode 27.3 removes `IndigoButtonEvent`, which every guest connection resolves (S–M, do first)
+
+- **Problem:** NeoSimulator #631 and PR #632 reproduce it on Xcode 27.3 (27C5035i), whose CoreDeviceUtilities 699.2.0 no longer has `CoreDeviceUtilities.IndigoButtonEvent`.
+  - simdrive resolves that type in `GuestMessageCodec.init` (`S:SimDriveNative/Guest/GuestMessageCodec.swift`, `buttonEvents`), and every `SimulatorGuest` builds that codec. So on 27.3, opening any guest service fails, and keys, taps, orientation and buttons would all stop working, not just `button`. That part is inferred from the code; simdrive has not been run on 27.3.
+  - On the installed 27.2 (CoreDeviceUtilities 651.32), both `IndigoButtonEvent` and its replacement, `CustomButtonReport.init(usage:down:)`, exist, along with the `mainScreenButtons` descriptor (checked with `nm`), so the switch needs no version check.
+- **Read:**
+  - NeoSimulator's fix, d0a049b: `N:NeoSimulatorDeviceIO/CoreDevice/CoreDeviceButtonReports.swift:1-46 @c9710cf` builds `UniversalHID.HIDUsage(page:usage:)`, then `CoreDeviceUtilities.CustomButtonReport(usage:down:)`, then its `.report`.
+  - `N:NeoSimulatorDeviceIO/CoreDevice/CoreDeviceHIDService.swift:112-115 @c9710cf` adds the `HIDServiceType.mainScreenButtons` descriptor.
+  - `N:NeoSimulatorPresentationAdapters/Native/GuestScreenInput.swift:127-176 @c9710cf` creates the service on the first press and reconnects when its transport failed or the service was removed. On stop it releases held buttons, then removes the service, then flushes.
+  - In simdrive: `S:SimDriveNative/Input/GuestButtons.swift`, and `GuestKeyboard.swift` for how a UniversalHID service is created.
+- **Do:**
+  1. Send buttons as `CustomButtonReport`s through a `mainScreenButtons` service on `remote.universalhidservice`, the way `GuestKeyboard` does its keyboard. Keep the 400 ms settle after creating the service (`docs/private-apis.md`), and keep the service until the idle release, so a press doesn't pay that wait every time.
+  2. Delete `buttonEvents` and the `.buttonEvent` message type from `GuestMessageCodec`.
+  3. Resolve the codec's message families lazily, each where its driver first needs it, so a type a future Xcode removes takes only its own capability down, reported as `open() -> nil` or a named error.
+  4. On Apple TV, check that `mainScreenButtons` carries the remote's consumer-page usages: menu 0x223, select and arrows 0x41–0x45, channel 0x9C/0x9D. NeoSimulator sends those through SimulatorKit instead (`N:NeoSimulatorPresentationAdapters/Simulator/SimulatorPresentationRuntime.swift:593,656-657 @c9710cf`), so this is unverified.
+  5. Update `docs/private-apis.md` (the `remote.hid.button` row) and the README's tested Xcode versions.
+- **Test:** the matrix's buttons and `tv` sections on 27.2. Then every section on Xcode 27.3 once it is installed.
 
 ### - [x] F1. Keyboard input returns before the guest has its keys (S)
 
@@ -462,6 +482,7 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - Look-and-feel and Liquid Glass answer error 21046 and 21035 on iOS 26; color filters change only from iOS 27 (`GuestSettingsActions.swift:31-58`, `SimulatorGuestSettings.swift:43-58`).
   - Feature identifiers include `com.apple.coredevice.feature.voiceover`, `customizeappearancesettings`, `customizeliquidglass` and `customizeuistyle`.
   - The guest connection is the one simdrive's `GuestOrientation` uses (`S:SimDriveNative/DeviceControl/GuestOrientation.swift`), and its message encoding is in `S:SimDriveNative/Guest/GuestMessageCodec.swift`.
+- **Seen (2026-11-24, upstream review):** on Xcode 27.3 (CoreDeviceUtilities 699.2), `executionLocation` moved to `CoreDeviceUtilities.ActionDeclaration.executionLocation`, and NeoSimulator now falls back to it (861b9e0, `N:NeoSimulatorDeviceIO/CoreDevice/GuestSettingsActions.swift:122-136 @c9710cf`). This item needs the same fallback. N20 no longer depends on it: `devicectl device settings` covers those settings.
 - **Do:**
   1. Add a `GuestSettingActions` driver in `SimDriveNative/DeviceControl/`, with `value(of:)` and `set(_:to:)` for each action.
   2. Move the settings whose actions exist to it: `reduce-motion`, `show-borders` and `reduce-transparency`. Keep `defaults` for the rest.
@@ -595,6 +616,26 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - Keep the `physical` JSON spelling while mapping it from an enum.
 - **Test:** `swift test`; the matrix's `basics`, `tree`, `settings` and `logs` sections.
 
+### - [ ] I22. `swipe --until`: stop at the end of the content, read once the scroll rests, and slow before lifting (S)
+
+- **Why:** found in the upstream review (2026-11-24). N32 keeps swiping until `--max-swipes` runs out even when the list has already ended, reads after a fixed 400 ms however fast the content settles, and lifts the finger at full speed, so content can fling past the element. AXe has handled all of this since before `cb30a64`.
+- **Read:** `A:Sources/AXe/Utilities/ScrollUntil.swift:47-92 @1ffbd35`, which judges a read once two in a row have the same tree signature (types, ids, labels and frames), and stops when a swipe changes nothing. `A:Sources/AXe/Commands/Swipe.swift:159-181 @1ffbd35`, `restingPath`, which slows the path to a stop before lifting. In simdrive: `S:SimDriveCore/Session/DeviceSession.swift` (`swipe(through:duration:until:maxSwipes:)`).
+- **Do:** compare the light tree's signature before and after each swipe, and fail with `no-element` naming "reached the end" when nothing moved. Replace the fixed settle with reads until two in a row match, bounded at about 1 s. Add a resting tail to the swipe's path. AXe is GPL-3.0: reimplement, don't copy.
+- **Test:** the matrix scrolls past the probe's last row and expects the end-of-content failure after 2 or 3 swipes, not 10.
+
+### - [ ] I23. `tap --label|--id`: refuse a target that a keyboard, sheet or alert covers (S)
+
+- **Why:** found in the upstream review (2026-11-24). The light tree can list an element under the software keyboard or a sheet, and `tap --label` then taps whatever covers it. AXe's agent mode refuses with `targetCovered` or `keyboardCovered`, and its scroll-until counts an element as visible only when a hit test at its centre finds it.
+- **Read:** `A:Sources/AXe/Utilities/ScrollUntil.swift @1ffbd35` (its visibility check); in simdrive, `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`element(at:)`, which already hit-tests a point).
+- **Do:** before tapping, hit-test the element's tap point. When the hit is a different element, fail with a new `element-covered` code naming what covers it. Count the same element, or one inside it, as clear.
+- **Test:** the probe's text field with the software keyboard up, then `tap --label` on a row under the keyboard.
+
+### - [ ] I24. Send keys over the digitizer connection instead of a keyboard service (S experiment, unverified)
+
+- **Why:** found in the upstream review (2026-11-24). AXe sends `IndigoKeyboardButtonEvent {usageCode, state}` on the same `remote.hid.digitizer` XPC connection as its touches, creating no keyboard service and using no UniversalHIDKit observer. If keys reach apps that way in simdrive too, the guest might not count a hardware keyboard as connected, which hides the software keyboard and is half the reason inputs are released after 30 s, and `GuestKeyboard` would get simpler.
+- **Read:** `A:Packages/IDBKit/FBSimulatorControl/HID/FBSimulatorDTUHIDTransport.swift:188-205 @1ffbd35`, `A:Packages/IDBKit/FBSimulatorControl/HID/DTUHIDModels.swift:76-91 @1ffbd35`. `IndigoKeyboardButtonEvent` is not a type CoreDeviceUtilities exports, even on 27.2 (checked with `nm`): AXe builds that XPC dictionary by hand (`XPCEncoder`), so simdrive would have to encode it the same way, outside its ABIBridge bindings. Check that the guest still takes it on Xcode 27.3, since F28's `IndigoButtonEvent` did not survive there.
+- **Do:** a spike. Send one key that way on 27.2, check that the probe logs `KEY`, and check whether the software keyboard still shows for a focused text field. Adopt it only if both answers favor it. Then record the result in `docs/private-apis.md`.
+
 ## 3. New features
 
 Each new command needs a `Command` case, parsing, usage text, results JSON, an error code where it can fail, parser tests, a README row and a skill line, per AGENTS.md's "Adding a capability".
@@ -687,6 +728,7 @@ NeoSimulator has none of these; `simctl` covers them.
   - `privacy <grant|revoke|reset> <service> <bundle-id>` runs `simctl privacy`.
   - `status-bar override [--time 9:41] [--battery 100] …` and `status-bar clear` run `simctl status_bar`.
 - **Why:** agents need permissions granted without tapping alerts, deterministic status bars for screenshots, and push handling.
+- **Seen (2026-11-24, upstream review):** on Xcode 27, AXe overrides the status bar with `xcrun devicectl device simulate statusBar override` rather than `simctl status_bar`.
 - **Test:** the probe logs `PUSH <aps.alert>` from `userNotificationCenter(_:willPresent:)`. A privacy grant makes the probe's location request skip its alert. A status-bar override shows in a screenshot.
 
 ### - [ ] N12. `keyboard-language <code>` (S)
@@ -725,6 +767,10 @@ NeoSimulator has none of these; `simctl` covers them.
     - A disabled button answers a press and does nothing; check enabled first (`:17-18`).
     - A secure field reads back one `•` per UTF-16 unit (`N:NeoSimulatorManager/Logins/NativeFormSignIn.swift:243-259`).
   - **simdrive's side:** `S:SimDriveNative/Accessibility/SimulatorAccessibility.swift` already holds snapshot elements with translations (around 180-186) and sends through `AccessibilityChannel` (`S:SimDriveNative/Simulator/SimulatorDevice.swift:115-176`).
+- **Seen (2026-11-24, upstream review):** AXe's `--semantic-press` confirms the values above: request type 7, action 5, client type 2 (`A:Packages/IDBKit/FBSimulatorControl/Commands/FBAXSemanticPressGate.swift:93-110 @1ffbd35`, `FBAccessibilityElement.swift:259-271`). It also adds three things:
+  - It lets the translator's bridge callback fire exactly once per press, refusing a repeat, so a press is never replayed (why it needs this is unverified).
+  - It presses plain Buttons, not only CheckBoxes, for rows exposed as one Button whose centre tap misses the action.
+  - It requires an accessibility identifier.
 - **Do:**
   1. Add `perform(_ action:, on element:)` to `SimulatorAccessibility`, where the action is `press` or `setValue(String)`.
   2. In `SimDriveCore/Accessibility/`, resolve a target from `--label <text>`, `--id <identifier>` or `<x> <y>`. Use a fresh snapshot, require exactly one match, and fail with `no-element` or a new `ambiguous-element` code.
@@ -757,6 +803,11 @@ NeoSimulator has none of these; `simctl` covers them.
     5. Send `_rpc_forwardDidClose:` when done (`:249-337`).
   - **Timeouts:** 15 s to start and 5 s per answer (`N:NeoSimulatorDeviceIO/DeviceOperationPolicy.swift:73-76`). The service can exit with its last connection, and launchd then delays its restart by about 10 s (`SimulatorWebInspector.swift:61-63`), so the daemon should hold one connection.
   - **Inspectable pages:** Safari, `SafariViewService` (SFSafariViewController and ASWebAuthenticationSession), and an app's `WKWebView` with `isInspectable = true`.
+- **Seen (2026-11-24, upstream review):** for reading and tapping a page's controls, which covers filling forms, AXe now has a cheaper route through accessibility that works in any `WKWebView`, inspectable or not (`A:Packages/IDBKit/FBSimulatorControl/Commands/FBAXWebControls.swift:47-80,196-347 @1ffbd35`).
+  - It hit-tests a grid of points 80 pt apart, starting at the centre.
+  - Hits owned by `com.apple.WebKit.WebContent` (iOS attribute 3041, read with request type 2, attribute 63) are climbed through attribute 2202 to the page root, where the controls are collected.
+  - simdrive's `tree` never reaches the WebContent process. Consider it as `tree --web` before the Web Inspector, which stays needed for JavaScript.
+  - Its README measures a capture with the web content at 0.29 s, against 0.13 s without.
 - **Do:**
   1. Add a `SimDriveNative/WebInspector/` driver and `getenv` on `SimulatorDevice`.
   2. Add commands `web pages`, returning `[{"app", "bundleID", "page", "url", "title", "inUse"}]`, and `web eval [--page N] <js|->`, returning the value as JSON, or an error with the exception text.
@@ -811,7 +862,9 @@ NeoSimulator has none of these; `simctl` covers them.
 - **Do:** first check which simulators list the feature (`CoreDeviceRemote.supports`). If iPads do, add a driver and a command that holds the session in the daemon.
 - **Test:** the probe logs `SIZE w h` from `viewWillTransition(to:with:)`.
 
-### - [ ] N20. VoiceOver, color filters and look-and-feel settings (L, needs I10)
+### - [ ] N20. VoiceOver, color filters and look-and-feel settings (M)
+
+- **Seen (2026-11-24, upstream review):** I10 is no longer needed for this. AXe sets VoiceOver, the color filter with its intensity, Liquid Glass opacity, text size and contrast with `xcrun devicectl device settings appearance|voiceover`, and reads them back with `devicectl device info appearance|voiceover` (`A:Sources/AXe/Utilities/DeviceSettings.swift:92-96,242,340-341 @1ffbd35`). `devicectl device settings` exists in the installed Xcode 27. Prefer calling the CoreDevice capability behind it in process, as `pasteboard` does (unverified that it is reachable that way), and fall back to running `devicectl` through `DeveloperTools`.
 
 - **Do:** with I10's driver, add settings rows for:
   - `voiceover`, a toggle;
@@ -900,6 +953,7 @@ NeoSimulator has none of these; `simctl` covers them.
 ### - [ ] N28. `record start|stop`: video from the framebuffer (M)
 
 - **Read:** idb wraps the framebuffer IOSurface in a `CVPixelBuffer` and encodes H.264 or HEVC with VideoToolbox, pushing a frame only when the simulator renders one (`I:FBSimulatorVideo/README.md`). AXe encodes a screenshot per frame with `AVAssetWriter` (`A:Sources/AXe/Commands/RecordVideo.swift:153-200`). agent-device uses `simctl io recordVideo` and can overlay touches (`D:packages/platform-apple/src/recording/runtime.ts:39`).
+- **Seen (2026-11-24, upstream review):** AXe's `record-video` still encodes a screenshot per frame, but its new Mirror registers as a framebuffer surface consumer and encodes HEVC with `VTCompressionSession` (`A:Sources/AXe/Mirror/MirrorSession.swift:33,114-134,326-352`, `A:Packages/IDBKit/FBSimulatorControl/Framebuffer/FBFramebuffer.swift:34-157 @1ffbd35`). That is the better reference for the framebuffer route.
 - **Do:** start with `simctl io recordVideo` stopped by SIGINT, as Not planned describes; move to the framebuffer surfaces simdrive already reads (I7) if `simctl` is slow to start or misses the Duo's panels. The daemon owns the recording, so it survives between calls.
 - **Test:** record a matrix tap sequence on an iPhone and a Duo; check duration and frames with `ffprobe`.
 

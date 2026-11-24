@@ -12,7 +12,7 @@ Agents already have a shell. A CLI needs no MCP server, no client library and no
 
 Input goes to the guest's own HID services, as DeviceHub and NeoSimulator send it, so it works the same with DeviceHub open, NeoSimulator open, or nothing at all. Rejected:
 
-- **SimulatorKit's Indigo HID** (`IndigoHIDMessageForKeyboardArbitrary` through `SimDeviceLegacyHIDClient`), the path idb uses. On Xcode 27 it sends without error but nothing reaches apps, on iPad or Duo, with or without `setHardwareKeyboardEnabled:`.
+- **SimulatorKit's Indigo HID** (`IndigoHIDMessageForKeyboardArbitrary` through `SimDeviceLegacyHIDClient`), the path idb uses. On Xcode 27 it sends without error but nothing reaches apps, on iPad or Duo, with or without `setHardwareKeyboardEnabled:`. AXe has since found the likely cause: from CoreSimulator 1155.4, a running `dtuhidd`, the guest's CoreDevice HID daemon, suppresses the legacy `ExternalKeyboardService`. simdrive's own guest connections start `dtuhidd`, so Indigo cannot work alongside them (unverified in simdrive).
 - **Driving a front end**: pressing NeoSimulator's posture buttons through AXUIElement, or DeviceHub through `CGEventPostToPid` or System Events. Each needs that app running with a visible window and accessibility trust, and breaks when its UI changes.
 - **XCUITest**: needs a test runner per app, and could not tap the Duo's inner panel.
 - **Shipping inside NeoSimulator**: would tie simdrive to a GUI app and its releases.
