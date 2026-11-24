@@ -105,7 +105,7 @@ All live in `/tmp/simdrive-<uid>/`, mode 0700. `$TMPDIR` is not used: a Unix soc
 | `<udid>.log` | The daemon's log. |
 | `<udid>.screens.json` | The device's displays and each screen's last screenshot record, so one-shot runs and the daemon share calibration. Discarded when the boot date changes. |
 | `<udid>.calibration.png` | The full-resolution screenshot taken when fractions need a screen size, none is recorded and the framebuffer cannot be read. |
-| `<udid>.logs.json` | The app `launch` last started (bundle ID, pid, launch time, executable, output files) and each log cursor's position. `launch` replaces it. |
+| `<udid>.logs.json` | The app `launch` last started (bundle ID, pid, launch time, executable, output files) and each log cursor's position. `launch` replaces it. The command line and the daemon both write it, each under `<udid>.logs.json.lock`, and a write read before the latest `launch` is dropped. |
 
 The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.stderr.txt` in the device's own `tmp` directory, under its data path, since the guest resolves `simctl launch`'s paths in its filesystem.
 

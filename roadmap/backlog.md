@@ -237,7 +237,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   4. Answer `stop` outside the request queue: cancel the request in flight, release the inputs, and exit.
 - **Test:** unit tests for `SharedInitialization` keeping a run after a timeout, and for `simctlResult` killing a `sleep 60` stand-in. Check by hand: `stop` answers within 1 s while `run` with `wait 60000` is in progress.
 
-### - [ ] F21. `logs` in the command line writes a stale cursor and process name back after `launch` (S)
+### - [x] F21. `logs` in the command line writes a stale cursor and process name back after `launch` (S)
+
+**Result:** `LogStore.update(forLaunchAt:)` drops a cursor or process-name write when a `launch` happened since its read, and every update holds an `flock` on `<udid>.logs.json.lock`. `LogStoreTests` fail without the check. On iPhone 17, iOS 27.2: build up four stdout lines, start a background `logs --until`, relaunch the probe and tap once; the next `logs` returns that tap's `TAP play stdout`. The matrix's `logs` section passes 35/35. The old build was not run against the same steps.
 
 - **Problem:** found in the architecture review (2026-11-24), read from the code but not run. A top-level `logs` runs in the client process. It reads `LogStore` when it starts and writes its cursor when it ends, so a `logs --until` running in the background, as the skill suggests, can span a `launch`.
   - `recordLaunch` resets every cursor, but the client then writes back its earlier cursor, offsets into the old stdout file included. The new app's output goes to the same path, so the next `logs` skips its first bytes without saying so.

@@ -18,7 +18,7 @@ struct AppOutput {
 }
 
 /// The app `logs` reads by default and where each cursor stands, in a file that the command line and the daemon both
-/// update, so each access reads it afresh.
+/// update, so each access reads it afresh and each update holds a lock on it.
 struct LogStore {
     struct App: Codable, Equatable {
         let bundleID: String
@@ -52,9 +52,11 @@ struct LogStore {
     }
 
     private let url: URL
+    private let lock: FileLock
 
     init(url: URL) {
         self.url = url
+        lock = FileLock(url: url.appendingPathExtension(FileLock.pathExtension))
     }
 
     func read() -> Contents {
@@ -62,8 +64,23 @@ struct LogStore {
     }
 
     func update(_ change: (inout Contents) -> Void) {
-        var contents = read()
-        change(&contents)
-        try? JSONEncoder.line.encode(contents).write(to: url, options: .atomic)
+        lock.withLock {
+            var contents = read()
+            change(&contents)
+            try? JSONEncoder.line.encode(contents).write(to: url, options: .atomic)
+        }
+    }
+
+    /// Applies `change` only if the app launched at `launchedAt` is still the latest, so a read that spans a `launch`
+    /// leaves the new launch's record alone. Returns whether it applied.
+    @discardableResult
+    func update(forLaunchAt launchedAt: Date?, _ change: (inout Contents) -> Void) -> Bool {
+        var applied = false
+        update { contents in
+            guard contents.app?.launchedAt == launchedAt else { return }
+            change(&contents)
+            applied = true
+        }
+        return applied
     }
 }

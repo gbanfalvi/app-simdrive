@@ -92,13 +92,15 @@ struct DeviceLogs {
             moved.crashesCheckedAt = checkedAt
         }
         result["dropped"] = JSONValue(dropped)
-        if !query.peek { store.update { [moved] in $0.cursors[query.cursor] = moved } }
+        // A `launch` while this read waited resets the cursors and starts new output files, which `moved` knows nothing of.
+        if !query.peek { store.update(forLaunchAt: contents.app?.launchedAt) { [moved] in $0.cursors[query.cursor] = moved } }
         return .object(result)
     }
 
     /// Adds to each step's result the entries logged while it ran, and moves the default cursor past them.
     func attach(to results: [JSONValue], stepStarts: [Date]) async throws -> [JSONValue] {
         guard let first = stepStarts.first else { return results }
+        let launchedAt = store.read().app?.launchedAt
         let query = LogQuery()
         let target = try await target(of: query.scope)
         let digest = try LogDigest(query: query, target: target)
@@ -110,7 +112,7 @@ struct DeviceLogs {
             return .object(fields)
         }
         if let last = events.last {
-            store.update { contents in
+            store.update(forLaunchAt: launchedAt) { contents in
                 var cursor = contents.cursors[query.cursor] ?? LogStore.Cursor(date: first)
                 cursor.date = max(cursor.date, last.date.addingTimeInterval(Self.cursorStep))
                 contents.cursors[query.cursor] = cursor
@@ -212,7 +214,7 @@ struct DeviceLogs {
             }
             if let process = app.process { return .process(process) }
             let process = try await executable(of: app.bundleID)
-            store.update { $0.app?.process = process }
+            store.update(forLaunchAt: app.launchedAt) { $0.app?.process = process }
             return .process(process)
         }
     }
