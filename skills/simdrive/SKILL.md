@@ -30,7 +30,7 @@ $S <udid> tap --label "Sign In"         # element-covered if the keyboard or an 
 $S <udid> wait --id spinner --absent    # or until an element appears without --absent; --timeout ms
 $S <udid> swipe 0.5 0.8 0.5 0.3 --until-label "Row 30"   # scrolls until it is on screen; --max-swipes 10 by default
 $S <udid> swipe 0.5 0.8 0.5 0.2 --duration 300
-$S <udid> swipe 0.5 0.999 0.5 0.5 --edge bottom   # go home from an app
+$S <udid> swipe 0.5 0.999 0.5 0.5 --edge bottom   # go home from an app; on iOS 17 use button home
 $S <udid> swipe 0.2 0.5 0.5 0.5 0.5 0.5 0.8 0.5   # more points bend the path; each segment takes equal time, so a repeated point holds
 $S <udid> pinch 0.5 0.5 2                       # zoom in; below 1 zooms out. rotate 0.5 0.5 90 turns clockwise
 $S <udid> button home                  # home | lock | volume-up | volume-down | siri

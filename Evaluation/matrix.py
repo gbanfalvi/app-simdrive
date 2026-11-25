@@ -33,6 +33,8 @@ _runtime = next(runtime for runtime, devices in _devices.items() for device in d
 _platform, _major, _minor = re.search(r'(iOS|tvOS)-(\d+)-(\d+)', _runtime).groups()
 OS = (int(_major), int(_minor))
 IS_TV = _platform == 'tvOS'
+# iOS 17.0's guest ignores a touch's edge, so system edge gestures need iOS 18 (F16); 17.1–17.5 are untested.
+EDGE_GESTURE_OS = (18, 0)
 os.makedirs(OUTPUT, exist_ok=True)
 results = []
 
@@ -485,7 +487,12 @@ def button_checks():
     check('launch from home', log.wait(mark, r'SCENE active', 4))
     mark = log.mark()
     response = sd('swipe', '0.5', '0.999', '0.5', '0.5', '--edge', 'bottom')
-    check('swipe --edge bottom (go home)', response.get('ok') and log.wait(mark, r'SCENE background', 4), brief(response))
+    went_home = log.wait(mark, r'SCENE background', 4)
+    if OS >= EDGE_GESTURE_OS:
+        check('swipe --edge bottom (go home)', response.get('ok') and went_home, brief(response))
+    else:
+        # Fails once iOS 17 starts honoring edges, so docs/device-behavior.md can drop the exception (F16).
+        check('swipe --edge bottom stays in the app on iOS 17 (F16)', response.get('ok') and not went_home, brief(response))
     launch_probe()
     mark = log.mark()
     response = sd('button', 'lock')
@@ -494,9 +501,12 @@ def button_checks():
     mark = log.mark()
     sd('button', 'lock')
     time.sleep(1.5)
-    sd('swipe', '0.5', '0.999', '0.5', '0.3', '--edge', 'bottom')
+    if OS >= EDGE_GESTURE_OS:
+        sd('swipe', '0.5', '0.999', '0.5', '0.3', '--edge', 'bottom')
+    else:
+        sd('button', 'home')
     unlocked = log.wait(mark, r'SCENE active', 5)
-    check('unlock (lock, edge swipe)', unlocked)
+    check('unlock (lock, edge swipe)' if OS >= EDGE_GESTURE_OS else 'unlock (lock, home)', unlocked)
     if not unlocked:
         launch_probe()
     mark = log.mark()
