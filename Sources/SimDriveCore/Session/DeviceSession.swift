@@ -245,7 +245,8 @@ final class DeviceSession {
                                 + "see what is on screen.")
         }
         guard let button = found.button(for: answer) else {
-            throw SimDriveError(.noAlert, "The alert has no button to \(answer.rawValue) it with.")
+            throw SimDriveError(.noAlert, "No button of the alert reads as a way to \(answer.rawValue) it, so none was tapped; read "
+                                + "its buttons with `alert` and `tap --label` the one you mean.")
         }
         return try await tapOnceStill(button.placed, ["app": found.app, "alert": found.json, "button": button.json])
     }

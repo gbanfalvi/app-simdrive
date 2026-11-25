@@ -64,14 +64,17 @@ struct AlertReaderTests {
         #expect(AlertReader.button(for: .dismiss, in: buttons)?.label == "Don’t Allow")
     }
 
-    /// Unknown labels fall back to UIKit's order: the default action last, the cancel action first.
-    @Test func otherAlertsAnswerByLabelThenOrder() throws {
+    /// Accepting unknown labels takes UIKit's default action, the last button.
+    @Test func otherAlertsAnswerByLabelThenTheDefaultAction() throws {
         let buttons = try #require(AlertReader.alert(in: Self.appAlert)).buttons
         #expect(AlertReader.button(for: .accept, in: buttons)?.label == "Confirm")
         #expect(AlertReader.button(for: .dismiss, in: buttons)?.label == "Dismiss")
-        let unknown = [Self.button("Keep"), Self.button("Replace")]
-        #expect(AlertReader.button(for: .accept, in: unknown)?.label == "Replace")
-        #expect(AlertReader.button(for: .dismiss, in: unknown)?.label == "Keep")
+        #expect(AlertReader.button(for: .accept, in: [Self.button("Keep"), Self.button("Replace")])?.label == "Replace")
         #expect(AlertReader.button(for: .dismiss, in: [Self.button("OK")])?.label == "OK")
+    }
+
+    /// German labels, which the lists lack: dismissing by position could grant the permission.
+    @Test func dismissNeverGuessesAmongUnknownLabels() {
+        #expect(AlertReader.button(for: .dismiss, in: [Self.button("Erlauben"), Self.button("Nicht erlauben")]) == nil)
     }
 }

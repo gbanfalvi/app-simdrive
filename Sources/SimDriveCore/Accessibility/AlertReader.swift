@@ -40,7 +40,9 @@ enum AlertReader {
         return Alert(title: texts.first ?? container.label, message: texts.dropFirst().first, buttons: buttons)
     }
 
-    /// The button that gives `answer`.
+    /// The button that gives `answer`. Accepting falls back to UIKit's default action, the last button that does not
+    /// read as a decline. Dismissing never guesses by position: with unknown labels, as in another language, the first
+    /// button can be the one that grants a permission (agent-device's issue #3627), so it answers nil instead.
     static func button(for answer: AlertAnswer, in buttons: [AccessibilityElement]) -> AccessibilityElement? {
         let (suffix, labels) = answer == .accept ? (acceptIdentifierSuffix, acceptLabels) : (dismissIdentifierSuffix, dismissLabels)
         if let byIdentifier = buttons.first(where: { $0.identifier?.hasSuffix(suffix) == true }) { return byIdentifier }
@@ -48,9 +50,9 @@ enum AlertReader {
             if let byLabel = buttons.first(where: { $0.label == label }) { return byLabel }
         }
         guard buttons.count > 1 else { return buttons.first }
-        let otherWay = answer == .accept ? dismissLabels : acceptLabels
-        let candidates = buttons.filter { !otherWay.contains($0.label ?? "") }
-        return answer == .accept ? (candidates.last ?? buttons.last) : (candidates.first ?? buttons.first)
+        guard answer == .accept else { return nil }
+        let candidates = buttons.filter { !dismissLabels.contains($0.label ?? "") }
+        return candidates.last ?? buttons.last
     }
 
     /// The last container in hierarchy order, which is the newest presentation's.
