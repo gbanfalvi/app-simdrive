@@ -5,7 +5,7 @@ On iPhones the probe app (Evaluation/Probe) logs what it receives; Apple TVs get
 Settings are restored to their values at the start. Pasteboard writes reach a syncing host's Mac clipboard, so they
 run only with --pasteboard.
 """
-import argparse, json, os, re, statistics, subprocess, sys, time
+import argparse, json, os, re, statistics, struct, subprocess, sys, time
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 SIMDRIVE = os.environ.get('SIMDRIVE', os.path.join(REPO, '.build', 'release', 'simdrive'))
@@ -16,6 +16,9 @@ BUNDLE = 'com.simdrive.axprobe'
 TV_SETTINGS_BUNDLE = 'com.apple.TVSettings'
 COMMAND_TIMEOUT = 180
 TREE_ATTEMPTS = 5
+# The status bar's share of a portrait iPhone screenshot's height, above the probe's title.
+STATUS_BAR_FRACTION = 0.07
+PIXEL_TOLERANCE = 4
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument('udid')
@@ -63,6 +66,28 @@ def brief(response):
 
 def output_path(name):
     return os.path.join(OUTPUT, f'{name}-{udid[:8]}.png')
+
+
+def top_pixels(png, fraction):
+    """The raw pixels of an image's top `fraction` of rows, through sips' BMP, which stores rows bottom-up."""
+    bmp = png + '.bmp'
+    if subprocess.run(['sips', '-s', 'format', 'bmp', png, '--out', bmp], capture_output=True).returncode != 0:
+        return None
+    data = open(bmp, 'rb').read()
+    os.remove(bmp)
+    offset, = struct.unpack_from('<I', data, 10)
+    width, height = struct.unpack_from('<ii', data, 18)
+    bits, = struct.unpack_from('<H', data, 28)
+    row = (width * bits // 8 + 3) // 4 * 4
+    rows = max(1, int(abs(height) * fraction))
+    start = offset + (abs(height) - rows) * row if height > 0 else offset
+    return data[start:start + rows * row]
+
+
+def look_alike(one, other):
+    """Whether two pixel runs differ by at most PIXEL_TOLERANCE per channel; the Dynamic Island's anti-aliased edge
+    varies by one level between equal frames."""
+    return len(one) == len(other) and all(abs(a - b) <= PIXEL_TOLERANCE for a, b in zip(one, other))
 
 
 class ProbeLog:
@@ -631,15 +656,16 @@ def service_checks():
         check(f'privacy {action} photos', response.get('ok') and log.wait(mark, rf'PRIVACY photos={status}$', 5), brief(response))
     response = sd('privacy', 'grant', 'nonsense', BUNDLE)
     check('privacy grant nonsense (expect simctl)', response.get('code') == 'simctl', brief(response)[:120])
-    # Accessibility reads the real time, so compare screenshots: equal overrides draw equal pixels.
+    # Accessibility reads the real time, so compare the status bar's pixels: equal overrides draw alike ones. The rest of
+    # the screen can change between shots, as the home indicator does while it adapts to the content behind it.
     shots = []
     for time_text in ['9:41', '10:10', '9:41']:
         response = sd('status-bar', 'override', '--time', time_text, '--battery', '100', '--battery-state', 'charged')
         time.sleep(1)
         shot = output_path(f'status-bar-{len(shots)}')
         sd('screenshot', shot)
-        shots.append(open(shot, 'rb').read() if response.get('ok') and os.path.exists(shot) else None)
-    check('status-bar override', None not in shots and shots[0] == shots[2] and shots[0] != shots[1],
+        shots.append(top_pixels(shot, STATUS_BAR_FRACTION) if response.get('ok') and os.path.exists(shot) else None)
+    check('status-bar override', None not in shots and look_alike(shots[0], shots[2]) and not look_alike(shots[0], shots[1]),
           'equal overrides drew equal screens, and a different time a different one')
     response = sd('status-bar', 'clear')
     check('status-bar clear', response.get('ok') and response['result'].get('cleared') is True, brief(response))
