@@ -18,6 +18,9 @@ struct Setting: Equatable, Sendable {
         case preference(domain: String, key: String, defaultValue: JSONValue, notifications: [String])
         /// A setting the guest applies through CoreDevice's setting actions.
         case coreDevice(CoreDeviceSetting)
+        /// A Darwin notification's state in the guest, 1 for on, which UIKit rereads when it is posted. Available where
+        /// the device supports `feature`, CoreSimulator's word that the guest keeps the state.
+        case notificationState(name: String, feature: String)
     }
 
     private static let toggleNames: [String: Bool] = ["on": true, "off": false, "true": true, "false": false]
@@ -164,6 +167,9 @@ enum SettingCatalog {
             defaultValue: .number(defaultGlassTint), notifications: ["UIViewGlassTintAmountUpdateNotification"]),
             minimumOSVersion: glassOSVersion),
         Setting(name: "voiceover", kind: .toggle, storage: .coreDevice(.voiceOver)),
+        // As Simulator's Debug > Slow Animations: UIKit slows every app's animations.
+        Setting(name: "slow-animations", kind: .toggle, storage: .notificationState(
+            name: "com.apple.UIKit.SimulatorSlowMotionAnimationState", feature: "com.apple.UIKit.SimulatorSlowMotionStateful")),
         Setting(name: "color-filter", kind: .choice([CoreDeviceSetting.colorFilterOff] + CoreDeviceSetting.colorFilterTypes),
                 storage: .coreDevice(.colorFilter), minimumOSVersion: colorFilterOSVersion),
         Setting(name: "color-filter-intensity", kind: .number(0.25...1), storage: .coreDevice(.colorFilterIntensity),

@@ -629,6 +629,7 @@ SETTINGS = [
     ('autoplay-video-previews', 'off', 'on', r'videoAutoplay=0', r'videoAutoplay=1'),
     ('autoplay-animated-images', 'off', 'on', r'animatedImages=0', r'animatedImages=1'),
     ('non-blinking-cursor', 'on', 'off', r'nonBlinkingCursor=1', r'nonBlinkingCursor=0'),
+    ('slow-animations', 'on', 'off', r'drag=10 ', r'drag=1 '),
 ]
 MINIMUM_OS = {'non-blinking-cursor': 18, 'glass-tint': 26}
 

@@ -383,6 +383,12 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Guess:** load. The log stream's 5 s start limit is too short with two simulators busy. `setting_snapshot` may have read VoiceOver as unsupported at first (`DeviceSettings` maps a failed action read to unsupported), so the restore compared unsupported with off.
 - **Do:** run two matrices at once again and capture the first `setting voiceover` response and the log stream's start time. If load explains both, make the snapshot retry an action read that failed with a retryable error, and decide whether the 5 s limit should grow or the error should say `retry`.
 
+### - [ ] F31. The matrix fails a check on a retryable error right after a first boot (S)
+
+- **Problem:** found with N6 (2026-11-25). On a new iPhone 17, iOS 27.2, booted while another new simulator booted, `setting bold-text on` failed with `tool-timeout` ("simctl spawn did not finish within 60 s") and the section went 46/47; rerun on the same simulator, 47/47. The first `simctl push` after a boot also takes ~52 s (N11). `setting_snapshot` already runs a read again when it says `retry`, but other checks do not, so a slow first boot fails checks that would pass.
+- **Do:** in `sd()` (`Evaluation/matrix.py`), run a command once more when its response has `"retry": true`, and mark the check's detail with the first error so a retry stays visible rather than hidden. Leave commands whose retry changes the outcome, such as taps, to the check itself.
+- **Test:** `Evaluation/fresh.py --only settings` on two new simulators booted at once.
+
 ## 2. Improvements to existing commands
 
 ### - [x] I1. Type without per-key delays (S)
@@ -793,7 +799,9 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
   - Choose the source from the device type, or with `--type`.
 - **Test:** the probe adds a "Biometrics" button that calls `LAContext.evaluatePolicy` and logs `BIO ok|fail`. Check enroll, then match, then fail.
 
-### - [ ] N6. `slow-animations on|off` (S)
+### - [x] N6. `slow-animations on|off` (S)
+
+**Result (2026-11-25):** a `setting` row, `slow-animations`, rather than a command. It is the catalog's fourth storage kind, `notificationState`: setting it sets `com.apple.UIKit.SimulatorSlowMotionAnimationState`'s Darwin state to 1 or 0 and posts it (`SimulatorDevice.setDarwinNotificationState`), and reading it reads the state back; it is available where `SimDevice supportsFeature:` accepts `com.apple.UIKit.SimulatorSlowMotionStateful` (`SimulatorDevice.supportsFeature`). The probe logs UIKit's `UIAnimationDragCoefficient()`, looked up with `dlsym`, as `drag=` on its STATUS line: 1, then 10 while on. The matrix's `settings` section checks it: iPhone 17 iOS 27.2 47/47 (after F31's first-boot timeout) and iPhone 15 iOS 17.0 42/42, both new, so no minimum OS.
 
 - **Do:** set the state of `com.apple.UIKit.SimulatorSlowMotionAnimationState` and post it (`N:NeoSimulatorKit/Simulator/Session/DeviceSession.swift:1142-1157`). Check that the runtime supports it first (`com.apple.UIKit.SimulatorSlowMotionStateful`, `:82-84`). This could be a `setting` row (`slow-animations`, toggle) instead of a command.
 - **Test:** the probe logs `UIView.inheritedAnimationDuration`, or the layer's speed, of an animation it runs. Simplest: time a known 0.3 s animation with two screenshots.

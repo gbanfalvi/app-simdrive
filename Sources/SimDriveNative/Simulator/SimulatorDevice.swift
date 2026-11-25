@@ -10,6 +10,9 @@ package final class SimulatorDevice {
     private typealias PostFunction = @convention(c) (NSObject, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
     private typealias NotificationStateFunction = @convention(c) (NSObject, Selector, UnsafeMutablePointer<UInt64>, NSString,
                                                                   AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
+    private typealias SetNotificationStateFunction = @convention(c) (NSObject, Selector, UInt64, NSString,
+                                                                     AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
+    private typealias SupportsFeatureFunction = @convention(c) (NSObject, Selector, NSString) -> Bool
     private typealias ReadIntFunction = @convention(c) (NSObject, Selector) -> Int
     private typealias SetIntFunction = @convention(c) (NSObject, Selector, Int, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
     private typealias SetBoolFunction = @convention(c) (NSObject, Selector, Bool, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
@@ -202,6 +205,28 @@ package final class SimulatorDevice {
             throw SimDriveError(.guestNotification, "Could not read \(name): \(error?.localizedDescription ?? "no reason given")")
         }
         return state
+    }
+
+    /// Sets a Darwin notification's state in the guest, as `notifyutil -s` there would, without posting it.
+    package func setDarwinNotificationState(_ state: UInt64, of name: String) throws {
+        let selector = NSSelectorFromString("darwinNotificationSetState:name:error:")
+        guard device.responds(to: selector) else {
+            throw SimDriveError(.guestNotification, "CoreSimulator cannot set notification states on \(self.name).")
+        }
+        var error: NSError?
+        let set = unsafeBitCast(device.method(for: selector), to: SetNotificationStateFunction.self)
+        guard set(device, selector, state, name as NSString, &error) else {
+            throw SimDriveError(.guestNotification, "Could not set \(name): \(error?.localizedDescription ?? "no reason given")")
+        }
+    }
+
+    /// Whether the device's type and runtime support a CoreSimulator feature, such as
+    /// `com.apple.UIKit.SimulatorSlowMotionStateful`.
+    package func supportsFeature(_ feature: String) -> Bool {
+        let selector = NSSelectorFromString("supportsFeature:")
+        guard device.responds(to: selector) else { return false }
+        let supports = unsafeBitCast(device.method(for: selector), to: SupportsFeatureFunction.self)
+        return supports(device, selector, feature as NSString)
     }
 
     /// Each connected screen's interface orientation by screen ID, as `simctl io enumerate` lists them; screens without

@@ -71,7 +71,7 @@ simdrive runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFramework
 
 ## Settings as a catalog
 
-Each setting is one row in `SettingCatalog`, with no new command. Three are `SimDevice` interface options, which `simctl ui` also uses; VoiceOver and the color filter are CoreDevice setting actions, which the guest applies itself; the rest are guest preferences plus the Darwin notifications that UIKit and the accessibility cache listen for.
+Each setting is one row in `SettingCatalog`, with no new command. Three are `SimDevice` interface options, which `simctl ui` also uses; VoiceOver and the color filter are CoreDevice setting actions, which the guest applies itself; `slow-animations` is a Darwin notification's state, set and posted, where `SimDevice supportsFeature:` says the guest keeps it; the rest are guest preferences plus the Darwin notifications that UIKit and the accessibility cache listen for.
 
 - Preferences are written and read with `simctl spawn <udid> defaults`, not the plist on disk, since `cfprefsd` caches and may not flush. Notifications go through `SimDevice postDarwinNotification:error:` instead of a second spawn.
 - Setting actions go straight to the guest service, not through `xcrun devicectl`, which first shipped them (N20) at about 3 s a call against tens of milliseconds (I10). The cost is private message shapes that an Xcode update can move, as 27.3 moved `executionLocation`.

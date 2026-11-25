@@ -199,6 +199,7 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 | `non-blinking-cursor` | toggle, iOS 18 and later | `AccessibilitySettings.prefersNonBlinkingTextInsertionIndicator` |
 | `full-keyboard-access` | toggle, iOS only | Full Keyboard Access: `key tab` and the arrows then move its focus ring |
 | `glass-tint` | 0 to 1, 0.5 by default, iOS 26 and later | Settings' Liquid Glass Tint Amount slider |
+| `slow-animations` | toggle, as Simulator's Debug > Slow Animations | UIKit stretches every animation ten times (`UIAnimationDragCoefficient`), for capturing transitions |
 | `voiceover` | `on` or `off`, iOS | VoiceOver. While it runs, a tap selects an element and a double tap activates it |
 | `color-filter` | `off`, `grayscale`, `protanopia`, `deuteranopia` or `tritanopia`, iOS 27 and later | Display & Text Size's Color Filters; changing the type keeps the intensity |
 | `color-filter-intensity` | 0.25 to 1, iOS 27 and later; needs a `color-filter` other than `off` or `grayscale` | Color Filters' Intensity |

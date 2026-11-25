@@ -52,6 +52,9 @@ final class DeviceSettings {
                     : "\(device.name) has no \(setting.name) setting.")
             }
             try await actions.set(field.action, input: input)
+        case .notificationState(let name, _):
+            try device.setDarwinNotificationState(value == true ? 1 : 0, of: name)
+            try device.postDarwinNotification(name)
         }
         return try await read(setting)
     }
@@ -83,6 +86,7 @@ final class DeviceSettings {
             case .interface(let option): values[setting.name] = setting.value(fromInterfaceChoice: device.interfaceChoice(option))
             case .preference(let domain, let key, _, _): keysByDomain[domain, default: []].append((setting, key))
             case .coreDevice(let field): fieldsByAction[field.action, default: []].append((setting, field))
+            case .notificationState(let name, _): values[setting.name] = .bool(try device.darwinNotificationState(name) != 0)
             }
         }
         // One read per action. A device without the action's service, or whose guest refuses the read, lacks its settings;
@@ -125,7 +129,11 @@ final class DeviceSettings {
     }
 
     private func isAvailable(_ setting: Setting) -> Bool {
-        setting.isAvailable(onOSVersion: device.majorOSVersion) && setting.service.map(device.hasLaunchDaemon) ?? true
+        guard setting.isAvailable(onOSVersion: device.majorOSVersion), setting.service.map(device.hasLaunchDaemon) ?? true else {
+            return false
+        }
+        if case .notificationState(_, let feature) = setting.storage { return device.supportsFeature(feature) }
+        return true
     }
 
     /// The guest's launchd domain belongs to the host user, who runs the simulator.

@@ -40,8 +40,16 @@ enum Log {
             ("showBorders", { if #available(iOS 26.1, *) { AccessibilitySettings.showBordersEnabled } else { false } }()),
         ]
         let flags = values.map { "\($0.0)=\($0.1 ? 1 : 0)" }.joined(separator: " ")
-        return "\(flags) style=\(traits.userInterfaceStyle.rawValue) size=\(traits.preferredContentSizeCategory.rawValue) contrast=\(traits.accessibilityContrast.rawValue) weight=\(traits.legibilityWeight.rawValue)"
+        let drag = dragCoefficient.map { String(format: "%g", $0()) } ?? "none"
+        return "\(flags) drag=\(drag) style=\(traits.userInterfaceStyle.rawValue) size=\(traits.preferredContentSizeCategory.rawValue) contrast=\(traits.accessibilityContrast.rawValue) weight=\(traits.legibilityWeight.rawValue)"
     }
+
+    /// UIKit's private factor on animation durations, which Slow Animations raises; looked up, so the probe still runs
+    /// where it is missing.
+    private static let dragCoefficient: (@convention(c) () -> Float)? = {
+        guard let symbol = dlsym(UnsafeMutableRawPointer(bitPattern: -2), "UIAnimationDragCoefficient") else { return nil }
+        return unsafeBitCast(symbol, to: (@convention(c) () -> Float).self)
+    }()
 
     static func statuses(_ reason: String, traits: UITraitCollection) {
         Log.write("STATUS \(reason) \(statusLine(traits: traits))")
