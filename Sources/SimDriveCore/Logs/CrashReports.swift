@@ -10,7 +10,16 @@ struct CrashSummary: Equatable, Sendable {
     let reason: String?
     /// The crashing thread's top frames, or the uncaught exception's.
     let frames: [String]
-    let path: String
+    /// Nil for a crash known only from the guest's log, as a repeat ReportCrash wrote no report for (F32).
+    let path: String?
+}
+
+/// An app's process ending on a signal, as SpringBoard logs it whether or not a crash report is written.
+struct AppExit: Equatable, Sendable {
+    let bundleID: String
+    let pid: Int
+    let signal: String
+    let date: Date
 }
 
 /// Reads the crash reports of a simulator's processes.
@@ -59,6 +68,37 @@ enum CrashReports {
                             exception: description(of: exception), reason: reasons.isEmpty ? nil : reasons.joined(separator: " "),
                             frames: frames.prefix(frameLimit).map { describe($0, images: images) }, path: path)
     }
+
+    // MARK: From the guest's log
+
+    /// SpringBoard's FrontBoard lines for every process that exits, such as
+    /// `[app<com.example>:95205] Process exited: <RBSProcessExitContext| … domain:signal(2) code:SIGTRAP(5)>>.`
+    /// (iOS 27.2). A crash ends on a signal; a relaunch or a quit ends in the runningboard domain.
+    static let exitPredicate = "subsystem == \"com.apple.FrontBoard\" AND category == \"Process\" AND eventMessage CONTAINS \"Process exited\""
+    /// Signals the system sends to end a process, rather than a crash.
+    private static let terminationSignals: Set<String> = ["SIGKILL", "SIGTERM"]
+    static func appExit(_ event: LogEvent) -> AppExit? {
+        let exitPattern = /^\[app<([^>]+)>:(\d+)\] Process exited: .*domain:signal\(\d+\) code:([A-Z0-9]+)\(\d+\)/
+        guard event.subsystem == "com.apple.FrontBoard", event.category == "Process",
+              let match = event.message.firstMatch(of: exitPattern), let pid = Int(match.2),
+              !terminationSignals.contains(String(match.3)) else { return nil }
+        return AppExit(bundleID: String(match.1), pid: pid, signal: String(match.3), date: event.date)
+    }
+
+    /// The crashes `exits` show that no report in `reported` covers, one per pid, named `process`.
+    static func summaries(of exits: [AppExit], process: (AppExit) -> String, reported: [CrashSummary]) -> [CrashSummary] {
+        let reportedPids = Set(reported.compactMap(\.pid))
+        var seen = Set<Int>()
+        return exits.filter { !reportedPids.contains($0.pid) && seen.insert($0.pid).inserted }.map { exit in
+            CrashSummary(process: process(exit), pid: exit.pid, time: exit.date.formatted(captureTimeFormat), exception: exit.signal,
+                         reason: nil, frames: [], path: nil)
+        }
+    }
+
+    /// As reports write `captureTime`.
+    private static let captureTimeFormat = Date.VerbatimFormatStyle(
+        format: "\(year: .defaultDigits)-\(month: .twoDigits)-\(day: .twoDigits) \(hour: .twoDigits(clock: .twentyFourHour, hourCycle: .zeroBased)):\(minute: .twoDigits):\(second: .twoDigits).\(secondFraction: .fractional(4)) +0000",
+        timeZone: .gmt, calendar: Calendar(identifier: .gregorian))
 
     /// From a capture time such as `2026-11-12 13:54:50.9488 +0000`, the unified log's format but for a space.
     static func capturedAt(_ summary: CrashSummary) -> Date? {

@@ -62,11 +62,22 @@ struct DeviceLogs {
         var moved = cursor ?? LogStore.Cursor(date: start)
         var result: [String: JSONValue] = ["since": .string(start.formatted(Self.timeFormat))]
         var dropped = 0
+        // A plain read also asks for SpringBoard's exit lines, in the same `log show`, so a crash that left no report is
+        // still found (F32). `--until` reads keep to the reports, to keep their stream's filter as given.
+        let readsExits = query.sources.contains(.crash) && query.sources.contains(.log) && query.until == nil
+        var exits: [AppExit] = []
         if query.sources.contains(.log) {
-            let events = if let until = query.until {
+            var events = if let until = query.until {
                 try await events(until: try NSRegularExpression(pattern: until), query: query, target: target, since: start, digest: digest)
             } else {
-                try await show(query, target: target, since: start)
+                try await show(query, target: target, since: start, alsoMatching: readsExits ? CrashReports.exitPredicate : nil)
+            }
+            if readsExits {
+                exits = events.compactMap(CrashReports.appExit)
+                // With filters of its own, the read got SpringBoard's lines only for the crashes; without, they are entries too.
+                if query.predicate(for: target) != nil {
+                    events.removeAll { $0.subsystem == "com.apple.FrontBoard" && $0.category == "Process" && $0.message.contains("Process exited") }
+                }
             }
             let digested = digest.entries(of: events, since: start)
             result["entries"] = .array(digested.entries.map(\.json))
@@ -85,10 +96,29 @@ struct DeviceLogs {
         }
         if query.sources.contains(.crash) {
             let checkedAt = Date.now
+            if !query.sources.contains(.log), query.until == nil {
+                var exitsOnly = LogQuery()
+                exitsOnly.predicate = CrashReports.exitPredicate
+                exits = try await show(exitsOnly, target: .all, since: start).compactMap(CrashReports.appExit)
+            }
             let writtenAfter = query.since == nil ? cursor?.crashesCheckedAt ?? start : start
             let capturedAfter = query.since == nil ? min(contents.app?.launchedAt ?? start, start) : start
-            result["crashes"] = .array(CrashReports.summaries(udid: udid, target: target, writtenAfter: writtenAfter,
-                                                              capturedAfter: capturedAfter).map(\.json))
+            let reported = CrashReports.summaries(udid: udid, target: target, writtenAfter: writtenAfter, capturedAfter: capturedAfter)
+            // Read again: resolving the scope may have stored the app's executable name.
+            let app = store.read().app
+            let ofScope = exits.filter { exit in
+                switch query.scope {
+                case .all: true
+                case .pid(let pid): exit.pid == pid
+                case .app(let bundleID): exit.bundleID == bundleID
+                case .launchedApp: exit.bundleID == app?.bundleID
+                case .process(let name): app?.process == name && exit.bundleID == app?.bundleID
+                }
+            }
+            let fromLog = CrashReports.summaries(of: ofScope, process: { exit in
+                exit.bundleID == app?.bundleID ? app?.process ?? exit.bundleID : exit.bundleID
+            }, reported: reported)
+            result["crashes"] = .array((reported + fromLog).sorted { $0.time < $1.time }.map(\.json))
             moved.crashesCheckedAt = checkedAt
         }
         result["dropped"] = JSONValue(dropped)
@@ -182,8 +212,9 @@ struct DeviceLogs {
         return query
     }
 
-    private func show(_ query: LogQuery, target: LogTarget, since start: Date) async throws -> [LogEvent] {
-        let result = try await tools.simctlResult(query.showArguments(udid: udid, target: target, since: start), limit: Self.showLimit)
+    private func show(_ query: LogQuery, target: LogTarget, since start: Date, alsoMatching extra: String? = nil) async throws -> [LogEvent] {
+        let result = try await tools.simctlResult(query.showArguments(udid: udid, target: target, since: start, alsoMatching: extra),
+                                                  limit: Self.showLimit)
         guard result.succeeded else { throw SimDriveError(.logRead, "log show failed: \(result.diagnostics)") }
         return result.standardOutput.split(separator: "\n").compactMap { LogEvent(ndjson: String($0)) }.filter { $0.date >= start }
     }

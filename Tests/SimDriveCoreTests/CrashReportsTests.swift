@@ -56,4 +56,36 @@ struct CrashReportsTests {
         }
         #expect(Set(fields.keys) == ["process", "pid", "time", "exception", "reason", "frames", "path"])
     }
+
+    private static func exitEvent(_ message: String, subsystem: String = "com.apple.FrontBoard") -> LogEvent {
+        LogEvent(date: Date(timeIntervalSince1970: 1_795_624_114.672), level: .default, message: message, subsystem: subsystem,
+                 category: "Process", process: "SpringBoard", pid: 94154)
+    }
+
+    /// As SpringBoard logged the probe's `-probeCrash` on iOS 27.2 (F32).
+    @Test func anAppEndingOnASignalIsACrash() throws {
+        let line = "[app<com.simdrive.axprobe>:95205] Process exited: <RBSProcessExitContext| specific, status:<RBSProcessExitStatus| "
+            + "domain:signal(2) code:SIGTRAP(5)>>."
+        let exit = try #require(CrashReports.appExit(Self.exitEvent(line)))
+        #expect(exit.bundleID == "com.simdrive.axprobe" && exit.pid == 95205 && exit.signal == "SIGTRAP")
+    }
+
+    @Test func quitsKillsAndExtensionsAreNot() {
+        let ended = "[app<com.simdrive.axprobe>:95205] Process exited: <RBSProcessExitContext| specific, status:<RBSProcessExitStatus| "
+        #expect(CrashReports.appExit(Self.exitEvent(ended + "domain:runningboard(15) code:0>>.")) == nil)
+        #expect(CrashReports.appExit(Self.exitEvent(ended + "domain:signal(2) code:SIGKILL(9)>>.")) == nil)
+        #expect(CrashReports.appExit(Self.exitEvent("[extension<com.apple.Poster:95459] Process exited: <RBSProcessExitContext| "
+            + "specific, status:<RBSProcessExitStatus| domain:signal(2) code:SIGTRAP(5)>>.")) == nil)
+        #expect(CrashReports.appExit(Self.exitEvent(ended + "domain:signal(2) code:SIGTRAP(5)>>.", subsystem: "simdrive.probe")) == nil)
+    }
+
+    /// A crash that wrote a report is listed once, from the report; SpringBoard logs each exit twice.
+    @Test func logCrashesSkipReportedPidsAndRepeats() throws {
+        let exit = AppExit(bundleID: "com.simdrive.axprobe", pid: 95205, signal: "SIGTRAP", date: Date(timeIntervalSince1970: 0))
+        let other = AppExit(bundleID: "com.simdrive.axprobe", pid: 4242, signal: "SIGABRT", date: Date(timeIntervalSince1970: 0))
+        let reported = try #require(CrashReports.summary(ofReport: report(), path: "/r.ips", udid: udid))
+        let found = CrashReports.summaries(of: [exit, exit, other], process: { _ in "AXProbe" }, reported: [reported])
+        #expect(found.map(\.pid) == [95205])
+        #expect(found.first?.path == nil && found.first?.exception == "SIGTRAP" && found.first?.time == "1970-01-01 00:00:00.0000 +0000")
+    }
 }

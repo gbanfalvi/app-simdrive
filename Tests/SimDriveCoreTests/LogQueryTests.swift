@@ -27,6 +27,13 @@ struct LogQueryTests {
         #expect(LogQuery(level: .debug).showArguments(udid: udid, target: .all, since: since).suffix(2) == ["--info", "--debug"])
     }
 
+    /// A read of everything already includes SpringBoard's lines, so only a filtered read adds them (F32).
+    @Test func showAddsAnotherMatchOnlyToAFilteredRead() {
+        #expect(LogQuery().showArguments(udid: udid, target: .process("AXProbe"), since: since, alsoMatching: "category == \"Process\"").last
+                == "(process == \"AXProbe\") OR (category == \"Process\")")
+        #expect(!LogQuery().showArguments(udid: udid, target: .all, since: since, alsoMatching: "category == \"Process\"").contains("--predicate"))
+    }
+
     @Test func streamTakesTheLevelAndABackstop() {
         #expect(LogQuery(level: .error).streamArguments(udid: udid, target: .process("App"), limit: .seconds(65))
             == ["spawn", udid, "log", "stream", "--style", "ndjson", "--type", "log", "--level", "default", "--timeout", "66",

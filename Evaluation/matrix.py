@@ -456,14 +456,12 @@ def logs_checks(full):
     sd('launch', BUNDLE, '-probeCrash')
     response = poll_logs(['--source', 'stdout'], lambda result: any('Fatal error: probe crash' in line for line in result.get('stderr', [])), 15)
     check('logs stderr (fatal error)', response.get('ok') and 'probe crash' in json.dumps(response['result'].get('stderr')), brief(response))
-    # ReportCrash writes the report up to a minute later, and only touches the earlier report of a repeated crash.
+    # SpringBoard logs the crash at once; ReportCrash writes a report up to a minute later, and none for a repeat (F32).
     response = poll_logs(['--source', 'crash'], lambda result: result.get('crashes'), 90)
-    note = ''
-    if not response.get('result', {}).get('crashes'):
-        response = sd('logs', '--peek', '--source', 'crash', '--since', '24h')
-        note = 'repeated crash, read from the earlier report; '
     crashes = response.get('result', {}).get('crashes', [])
-    check('logs crash summary', any('sceneDidBecomeActive' in ' '.join(crash['frames']) for crash in crashes), note + brief(response))
+    from_report = any('sceneDidBecomeActive' in ' '.join(crash['frames']) for crash in crashes)
+    from_log = any(crash.get('path') is None and crash.get('exception') == 'SIGTRAP' and crash.get('process') == 'AXProbe' for crash in crashes)
+    check('logs crash summary', from_report or from_log, ('from the report; ' if from_report else 'from the log; ') + brief(response)[:160])
     launch_probe()
 
 

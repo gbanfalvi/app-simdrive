@@ -36,7 +36,7 @@ extension Hinge {
 extension CrashSummary {
     var json: JSONValue {
         ["process": .string(process), "pid": JSONValue(pid), "time": .string(time), "exception": .string(exception),
-         "reason": JSONValue(reason), "frames": .array(frames.map(JSONValue.string)), "path": .string(path)]
+         "reason": JSONValue(reason), "frames": .array(frames.map(JSONValue.string)), "path": JSONValue(path)]
     }
 }
 

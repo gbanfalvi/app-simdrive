@@ -85,12 +85,15 @@ struct LogQuery: Equatable, Sendable {
     /// 0 keeps whole messages.
     var width = defaultWidth
 
-    func showArguments(udid: String, target: LogTarget, since: Date) -> [String] {
+    /// `alsoMatching` adds entries the query's own filters would leave out, as SpringBoard's lines about the app.
+    func showArguments(udid: String, target: LogTarget, since: Date, alsoMatching extra: String? = nil) -> [String] {
         // `log` takes whole seconds; entries before `since` are dropped after reading.
         var arguments = ["spawn", udid, "log", "show", "--style", "ndjson", "--start", "@\(Int(since.timeIntervalSince1970.rounded(.down)))"]
         if level <= .info { arguments.append("--info") }
         if level == .debug { arguments.append("--debug") }
-        if let predicate = predicate(for: target) { arguments += ["--predicate", predicate] }
+        if let predicate = predicate(for: target) {
+            arguments += ["--predicate", extra.map { "(\(predicate)) OR (\($0))" } ?? predicate]
+        }
         return arguments
     }
 
