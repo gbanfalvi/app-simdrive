@@ -188,6 +188,11 @@ struct CommandParserTests {
         #expect(override.simctlArguments == ["--time", "9:41", "--batteryState", "charged", "--cellularBars", "4"])
     }
 
+    @Test func shakeTakesNoArguments() throws {
+        #expect(try CommandParser.parse(["shake"]) == .shake)
+        expectUsageError { try CommandParser.parse(["shake", "twice"]) }
+    }
+
     @Test func installTakesAPathAndUninstallABundleIdentifier() throws {
         #expect(try CommandParser.parse(["install", "build/My App.ipa"]) == .install(path: "build/My App.ipa"))
         #expect(try CommandParser.parse(["uninstall", "com.example"]) == .uninstall(bundleID: "com.example"))

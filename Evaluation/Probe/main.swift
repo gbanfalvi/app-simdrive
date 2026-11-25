@@ -120,6 +120,11 @@ final class ProbeViewController: UIViewController {
 
     override var canBecomeFirstResponder: Bool { true }
 
+    override func motionEnded(_ motion: UIEvent.EventSubtype, with event: UIEvent?) {
+        if motion == .motionShake { Log.write("SHAKE") }
+        super.motionEnded(motion, with: event)
+    }
+
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .systemBackground

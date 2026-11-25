@@ -70,6 +70,8 @@ enum Command: Equatable, Sendable {
     case logs(LogQuery)
     /// With `attachesLogs`, each step's result lists the entries logged while it ran.
     case run(steps: [Step], attachesLogs: Bool)
+    /// Shakes the device, as Simulator's Device > Shake does.
+    case shake
     case doctor
     case stop
     case serve

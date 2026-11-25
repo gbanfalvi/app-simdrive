@@ -771,7 +771,9 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
 - **Test:** install and uninstall the probe app in the matrix's setup, replacing `build-probe.sh`'s own install.
 - **Result:** `simctl install` takes an `.ipa` itself, so only its `Info.plist` is unzipped, for the bundle ID. `simctl uninstall` succeeds for a missing app, so `uninstall` checks first and fails with `app-not-installed`; a bad path fails with `app-invalid`. Install takes 0.7 s, uninstall 0.5 s. The matrix installs the probe with `install` and checks `uninstall`'s error; uninstalling the probe there would reset iOS's "Open in" consent, which the Duo's tree cannot show.
 
-### - [ ] N3. `shake` (S)
+### - [x] N3. `shake` (S)
+
+**Result (2026-11-25):** `shake` posts `com.apple.UIKit.SimulatorShake` and returns `{}`. The probe logs `SHAKE` from its view controller's `motionEnded`, and the matrix's `services` section checks it: 11/11 on a new iPhone 17, iOS 27.2. Not checked: iPad, older runtimes, and tvOS, where UIKit has no shake.
 
 - **Do:** `SimDevice postDarwinNotification` of `com.apple.UIKit.SimulatorShake` (`N:NeoSimulatorKit/Simulator/Session/DeviceSession.swift:856`). simdrive already posts notifications (`S:SimDriveNative/Simulator/SimulatorDevice.swift:96`). Put the name in a `SimDriveCore` constant, used by a `DeviceSession` method.
 - **Test:** the probe logs `SHAKE` from `motionEnded(_:with:)` on its view controller; add a matrix check.

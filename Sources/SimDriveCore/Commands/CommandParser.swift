@@ -195,6 +195,9 @@ enum CommandParser {
                 try Data(contentsOf: URL(fileURLWithPath: try list.single("a steps file")))
             }
             return .run(steps: try steps(Steps.parse(data)), attachesLogs: list.flag("logs"))
+        case "shake":
+            try ArgumentList(rest).none()
+            return .shake
         case "doctor":
             try ArgumentList(rest).none()
             return .doctor
@@ -398,6 +401,7 @@ enum CommandParser {
                      [--data-network wifi|5g|...] [--wifi-bars 0-3] [--cellular-bars 0-4] [--operator name]
                      [--wifi-mode M] [--cellular-mode M]
           status-bar clear                    shows the real status bar again
+          shake                               shakes the device; the first responder gets motionEnded
           wait <ms>
           wait --label <text> | --id <identifier> [--absent] [--timeout ms]
                                               waits until the element is on screen, or with --absent until it is not

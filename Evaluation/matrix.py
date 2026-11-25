@@ -546,7 +546,7 @@ def accept_url_prompt():
 
 
 def service_checks():
-    """push, privacy and status-bar wrap simctl; the probe logs what reaches it (N11)."""
+    """push, privacy, status-bar and shake simulate what a device or the system does; the probe logs what reaches it (N11, N3)."""
     launch_probe()
     mark = log.mark()
     # The probe never asks to post notifications, so simctl reports "Source is not authorized" though the push reaches
@@ -574,6 +574,11 @@ def service_checks():
           'equal overrides drew equal screens, and a different time a different one')
     response = sd('status-bar', 'clear')
     check('status-bar clear', response.get('ok') and response['result'].get('cleared') is True, brief(response))
+    launch_probe()
+    time.sleep(1)
+    mark = log.mark()
+    response = sd('shake')
+    check('shake', response.get('ok') and log.wait(mark, r'SHAKE$', 3), brief(response))
 
 
 def misc_checks(is_foldable):

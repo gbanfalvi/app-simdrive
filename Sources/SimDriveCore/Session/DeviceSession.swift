@@ -10,6 +10,8 @@ final class DeviceSession {
     private static let launchLimit: Duration = .seconds(30)
     /// SpringBoard's lock state, 1 while the device is locked.
     private static let lockStateNotification = "com.apple.springboard.lockstate"
+    /// UIKit in the guest turns it into a shake motion event, as Simulator's Device > Shake posts it.
+    private static let shakeNotification = "com.apple.UIKit.SimulatorShake"
     private let udid: String
     private let device: SimulatorDevice
     private let bootedAt: Date?
@@ -153,6 +155,9 @@ final class DeviceSession {
             return try await logs.read(query)
         case .run(let steps, let attachesLogs):
             return try await run(steps, attachesLogs: attachesLogs, workingDirectory: workingDirectory)
+        case .shake:
+            try device.postDarwinNotification(Self.shakeNotification)
+            return [:]
         case .doctor:
             return await doctor()
         case .stop, .serve:
