@@ -356,22 +356,28 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** replace the tree scan with `tap --label Open --timeout 2000`, treating `no-element` as no prompt.
 - **Test:** the matrix's `misc` section on a fresh Duo and a fresh iPhone.
 
-### - [ ] F29. A tap on the "Open in …?" URL alert is dropped on a new simulator, though it returns `ok` (M, cause unknown)
+### - [x] F29. A tap during a system alert's present transition is dropped, though it returns `ok` (M)
 
-- **Problem:** found after F27 (2026-11-24), first filed as I25 on the guess that the alert was still animating in. Without the matrix's 1 s sleep before `tap --label Open`, the full matrix on a new iPhone 17, iOS 27.2, fails `openurl from-home` and `openurl in-front`, and the alert left up then fails 8 later checks (orientation, `button home`, launch from home, the Home edge swipe): 120/130 with v0.1.0 (2026-11-25). The matrix keeps the sleep meanwhile; agents tapping the alert at once hit the same drop.
-- **Ruled out (2026-11-25):**
-  - **Animation, as accessibility sees it:** reading `tree` every 100 ms from the moment of `openurl`, the Open button's point is final from the first read, so I25's planned fix, waiting for two reads to place the element alike, waits for nothing. It was written and backed out.
-  - **The idle input release:** after 35 s idle, `tap --label Play` and `tap 0.5 0.17` each reached the probe, twice each.
-  - **`tap --label` alone:** `--only misc` on a new simulator, with no sleep, passed 11/11 with v0.1.0 and with the I25 build. Only the full run reproduced it.
-- **Seen on the kept simulator:** minutes later the alert was still up, fully drawn; `tap --label Open` returned `ok` and left it up, and `tap 0.6841 0.5423`, the same point, right after dismissed it. So a first tap on it is dropped, not one at a particular moment of the animation.
-- **Reproducing:** iOS asks only for a scheme's first URL on a simulator; reinstalling the app does not ask again, so each try needs a new simulator: remove the sleep in `accept_url_prompt` and run `Evaluation/fresh.py --only tree,keys,misc` (about 3 minutes).
-- **Narrowed (2026-11-25), each on a new iPhone 17, iOS 27.2, with no sleep:**
-  - **Not display sleep or lock:** `doctor` right before each dropped tap read `backlight` `on` and `locked` false.
-  - **Every tap on the alert fails within the run:** `openurl in-front` taps the alert left up by `from-home`, and that tap is dropped too. On a kept simulator, after a new daemon, the first `tap --label Open` was dropped and the second dismissed it.
-  - **Sections:** `tree,tap,misc` and `tree,keys,misc` reproduce it (2 of 2 taps dropped each); `misc`, `tree,logs,misc` and `settings,misc` do not.
-  - **Single steps do not:** a script on new simulators that launches the probe and, before `openurl` and `tap --label Open`, presses Home (2 runs), focuses the text field (2), focuses it then presses Home (1), types into it (1) or presses `key down` (1), delivered the URL on the first tap every time, against none pressed (2).
-  - Kept, shut down: `DC718C97` (from `tree,tap,misc`) and `E4FD2121` (from `tree,keys,misc`), both `simdrive fresh iPhone 17 27.2`, the alert dismissed.
-- **Next:** bisect inside the `keys` section, which is shorter: run its steps one by one before the URL in the script above (`key x --repeat 3`, `key tab`, the arrows, `type` with long text and `clear_field`). Then log the guest's touch handling for a dropped tap and a delivered one: `simctl spawn <udid> log stream --level debug --predicate 'process == "SpringBoard" OR process == "backboardd"'`.
+**Result (2026-11-25):** option 2, chosen with the user. `tap --label`/`--id` sample the 44 points around the tap point from the framebuffer every 25 ms (`SimulatorDevice.screenPixels`, copying only those rows) and tap once they have not changed for 150 ms (`Stillness`), or after 1.5 s; the result reports `"settle": {"waited", "still"}`, null without a readable framebuffer. The matrix no longer sleeps before tapping the URL alert. New simulators, no sleep: iPhone 17 iOS 27.2 `tree,keys,misc` 45/45 (the alert tap waited 548 ms) and the whole matrix 132/132; iPhone 15 iOS 17.0 `tree,tap,misc` 49/49 (548 ms); iPhone Duo iOS 27.2 121/124, the alert at 201 ms and every element tap passing, with three failures outside taps that passed alone (F30). Element taps on a still screen waited 162–201 ms. Left: I27.
+
+- **Problem:** found after F27 (2026-11-24), first filed as I25. Without the matrix's 1 s sleep before `tap --label Open`, the full matrix on a new iPhone 17, iOS 27.2, fails `openurl from-home` and `openurl in-front`, and the alert left up then fails 8 later checks: 120/130 with v0.1.0. The matrix keeps the sleep; an agent that taps an alert as soon as `tap --label` finds it hits the same drop, and so does one that taps during an app's own transitions (the skill already says to wait about 1 s after them).
+- **Cause (2026-11-25):** SpringBoard ignores interaction events while it presents the alert. In SpringBoard's and backboardd's debug logs, backboardd hit-tests the touch to the alert's context correctly, but SpringBoard's UIKit logs `Evaluating dispatch … tagged context: <alert>; shouldSend: 0; ignoreInteractionEvents: 1` and drops it, until the present transition ends ("Alert layout appears correct"). Tapping the alert's point every ~100 ms from `openurl` on a new simulator: taps at +352 and +418 ms after "Received request to activate alertItem" were ignored, layout was correct at +568 ms, and the tap at +619 ms opened the URL. A second `openurl` with the alert still up presents it again (the `in-front` drop), with the same window (layout correct at +470 ms, a tap at +240 ms ignored). Recorded in `docs/device-behavior.md`.
+- **Why it looked like it needed the earlier sections:** the earlier single-step script slept 1.5 s before tapping, which is the workaround, so its passes meant nothing. A bisect with no sleep (`setting full-keyboard-access off` then focusing the text field reproduces; either alone or in the other order does not; the key presses and `type` are irrelevant) only changes when `openurl` returns relative to the alert. When `openurl` took 3 s, the alert had settled before the tap; when it returned first, `tap --label` found the alert in the tree at once and tapped inside the window. With FKA off and the field focused, waiting 1 s after the alert appeared delivered both taps.
+- **Ruled out earlier:** the alert's accessibility frame, which is final from the first read (I25's frame-rest wait, backed out); display sleep and lock (`doctor` read `on` and unlocked at every drop); the idle input release. One earlier observation was not reproduced: on a kept simulator a first `tap --label Open` minutes after the alert appeared was dropped; on another, minutes later and with a new daemon, the first tap went through.
+- **Fix options, to decide with the user (they change `tap`'s timing):**
+  1. **Docs only:** the skill and README say to wait for the transition (they already do, generally); keep the matrix's sleep. No cost, no fix.
+  2. **Wait for the target to look still:** `tap --label`/`--id` compares the element's frame region in two framebuffer copies (in-process since I7) a short interval apart, until alike or a bound (about 1 s), and reports how long it waited. Covers alerts and app transitions alike; costs at least one interval on every element tap; can't help coordinate taps; content that keeps animating (a spinner, a blinking cursor) hits the bound.
+     - **Spike (2026-11-25, iPhone 17, iOS 27.2, two new simulators):** a throwaway target sampled the Open button's region through `SimulatorDevice.screenFrame` every ~25 ms while the alert presented, counting pixels whose RGB moved by more than 6 in total. Relative to "Received request to activate alertItem": still until +121 / +105 ms (nothing drawn yet), nearly every pixel changing until about +300 ms, then 0.5–4% per sample until +540 / +508 ms, and no change after. SpringBoard's "Alert layout appears correct" came at +520 / +494 ms, and the measured ignore window ended between +418 and +619 ms, so "the element's pixels stopped changing" tracks the window to within about one sample. The tree first showed Open at +169 ms in the second run.
+     - **Design this suggests:** require the element's region to be unchanged for at least 150 ms, longer than the ~120 ms before the first frame is drawn, in case the tree finds the element that early. Bound the wait at about 1.5 s and tap anyway, reporting the wait in the result. Each sample cost ~12 ms, mostly copying the whole 12 MB surface; copying only the element's rows from the locked surface should make that negligible. On a still screen this adds about 150 ms to every `tap --label`/`--id`.
+     - **Not measured:** app transitions (a navigation push, a sheet), the alert's dismissal, landscape and other devices, and whether a 150 ms stillness ever passes in the middle of a transition.
+  3. **Read the ignoring state:** find a private signal for SpringBoard's or the app's `isIgnoringInteractionEvents` (accessibility attributes, a SpringBoard service). Precise if one exists; none is known.
+- **Reproducing:** iOS asks only for a scheme's first URL on a simulator, so each try needs a new one. With SpringBoard's `EventDispatch` and `AlertItems` log categories streaming, open the probe URL with the probe in front, after warming the daemon with a tap elsewhere, and tap `0.6841 0.5423` in a loop; each touch's `ignoreInteractionEvents` value and its offset from the activation give the window.
+
+### - [ ] F30. The matrix fails `logs` and `settings restored` on a Duo when another simulator runs a matrix at once (S, unverified)
+
+- **Problem:** on a new iPhone Duo, iOS 27.2 (2026-11-25), running the whole matrix while a new iPhone 17 ran its own, `run --logs attributes the tap` and `logs --until in run` failed with `step-failed` ("log stream did not start within 5 s"), and `settings restored` reported `{'voiceover': False}`. `--only logs,settings` on the same simulator then passed 76/76.
+- **Guess:** load. The log stream's 5 s start limit is too short with two simulators busy. `setting_snapshot` may have read VoiceOver as unsupported at first (`DeviceSettings` maps a failed action read to unsupported), so the restore compared unsupported with off.
+- **Do:** run two matrices at once again and capture the first `setting voiceover` response and the log stream's start time. If load explains both, make the snapshot retry an action read that failed with a retryable error, and decide whether the 5 s limit should grow or the error should say `retry`.
 
 ## 2. Improvements to existing commands
 
@@ -723,6 +729,19 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Read:** `Evaluation/Probe` (its `STATUS` line), `Evaluation/matrix.py` (`setting_checks`), `docs/design-decisions.md` ("Settings as a catalog").
 - **Do:** log `UIAccessibility.isVoiceOverRunning` and the color filter status in `STATUS`, and check the three rows in the `settings` section. With VoiceOver on, run a `tap`, a `tap --label`, a key and `type`, and record in `docs/device-behavior.md` what reaches the probe.
 - **Test:** the matrix on iOS 17.0 and 27.2; VoiceOver changes on both, the color filter on 27 only.
+
+### - [ ] I27. Check and extend the settle wait of element taps (S–M, partly unverified)
+
+- **Problem:** left from F29 (2026-11-25). Element taps wait for 150 ms of still pixels around the tap point, checked only on the URL alert and still screens.
+- **Unverified:**
+  - App transitions: a navigation push, a sheet, a popover. Add a probe screen that pushes on a button and taps the next screen's button by label at once, with no sleep.
+  - A uniform area sliding under the point, such as a sheet's background, looks still while it moves. Check whether a sheet's button can be tapped too early.
+  - iPad, landscape and the Duo's other postures (the Duo's default posture passed the matrix). Apple TV fails element taps with `no-touchscreen` before any wait.
+  - A text field with a blinking cursor under the point: the cursor toggles about every 500 ms, so 150 ms of stillness should fall between blinks; confirm it does not hit the 1.5 s bound.
+- **Extras not done:**
+  - `--no-settle`, for scripts that know the screen is still and want the ~160 ms back. Wait until someone asks.
+  - An opt-in settle for `tap <x> <y>` and swipes.
+- **Test:** the matrix's `tap` section gains the push check; time `tap --id` with `--timing` against the release before F29.
 
 ## 3. New features
 

@@ -60,7 +60,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `list` | `[{"udid", "name", "runtime", "deviceType"}]` |
 | `key` | `{"key", "modifiers": [names], "count"}` |
 | `type` | `{"characters", "layout"}`; `layout` is the hardware keyboard layout typed on, such as `US` or `German` |
-| `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen. With `--label` or `--id`: `{"display", "element"}`, the element as the light tree describes it, whose `point` is where it was tapped |
+| `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen. With `--label` or `--id`: `{"display", "element", "settle"}`, the element as the light tree describes it, whose `point` is where it was tapped, and `settle`, `{"waited": milliseconds, "still": bool}`, the wait for the pixels there to hold still, or null when the screen's pixels cannot be read |
 | `swipe` | `{"display", "from": {"x", "y"}, "to": {"x", "y"}, "edge"}`, with `"via": [{"x", "y"}]` for more points. With `--until-label` or `--until-id`: `{"element", "swipes"}`, or `no-element` once `--max-swipes` run out |
 | `pinch`, `rotate` | `{"display", "center": {"x", "y"}, "scale"}` or `"degrees"` |
 | `button` | `{"button", "count"}` |
@@ -164,7 +164,7 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 
 `tree <x> <y>` returns the element VoiceOver finds at a point, with its descendants under `--full`, or fails with `no-element`. On a foldable, both refer to the panel in use.
 
-`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view; `swipe … --until-label` scrolls one into view. Before tapping, they hit-test the point and fail with `element-covered` when something else is there, such as a key of the software keyboard or an alert. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
+`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view; `swipe … --until-label` scrolls one into view. Before tapping, they hit-test the point and fail with `element-covered` when something else is there, such as a key of the software keyboard or an alert. Then they wait until the 44 points around it have not changed for 150 ms, since the guest ignores touches while a transition animates though the tree already shows where it ends: a system alert takes about 0.5 s. On a still screen that adds about 150 ms; content that keeps moving, such as a spinner, is tapped after 1.5 s with `"still": false`. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
 
 ### Settings
 
@@ -225,7 +225,7 @@ The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR
 - No swipes on the Apple TV Remote's touch surface; the directional buttons move focus instead.
 - The iPhone Duo's cover panel accepts orientation changes, but its apps stay portrait.
 - Until 30 s after simdrive's last input, the guest drops touches from other clients, such as clicks in DeviceHub or Simulator.app. `simdrive <udid> stop` releases its services at once. Driving while DeviceHub runs works.
-- The guest ignores touches during transitions and batches events while busy, such as right after launch. Screenshot before acting.
+- The guest ignores touches during transitions and batches events while busy, such as right after launch. `tap --label` and `--id` wait for the pixels under the element to hold still; taps at coordinates and swipes don't. Screenshot before acting.
 - `tree` shows only what the app exposes to accessibility. A custom view marked as an accessibility element hides its subviews from the snapshot too; UIKit controls and cells list theirs.
 - `offscreen` compares frames with the screen and scroll views, so an element covered by another, such as one behind a sheet, does not count as offscreen. The app's own visibility check hit-tests every element and times out on large screens.
 - The first `tree` after a boot takes up to 20 s while the guest's accessibility server starts; it fails with `accessibility-timeout` past that, or `accessibility-unavailable` when CoreSimulator cannot reach the server. Retry either. On a Duo, the server occasionally stops answering until the simulator reboots, though the app shows in front: `tree` keeps timing out and `launch` fails with `launch-not-frontmost`.

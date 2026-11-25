@@ -30,7 +30,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Daemon` | `DaemonServer`, `DaemonClient`, the wire types in `DaemonProtocol`, `UnixSocket`, `StatePaths`. |
 | `SimDriveCore/Session` | `DeviceSession` and `LazyCapability`. |
 | `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes, on US or a `KeyboardLayout`. |
-| `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. |
+| `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. `Stillness`: whether the pixels under an element tap have stopped changing. |
 | `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes. |
 | `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs; `SplitState`, the half simdrive set, kept per app pid since reading SpringBoard's log for it takes seconds. |
 | `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |
@@ -76,7 +76,7 @@ flowchart LR
 
 1. `CommandParser` turns the arguments into `Command.tap(.normalized(CGPoint(x: 0.5, y: 0.3)), display: .automatic)`; whole numbers would be pixels of the last screenshot.
 2. `DeviceSession.tap` asks `Screens.touchscreen` for the `Screen` the point refers to. `Screens` picks the display: on a Duo, the hinge says whether the cover or inner panel is in use. It then finds that display's last screenshot record in `ScreenStore`, or takes a calibration screenshot when none matches the current orientation.
-3. `Screen.digitizerPoint` converts the fraction, which follows the interface's rotation as screenshots do, into the digitizer's unit coordinates, which follow the panel's native orientation (`ScreenMapping`).
+3. `Screen.digitizerPoint` converts the fraction, which follows the interface's rotation as screenshots do, into the digitizer's unit coordinates, which follow the panel's native orientation (`ScreenMapping`). An element tap (`tap --label`, `--id`) first waits in `Screens.settle` until the framebuffer around that point holds still (`Stillness`).
 4. `DeviceInputs.tap` opens `GuestTouchscreen` through its `LazyCapability` if needed, which opens a `GuestConnection` to the guest's digitizer service. The touchscreen posts a touch-down and a touch-up, encoded by `GuestMessageCodec`, then flushes the connection.
 5. `DeviceInputs` starts its 30 s idle timer again, and the session returns the display and point as JSON.
 

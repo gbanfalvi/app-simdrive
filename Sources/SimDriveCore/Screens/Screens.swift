@@ -11,6 +11,14 @@ final class Screens {
     private static let mainScreenID = 1
     /// Bounds the orientation a screenshot records, which the guest takes seconds to report after boot.
     private static let screenshotOrientationLimit: Duration = .seconds(1)
+    /// A system alert draws nothing for ~120 ms after the tree can show it, so stillness must outlast that (F29).
+    private static let settleStillFor: Duration = .milliseconds(150)
+    /// Bounds the wait for content that keeps moving, such as a spinner; the tap goes ahead after it.
+    private static let settleLimit: Duration = .milliseconds(1500)
+    private static let settleInterval: Duration = .milliseconds(25)
+    /// In points: a fingertip's target, Apple's minimum touch size.
+    private static let settlePatch = 44.0
+    private static let fallbackScale = 3.0
 
     private let udid: String
     private let device: SimulatorDevice
@@ -70,6 +78,23 @@ final class Screens {
         let orientation = await knownDeviceOrientation(within: Self.screenshotOrientationLimit)
         let (shot, _) = try await capture(display, to: path, maxDimension: maxDimension, orientation: orientation ?? .portrait)
         return shot.json(display: display, orientation: orientation)
+    }
+
+    /// Waits until the pixels around a point have held still for `settleStillFor`, or for `settleLimit` at most, and
+    /// returns how long it waited and whether they did; nil when the screen's pixels cannot be read.
+    func settle(around point: ScreenPoint, on screen: Screen) async throws -> (waited: Duration, still: Bool)? {
+        let screenID = screen.display?.index ?? Self.mainScreenID
+        let unitPoint = screen.digitizerPoint(point)
+        let side = Int((Self.settlePatch * (device.screenScale ?? Self.fallbackScale)).rounded())
+        var stillness = Stillness(stillFor: Self.settleStillFor)
+        let start = ContinuousClock.now
+        while true {
+            guard let sample = device.screenPixels(screenID: screenID, around: unitPoint, side: side) else { return nil }
+            let elapsed = ContinuousClock.now - start
+            if stillness.isStill(after: sample, at: elapsed) { return (elapsed, true) }
+            if elapsed >= Self.settleLimit { return (elapsed, false) }
+            try await Task.sleep(for: Self.settleInterval)
+        }
     }
 
     /// Forgets every screenshot, since a new foreground app may rotate the interface without rotating the device.

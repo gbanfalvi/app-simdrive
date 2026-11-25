@@ -215,6 +215,12 @@ package final class SimulatorDevice {
         ScreenFramebuffers(device: device).frame(screenID: screenID)
     }
 
+    /// The BGRA bytes of a square of `side` pixels around `unitPoint` of screen `screenID`, in the panel's native
+    /// orientation as the digitizer's unit coordinates are; nil when CoreSimulator does not share the screen's pixels.
+    package func screenPixels(screenID: Int, around unitPoint: CGPoint, side: Int) -> [UInt8]? {
+        ScreenFramebuffers(device: device).pixels(screenID: screenID, around: unitPoint, side: side)
+    }
+
     /// A sender of the guest's accessibility requests, or nil when CoreSimulator cannot send them.
     func accessibilityChannel() -> AccessibilityChannel? {
         guard device.responds(to: AccessibilityChannel.selector) else { return nil }

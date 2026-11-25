@@ -15,7 +15,7 @@ Each call prints one JSON line: `{"ok":true,"result":…}`, or `{"ok":false,"err
 2. Check it: `simdrive <udid> doctor` reports the displays, orientation, pasteboard, hinge and frontmost app.
 3. Look: `simdrive <udid> screenshot /tmp/s.png`, then read the image. `simdrive <udid> tree` lists what VoiceOver stops on, with labels, types and tap points, which finds controls faster and cheaper than reading pixels.
 4. Act: tap an element by its label or identifier from `tree` (`tap --label View`, `tap --id play-button`), its `point`, pixels of the screenshot (`tap 120 340`) or fractions (`tap 0.5 0.25`). Prefer the label or identifier in `run` steps you keep, since points move with the layout. On an Apple TV, move focus with `button up|down|left|right` and activate with `button select`; `tree` marks the focused element `focused`.
-5. Screenshot again to confirm. `launch` returns once the app is frontmost; wait about 1 s after other transitions, since the guest ignores input while they animate.
+5. Screenshot again to confirm. `launch` returns once the app is frontmost, and `tap --label`/`--id` wait for the element's pixels to hold still (`settle` in the result); before a tap at coordinates or a swipe, wait about 1 s after other transitions, since the guest ignores input while they animate.
 6. Check the app's side: `logs` returns its new log entries, stdout, stderr and crashes since the last `logs`. Waiting for an entry with `logs --until` costs fewer tokens than `wait` and screenshots.
 
 ## Commands
@@ -26,7 +26,7 @@ $S <udid> key tab                      # names: tab return escape delete space l
 $S <udid> key f --mods cmd,shift --repeat 2
 $S <udid> type "hello, world"          # on the simulator's keyboard layout
 $S <udid> tap 0.5 0.5
-$S <udid> tap --label "Sign In"         # element-covered if the keyboard or an alert is over it; or --id <identifier>; exact match on screen, waits up to --timeout 5000 ms
+$S <udid> tap --label "Sign In"         # element-covered if the keyboard or an alert is over it; or --id <identifier>; exact match on screen, waits up to --timeout 5000 ms, then until it holds still
 $S <udid> wait --id spinner --absent    # or until an element appears without --absent; --timeout ms
 $S <udid> swipe 0.5 0.8 0.5 0.3 --until-label "Row 30"   # scrolls until it is on screen; --max-swipes 10 by default
 $S <udid> swipe 0.5 0.8 0.5 0.2 --duration 300

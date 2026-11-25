@@ -100,6 +100,10 @@ Agents otherwise run `simctl spawn log stream` in the background and read the wh
 - **stdout and stderr from `launch`.** Apps' `print` and Swift runtime errors never reach the unified log. `simctl launch --stdout --stderr` captures them, with `NSUnbufferedIO` so lines arrive as printed.
 - **Crash summaries, not reports.** A report is hundreds of lines of JSON; the summary keeps the exception and the top 10 frames, preferring the last exception's backtrace, with the report's path for more.
 
+## Element taps wait for still pixels
+
+UIKit ignores touches while a transition animates, but the accessibility tree places an element at its final point from the start, so `tap --label` could tap a system alert before SpringBoard took touches and return `ok` (F29). Element taps now sample the 44 points around the tap point from the framebuffer every 25 ms, copying only those rows, and tap once they have not changed for 150 ms, or after 1.5 s. On the URL alert, the pixels stopped changing within one sample of the end of SpringBoard's ignore window. 150 ms outlasts the ~120 ms after the alert reaches the tree before its first frame is drawn. Rejected: waiting for two tree reads to agree, since the frames are final from the first; a fixed sleep, which costs every tap and is too short for slow transitions; a whole-element sample, which large elements with moving content, such as a cell holding a spinner, would never pass. Taps at coordinates and swipes do not wait: the agent chose the moment.
+
 ## Posture waits for the hinge
 
 `posture` sends the target angle, waits for the reported angle to fall in the posture's range, then waits until it holds still for 400 ms, so the next screenshot shows the finished layout. The hinge settles near the requested angle, not on it, hence ranges.

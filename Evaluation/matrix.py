@@ -513,9 +513,11 @@ def button_checks():
 
 def accept_url_prompt():
     """Taps Open on the "Open in AXProbe?" alert iOS shows before a scheme's URLs; without one, tap finds no Open.
-    On a new simulator, a tap on it right after `openurl` is dropped though it returns ok; waiting 1 s avoids that (F29)."""
-    time.sleep(1)
-    sd('tap', '--label', 'Open', '--timeout', '2000')
+    SpringBoard ignores taps for about 570 ms while it presents the alert; tap --label waits for the pixels under Open
+    to hold still, so the tap right after openurl reaches it (F29). Returns how the wait went, for the check's detail."""
+    response = sd('tap', '--label', 'Open', '--timeout', '2000')
+    settle = response.get('result', {}).get('settle')
+    return f"settle {settle['waited']} ms{'' if settle['still'] else ', not still'}" if settle else 'no alert'
 
 
 def misc_checks(is_foldable):
@@ -537,8 +539,9 @@ def misc_checks(is_foldable):
         mark = log.mark()
         url = f'simdriveprobe://item/{case}?x=1'
         response = sd('openurl', url)
-        accept_url_prompt()
-        check(f'openurl {case}', response.get('ok') and log.wait(mark, rf'URL {re.escape(url)}$', 4), brief(response))
+        prompt = accept_url_prompt()
+        check(f'openurl {case}', response.get('ok') and log.wait(mark, rf'URL {re.escape(url)}$', 4),
+              prompt if response.get('ok') else brief(response))
     if not is_foldable:
         response = sd('posture')
         check('posture (expect posture-unsupported)', response.get('code') == 'posture-unsupported', brief(response))
