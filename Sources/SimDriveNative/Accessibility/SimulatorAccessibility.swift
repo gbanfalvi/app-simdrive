@@ -47,8 +47,6 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     }
 
     private enum Name {
-        static let translator = "AXPTranslator"
-        static let delegateProtocol = "AXPTranslationTokenDelegateHelper"
         static let snapshot = "AXTestingSnapshotParameterizedAttribute"
         static let customContent = "AXCustomContent"
         static let token = "bridgeDelegateToken"
@@ -57,7 +55,6 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     }
 
     private enum Call {
-        static let sharedInstance = NSSelectorFromString("sharedInstance")
         static let frontmost = NSSelectorFromString("frontmostApplicationWithDisplayId:bridgeDelegateToken:")
         static let hitTest = NSSelectorFromString("objectAtPoint:displayId:bridgeDelegateToken:")
         static let applicationForPid = NSSelectorFromString("translationApplicationObjectForPid:")
@@ -70,14 +67,14 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     private static let frontmostDisplayID: UInt32 = 0
     private static let retryHint = "Retry; for a minute after a simulator's first boot, its guest answers slowly."
 
-    private let translator: NSObject
-    /// The translator holds its delegate weakly.
-    private let bridge: AccessibilityBridge
+    private let hub: TranslationHub
+    private var translator: NSObject { hub.translator }
+    private let channel: AccessibilityChannel
+    /// The device's UDID. The translator uses the token beyond routing: `udid/UUID` left SpringBoard's frame empty on
+    /// iOS 27.2. A session opened after a reboot replaces the route, and the old one's reads go to the new channel.
     private let token: NSString
-    private let read: AccessibilityRead
+    private let read = AccessibilityRead()
     private let readsDisplays: Bool
-    /// The translator blocks while the guest answers, so it never runs on the main actor.
-    private let queue = DispatchQueue(label: "simdrive.accessibility")
 
     /// The device's accessibility, or nil when CoreSimulator or macOS cannot read it. `readsDisplays` asks each element
     /// for its display, on a device with several.
@@ -85,26 +82,21 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     package static func open(device: SimulatorDevice, readsDisplays: Bool) async throws -> SimulatorAccessibility? {
         guard let channel = device.accessibilityChannel() else { return nil }
         try await NativeFrameworks.load(NativeFrameworks.accessibilityTranslationPath)
-        guard let translatorClass = NSClassFromString(Name.translator),
-              let delegateProtocol = objc_getProtocol(Name.delegateProtocol),
-              let translator = (translatorClass as AnyObject).perform(Call.sharedInstance)?.takeUnretainedValue() as? NSObject else {
-            return nil
-        }
-        class_addProtocol(AccessibilityBridge.self, delegateProtocol)
-        let read = AccessibilityRead()
-        return SimulatorAccessibility(translator: translator, bridge: AccessibilityBridge(channel: channel, read: read),
-                                      token: device.udid as NSString, read: read, readsDisplays: readsDisplays)
+        guard let hub = TranslationHub.open() else { return nil }
+        return SimulatorAccessibility(hub: hub, channel: channel, token: device.udid as NSString,
+                                      readsDisplays: readsDisplays)
     }
 
-    private init(translator: NSObject, bridge: AccessibilityBridge, token: NSString, read: AccessibilityRead, readsDisplays: Bool) {
-        self.translator = translator
-        self.bridge = bridge
-        self.readsDisplays = readsDisplays
+    private init(hub: TranslationHub, channel: AccessibilityChannel, token: NSString, readsDisplays: Bool) {
+        self.hub = hub
+        self.channel = channel
         self.token = token
-        self.read = read
-        translator.setValue(true, forKey: "supportsDelegateTokens")
-        translator.setValue(true, forKey: "accessibilityEnabled")
-        translator.setValue(bridge, forKey: "bridgeTokenDelegate")
+        self.readsDisplays = readsDisplays
+        hub.routes.register(AccessibilityRoute(channel: channel, read: read), for: token as String)
+    }
+
+    deinit {
+        hub.routes.remove(token as String) { [read] in $0.read === read }
     }
 
     package func application() async throws -> AccessibilityApplication {
@@ -225,7 +217,7 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     private func error(for failure: AccessibilityRead.Failure, _ unanswered: String) -> SimDriveError {
         switch failure {
         case .unanswered:
-            let waiting = bridge.abandoned
+            let waiting = channel.abandoned
             let queued = waiting > 0 ? " \(waiting) request\(waiting == 1 ? " is" : "s are") still unanswered in the guest." : ""
             return SimDriveError(.accessibilityTimeout, "\(unanswered)\(queued) \(Self.retryHint)")
         case .unreachable:
@@ -252,7 +244,7 @@ package final class SimulatorAccessibility: @unchecked Sendable {
 
     private func perform<Result: Sendable>(_ work: @escaping @Sendable () throws -> Result) async throws -> Result {
         try await withCheckedThrowingContinuation { continuation in
-            queue.async { [read] in
+            hub.queue.async { [read] in
                 read.start(limit: Limit.read)
                 continuation.resume(with: Swift.Result { try autoreleasepool(invoking: work) })
             }
@@ -273,26 +265,68 @@ private final class AccessibilityRead: @unchecked Sendable {
     }
 }
 
-/// The translator's delegate, which sends its requests to the guest.
-private final class AccessibilityBridge: NSObject, @unchecked Sendable {
+/// The process's one `AXPTranslator`. It is a singleton with a single delegate, so every session's reads run on one
+/// queue, and the delegate sends each request to the session whose token the translation carries (F24).
+private final class TranslationHub: @unchecked Sendable {
+    private static let translatorClass = "AXPTranslator"
+    private static let delegateProtocol = "AXPTranslationTokenDelegateHelper"
+    private static let sharedInstance = NSSelectorFromString("sharedInstance")
+    @MainActor private static var shared: TranslationHub?
+
+    let translator: NSObject
+    /// The translator blocks while the guest answers, so it never runs on the main actor.
+    let queue = DispatchQueue(label: "simdrive.accessibility")
+    let routes = TokenRegistry<AccessibilityRoute>()
+    /// The translator holds its delegate weakly.
+    private let dispatcher: AccessibilityDispatcher
+
+    /// The hub, made on first use once the framework is loaded; nil when macOS lacks the translator.
+    @MainActor static func open() -> TranslationHub? {
+        if let shared { return shared }
+        guard let translatorClass = NSClassFromString(translatorClass), let delegateProtocol = objc_getProtocol(delegateProtocol),
+              let translator = (translatorClass as AnyObject).perform(sharedInstance)?.takeUnretainedValue() as? NSObject else {
+            return nil
+        }
+        class_addProtocol(AccessibilityDispatcher.self, delegateProtocol)
+        let hub = TranslationHub(translator: translator)
+        shared = hub
+        return hub
+    }
+
+    private init(translator: NSObject) {
+        self.translator = translator
+        dispatcher = AccessibilityDispatcher(routes: routes)
+        translator.setValue(true, forKey: "supportsDelegateTokens")
+        translator.setValue(true, forKey: "accessibilityEnabled")
+        translator.setValue(dispatcher, forKey: "bridgeTokenDelegate")
+    }
+}
+
+/// Where one session's requests go, and the state of its read.
+private struct AccessibilityRoute: @unchecked Sendable {
+    let channel: AccessibilityChannel
+    let read: AccessibilityRead
+}
+
+/// The translator's delegate, which sends each request to the guest of the session its token names.
+private final class AccessibilityDispatcher: NSObject, @unchecked Sendable {
     /// The translator's error for an element that is gone, or nothing accessible at a point.
     private static let noElementError: UInt64 = 8
     private static let errorKey = "error"
 
-    private let channel: AccessibilityChannel
-    private let read: AccessibilityRead
+    private let routes: TokenRegistry<AccessibilityRoute>
 
-    var abandoned: Int { channel.abandoned }
-
-    init(channel: AccessibilityChannel, read: AccessibilityRead) {
-        self.channel = channel
-        self.read = read
+    init(routes: TokenRegistry<AccessibilityRoute>) {
+        self.routes = routes
     }
 
     @objc(accessibilityTranslationDelegateBridgeCallbackWithToken:)
-    func requestSender(token: NSString) -> Any {
-        let (channel, read) = (channel, read)
+    func requestSender(token: NSString?) -> Any {
+        // `translationApplicationObjectForPid:` takes no token and asks with none; it goes to the one session there is.
+        let route = token.map { routes.value(for: $0 as String) } ?? routes.onlyValue
         let send: @convention(block) (NSObject) -> NSObject? = { request in
+            // A closed session's translation, or one carrying no token: there is no guest to ask.
+            guard let (channel, read) = route.map({ ($0.channel, $0.read) }) else { return nil }
             switch channel.send(request, deadline: read.deadline) {
             case .answered(let response):
                 if Self.error(of: response) == Self.noElementError { read.failure = .gone }
@@ -315,8 +349,8 @@ private final class AccessibilityBridge: NSObject, @unchecked Sendable {
 
     /// Frames stay in the guest's points.
     @objc(accessibilityTranslationConvertPlatformFrameToSystem:withToken:)
-    func systemFrame(_ frame: CGRect, token: NSString) -> CGRect { frame }
+    func systemFrame(_ frame: CGRect, token: NSString?) -> CGRect { frame }
 
     @objc(accessibilityTranslationRootParentWithToken:)
-    func rootParent(token: NSString) -> Any? { nil }
+    func rootParent(token: NSString?) -> Any? { nil }
 }
