@@ -11,7 +11,7 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 - `-lookup:error:` returns a caller-owned Mach send right to a guest service, or 0 or `UInt32.max` when there is none. Probing for a service means looking it up and deallocating the right.
 - `-postDarwinNotification:error:` posts in the guest, as `notifyutil -p` there would.
 - `-currentUIInterfaceStyle`, `-currentContentSizeCategory` and `-currentIncreaseContrastMode` return `Int`s numbered from 1 (light and dark; extra small to accessibility extra extra extra large; off and on), and -1 on tvOS. `-setUIInterfaceStyle:error:` and `-setContentSizeCategory:error:` take those numbers, and `-setIncreaseContrastEnabled:error:` a `BOOL`.
-- `-sendAccessibilityRequestAsync:completionQueue:completionHandler:` carries AXPTranslator's requests to the guest.
+- `-sendAccessibilityRequestAsync:completionQueue:completionHandler:` carries AXPTranslator's requests to the guest. CoreSimulatorBridge answers them one at a time and never withdraws one its sender stopped waiting for, so later requests queue behind it (idb's finding); simdrive keeps one in flight per device and waits 5 s for each (F33).
 
 ### Interface orientation
 

@@ -359,6 +359,13 @@ Items from [backlog.md](backlog.md) that have landed, each with its **Result:**,
 - **Guess:** load. The log stream's 5 s start limit is too short with two simulators busy. `setting_snapshot` may have read VoiceOver as unsupported at first (`DeviceSettings` maps a failed action read to unsupported), so the restore compared unsupported with off.
 - **Do:** run two matrices at once again and capture the first `setting voiceover` response and the log stream's start time. If load explains both, make the snapshot retry an action read that failed with a retryable error, and decide whether the 5 s limit should grow or the error should say `retry`.
 
+### - [x] F33. Unanswered accessibility requests queue in the guest and may wedge it (S)
+
+**Result (2026-11-25):** `AccessibilityChannel.send` now waits at most 5 s for one request, within its read's deadline, and keeps one request in flight per device through `RequestGate`: a request that goes unanswered stays in flight until the guest answers it, however late, and the next request waits for that instead of queueing behind it in CoreSimulatorBridge. A read retries after an unanswered request until its 20 s deadline, which the gate makes safe, so a first read after boot still gets its time. `accessibility-timeout` names how many requests are still unanswered. The race between a late answer and the sender giving up is settled per request under a lock. `RequestGateTests` cover waiting, giving up at a deadline and late answers. Cold, on new simulators, iOS 27.2: iPhone 17 `tree,tap` 56/56, Duo `tree,posture` 35/35. Not shown: that this prevents F15's wedge, which was never reproduced; I17 holds the recovery leads.
+
+- **Problem:** found in the source comparison (2026-11-25), checked in simdrive's code. CoreSimulatorBridge answers accessibility requests one at a time, and a request whose wait times out is not withdrawn, so everything sent later waits behind it; idb counts these per simulator and tags later reads `behindAbandoned` (`I:FBSimulatorAX/README.md:155-178`, `I:Translation/AXTranslationTransport.swift:72-152,201-243`). `AccessibilityChannel.send` (`S:SimDriveNative/Simulator/SimulatorDevice.swift`) waits until the read's whole 20 s deadline, and a session's background warm-up read can leave an unanswered request behind for the next read. A plausible cause of F15's wedged Duo.
+- **Do:** cap each request at about 5 s, as idb, AXe and NeoSimulator do (`A:FBAXTranslationRequest.swift:36`, `N:NeoSimulatorDeviceIO/DeviceOperationPolicy.swift:71`); count abandoned requests per device and send no new one while one is outstanding; name them in `accessibility-timeout`.
+
 ## 2. Improvements to existing commands
 
 ### - [x] I1. Type without per-key delays (S)

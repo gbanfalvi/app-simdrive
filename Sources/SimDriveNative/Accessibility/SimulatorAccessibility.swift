@@ -206,19 +206,29 @@ package final class SimulatorAccessibility: @unchecked Sendable {
         return root
     }
 
+    /// Tries again until the read's deadline, also after a request went unanswered: the channel sends the next one only
+    /// once the guest has answered it, so retries cannot pile up in the guest (F33).
     private func retrying<Result>(_ attempt: () throws -> Result?) rethrows -> Result? {
         while true {
+            read.failure = nil
             if let result = try attempt() { return result }
-            guard read.failure == nil, DispatchTime.now() + Limit.retryDelay < read.deadline else { return nil }
+            guard read.failure == nil || read.failure == .unanswered, DispatchTime.now() + Limit.retryDelay < read.deadline else {
+                return nil
+            }
             Thread.sleep(forTimeInterval: Limit.retryDelay)
         }
     }
 
     private func error(for failure: AccessibilityRead.Failure, _ unanswered: String) -> SimDriveError {
         switch failure {
-        case .unanswered: SimDriveError(.accessibilityTimeout, "\(unanswered) \(Self.retryHint)")
-        case .unreachable: SimDriveError(.accessibilityUnavailable, "CoreSimulator cannot reach the simulator's accessibility service. \(Self.retryHint)")
-        case .gone: SimDriveError(.noElement, "The element is gone; read the tree again.")
+        case .unanswered:
+            let waiting = bridge.abandoned
+            let queued = waiting > 0 ? " \(waiting) request\(waiting == 1 ? " is" : "s are") still unanswered in the guest." : ""
+            return SimDriveError(.accessibilityTimeout, "\(unanswered)\(queued) \(Self.retryHint)")
+        case .unreachable:
+            return SimDriveError(.accessibilityUnavailable, "CoreSimulator cannot reach the simulator's accessibility service. \(Self.retryHint)")
+        case .gone:
+            return SimDriveError(.noElement, "The element is gone; read the tree again.")
         }
     }
 
@@ -268,6 +278,8 @@ private final class AccessibilityBridge: NSObject, @unchecked Sendable {
 
     private let channel: AccessibilityChannel
     private let read: AccessibilityRead
+
+    var abandoned: Int { channel.abandoned }
 
     init(channel: AccessibilityChannel, read: AccessibilityRead) {
         self.channel = channel

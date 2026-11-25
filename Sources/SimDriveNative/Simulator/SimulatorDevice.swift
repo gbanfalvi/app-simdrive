@@ -304,8 +304,34 @@ struct AccessibilityChannel: @unchecked Sendable {
 
     fileprivate static let selector = NSSelectorFromString("sendAccessibilityRequestAsync:completionQueue:completionHandler:")
 
+    /// One request's answer, and whether its sender stopped waiting first; whichever side comes second settles it.
     private final class Reply: @unchecked Sendable {
-        var value: NSObject?
+        private let lock = NSLock()
+        private var isAnswered = false
+        private var isAbandoned = false
+        private var response: NSObject?
+
+        /// From the completion handler: true when the sender had already stopped waiting.
+        func answer(_ response: NSObject?) -> Bool {
+            lock.withLock {
+                isAnswered = true
+                self.response = response
+                return isAbandoned
+            }
+        }
+
+        /// From the sender, past its wait: nil when it is now abandoned, else the answer that raced in.
+        func abandonUnlessAnswered() -> NSObject?? {
+            lock.withLock {
+                guard isAnswered else {
+                    isAbandoned = true
+                    return nil
+                }
+                return .some(response)
+            }
+        }
+
+        var value: NSObject? { lock.withLock { response } }
     }
 
     /// What became of a request.
@@ -316,23 +342,43 @@ struct AccessibilityChannel: @unchecked Sendable {
         case unreachable
     }
 
+    /// One request's own limit within its read's deadline, as idb, AXe and NeoSimulator use (F33).
+    private static let requestLimit: TimeInterval = 5
+
     private let device: NSObject
     private let replies = DispatchQueue(label: "simdrive.accessibility.replies")
+    private let gate = RequestGate()
 
     fileprivate init(device: NSObject) {
         self.device = device
     }
 
+    /// Requests the guest has not answered since their senders stopped waiting.
+    var abandoned: Int { gate.abandoned }
+
+    /// Sends once no earlier request is in flight, and waits up to `requestLimit` for the answer, or to `deadline` if
+    /// sooner. A request that goes unanswered stays in flight, so the next one waits for it rather than queueing behind
+    /// it in the guest.
     func send(_ request: NSObject, deadline: DispatchTime) -> Outcome {
-        guard DispatchTime.now() < deadline else { return .unanswered }
+        let now = DispatchTime.now()
+        guard now < deadline else { return .unanswered }
+        let wallDeadline = Date(timeIntervalSinceNow: Double(deadline.uptimeNanoseconds - now.uptimeNanoseconds) / 1e9)
+        guard gate.enter(before: wallDeadline) else { return .unanswered }
         let answered = DispatchSemaphore(value: 0)
         let reply = Reply()
+        let gate = gate
         let send = unsafeBitCast(device.method(for: Self.selector), to: SendFunction.self)
         send(device, Self.selector, request, replies) { response in
-            reply.value = response
+            gate.answered(wasAbandoned: reply.answer(response))
             answered.signal()
         }
-        guard answered.wait(timeout: deadline) == .success else { return .unanswered }
+        guard answered.wait(timeout: min(deadline, .now() + Self.requestLimit)) == .success else {
+            guard let raced = reply.abandonUnlessAnswered() else {
+                gate.abandon()
+                return .unanswered
+            }
+            return raced.map(Outcome.answered) ?? .unreachable
+        }
         return reply.value.map(Outcome.answered) ?? .unreachable
     }
 }
