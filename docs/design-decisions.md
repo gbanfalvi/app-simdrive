@@ -66,14 +66,17 @@ simdrive runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFramework
 - **A whitelist of attribute numbers.** Some numbers crash the app or return whole subtrees, and the visibility attribute hit-tests every node, which times out on large screens. `offscreen` is computed from frames instead.
 - **Light by default.** The full tree costs agents tokens. The light list keeps what finds and acts on VoiceOver's elements, drops values that repeat the placeholder and traits the type already names, and is a quarter of the full size or less. Custom content costs a request per element, so only `--full` reads it.
 - **No actions yet.** Tapping an element's `point` covers navigation; `AXPress` and `AXIncrement` are follow-ups.
+- **No reads before a screen starts.** A read made in the first seconds of a boot is thought to leave the server unanswering until a reboot (F15), so the first read waits up to 60 s for CoreSimulator to report a started screen, then fails with the retryable `simulator-starting`.
+- **Warm-up only in the daemon.** A daemon's new session reads once in the background so the first `tree` is quick; a one-shot process could exit with that read in flight and crash. XCTest's bootstrap was tried as a faster start and rejected (I16).
 
 ## Settings as a catalog
 
-Each setting is one row in `SettingCatalog`, with no new command. Three are `SimDevice` interface options, which `simctl ui` also uses; the rest are guest preferences plus the Darwin notifications that UIKit and the accessibility cache listen for.
+Each setting is one row in `SettingCatalog`, with no new command. Three are `SimDevice` interface options, which `simctl ui` also uses; VoiceOver and the color filter are CoreDevice settings, through `xcrun devicectl`; the rest are guest preferences plus the Darwin notifications that UIKit and the accessibility cache listen for.
 
 - Preferences are written and read with `simctl spawn <udid> defaults`, not the plist on disk, since `cfprefsd` caches and may not flush. Notifications go through `SimDevice postDarwinNotification:error:` instead of a second spawn.
-- A row stays only if a running probe app sees the change on the oldest and newest runtimes; candidates it did not see were dropped.
-- Left out: VoiceOver, Zoom, AssistiveTouch and Switch Control take over input, which would break simdrive's own; VoiceOver does not speak in the simulator anyway.
+- CoreDevice settings run `devicectl` (about 3 s a call) rather than the in-process CoreDevice capability `pasteboard` uses, which may be faster but was not tried (N20).
+- A row stays only if a running probe app sees the change on the oldest and newest runtimes; candidates it did not see were dropped. The CoreDevice rows are the exception so far, checked by reading back (I26).
+- VoiceOver is offered since N20, as AXe and NeoSimulator offer it, though it may change how taps and keys land (I26). Zoom, AssistiveTouch and Switch Control stay out: they take over input, which would break simdrive's own.
 - `set` returns the value read back, so an agent sees what took effect.
 
 ## Pasteboard through CoreDevice

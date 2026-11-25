@@ -9,7 +9,8 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 - The accessibility server's frontmost pid matches the app's `SCENE active` to within about 0.3 s, which makes it a reliable launch signal.
 - `tree` is bimodal: about 290 ms right after a launch or during animation, 25–150 ms otherwise.
 - For about a minute after a simulator's first boot, the accessibility server answers slowly or not at all. A launching app answers with nothing, and any app occasionally does; simdrive retries three times, 0.5 s apart.
-- The guest ignores touches during transitions and batches events while busy, such as right after launch.
+- On a cold iPhone boot (iOS 27.2), the main screen reports a started backlight about 85 s in, 25 s after its interface orientation, and the first `tree` after `bootstatus` took 3–30 s across five reboots.
+- The guest ignores touches during transitions and batches events while busy, such as right after launch. An alert is in the accessibility tree while it still animates in, for about 1 s, and a tap on it then is dropped though it returns `ok` (I25).
 - The first CoreDevice command after `simctl boot`, such as `pasteboard`, blocks for 10–40 s, and CoreDevice is connected by the time it answers (iPhone iOS 17.0 and 27.0, Duo iOS 27.1, Apple TV tvOS 26.2).
 
 ## iPhone and iPad

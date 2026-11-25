@@ -20,6 +20,7 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 - `uiOrientation`, as `simctl io enumerate` labels it: 0 Ambiguous, 1 Portrait, 2 Portrait Upside Down, 3 Landscape Left, 4 Landscape Right. The names are UIKit's interface orientations, but the numbers are not `UIInterfaceOrientation`'s, which swaps 3 and 4.
 - Observed: device `landscape-left` gives 4, `landscape-right` gives 3, since the interface counter-rotates the device. 2 was never observed.
 - `screenID` equals the `simctl` display index. A single-display device's screen is 1.
+- `screenProperties.backlight.state` (`UInt32`, read as `Int32`) is -101, unknown, on every screen early in a boot, and 2 once a panel has started. simdrive waits for any screen other than -101 before its first accessibility read (F15). Settled devices: an iPhone (iOS 17.0 and 27.2) reports 2; a Duo 2 on its cover panel and -101 on its inner one; an Apple TV (tvOS 18) -101 always, so simdrive skips the wait there.
 
 ### Screenshots
 
@@ -103,6 +104,13 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreDevice.framework`.
 - `PasteboardSnapshot(from: NSPasteboard, dataPolicy:)` and `write(to: NSPasteboard)` convert. `PasteboardDataInclusionPolicy.allResolved` includes every type's data, so neither side keeps promises the other must resolve.
 - Swift initializers called through ABIBridge consume their arguments, so each capture needs its own copy of the policy, as each `EventObserver(eventMask:)` needs its own mask.
 
+### Settings through `devicectl`
+
+- `xcrun devicectl device info appearance|voiceover --device <udid> --quiet --json-output -` reads, and `device settings appearance|voiceover` changes; the JSON's `result` holds the values. Each call starts CoreDevice in its own process and takes about 3 s.
+- `voiceover --enable|--disable`; `result.enabled`.
+- `appearance --color-filter on|off --color-filter-type grayscale|protanopia|deuteranopia|tritanopia [--color-filter-intensity <0…1>]`; `result.colorFilter` has `enabled`, `filterType.name` and `intensity`. An intensity is refused without a type, so simdrive passes the current one.
+- Checked on iOS 27.2 only, so simdrive offers these settings from iOS 27; older runtimes may answer too (unverified).
+
 ## AccessibilityPlatformTranslation
 
 Loaded from `/System/Library/PrivateFrameworks/AccessibilityPlatformTranslation.framework`.
@@ -114,6 +122,8 @@ Loaded from `/System/Library/PrivateFrameworks/AccessibilityPlatformTranslation.
 - `objectAtPoint:displayId:bridgeDelegateToken:` hit-tests in points of the panel's native orientation; the display ID is the `simctl` index, 0 on single-display devices.
 - The frontmost element's frame is the app's, in points. It turns with the interface on some devices and not on others; on the Duo's inner panel it stays portrait while element frames follow the landscape interface. On the Duo it does not span the screen, beside the system's status strip, so simdrive sizes the screen from the screenshot and `SimDeviceType.mainScreenScale` (3 on both Duo panels), falling back to the app's frame.
 - The translator blocks while the guest answers, so it runs on its own queue.
+- A request still on that queue when the process exits can crash inside `AXPTranslator`. Only the daemon, whose session outlives the command, starts a background read to warm the guest's server; a `--no-daemon` run never does.
+- XCTest's accessibility bootstrap (`XCTDaemonControl`, `XCUIAutomation`'s `loadAccessibilityWithTimeout:reply:`) was tried as a faster start and rejected: right after a boot it did not finish in time, slowed the first `tree` and once crashed the daemon. Measurements are in the backlog's I16.
 
 ### The snapshot attribute
 

@@ -702,6 +702,13 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** resolve the element from reads at rest, as `swipe --until` does: read until two reads in a row agree on the element's frame, bounded at about 1 s, then tap.
 - **Test:** `openurl` then `tap --label Open` with no wait; the probe logs the URL. Measure what it adds to `tap --label` on a still screen (`--timeout 0`).
 
+### - [ ] I26. Check VoiceOver and color filters in the matrix, and say what VoiceOver changes about input (S)
+
+- **Problem:** left from N20 (2026-11-24). `voiceover`, `color-filter` and `color-filter-intensity` were checked only by reading back through `devicectl` and one screenshot, not by the probe, unlike every other setting row (AGENTS.md "Adding a capability"). With VoiceOver on, taps may select instead of activate and keys may go to VoiceOver; nothing says what still works.
+- **Read:** `Evaluation/Probe` (its `STATUS` line), `Evaluation/matrix.py` (`setting_checks`), `docs/design-decisions.md` ("Settings as a catalog").
+- **Do:** log `UIAccessibility.isVoiceOverRunning` and the color filter status in `STATUS`, and check the three rows in the `settings` section. With VoiceOver on, run a `tap`, a `tap --label`, a key and `type`, and record in `docs/device-behavior.md` what reaches the probe.
+- **Test:** the matrix on iOS 27.2, and on iOS 26 to see whether `devicectl` answers there, which would lower `coreDeviceSettingsOSVersion`.
+
 ## 3. New features
 
 Each new command needs a `Command` case, parsing, usage text, results JSON, an error code where it can fail, parser tests, a README row and a skill line, per AGENTS.md's "Adding a capability".
