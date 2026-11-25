@@ -31,6 +31,8 @@ Results at v0.1.0: a new iPhone 17, iOS 27.2, 125/125 for the whole matrix (befo
 
 Results at v0.1.1, by section on new simulators as each change landed, not one whole run: iPhone 17, iOS 27.2: the whole matrix 132/132 after F29, `tap` 44/44, `tree,keys` 39/39, `services` 12/12, `settings` 47/47; iPhone 15, iOS 17.0: `tree,tap,misc` 49/49, `buttons` 12/12, `settings` 42/42; iPhone Duo, iOS 27.2: the whole matrix 121/124 after F29, failures under parallel load (F30), then `logs,settings` 76/76.
 
+Results at v0.1.2, on new simulators: iPhone 17, iOS 27.2: the whole matrix 156/157 before F31's status-bar fix and F24's tokenless request, then `tree,tap` 56/56, `services` 12/12 twice, `settings` 49/49 and 47/47; iPhone Duo, iOS 27.2: `tree,tap,posture,buttons` 64/65, the failure `tree --app` before F24's fix, then `tree,tap` 55/55; iPhone 15, iOS 17.0 at 0d2c5fa: 150/152, failing `privacy grant photos` (F36) and a sheet-transition tap (F37).
+
 ## The probe app
 
 `Evaluation/build-probe.sh [udid]` builds `AXProbe.app` with `swiftc` against the iOS simulator SDK, with no Xcode project, signs it ad hoc and optionally installs it. Its minimum OS, iOS 17, comes from `Evaluation/Probe/Info.plist`. Bundle ID `com.simdrive.axprobe`.
