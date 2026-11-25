@@ -463,6 +463,7 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 ### - [ ] I6. Detect a sleeping display, and wake it (M, steps 1 and 2 done; step 3 blocked on reproducing sleep)
 
 **Step 3 attempt (2026-11-25):** not built, since idle sleep did not reproduce. On a new iPhone 17, iOS 27.2, `doctor` read `backlight` `on` and unlocked throughout: 130 s idle after launching the probe, 180 s after one tap in it, 90 s on the Home screen, and once 75 s after a tap with no reads in between. So what dims the display is unknown: the single `dimmed` read below may have come from something else in that run. **Next:** find a reliable trigger first (a simulator left idle much longer, one shown in Simulator.app or DeviceHub, older runtimes, or an Auto-Lock preference such as `SBAutoLockTime` in `com.apple.springboard`), then wake before input as step 3 says, checked against it.
+**Lead (2026-11-25, while doing N8):** after `Evaluation/fresh.py --only tree,keys,buttons` on a new iPhone 17, iOS 27.2, `doctor` read `dimmed` and unlocked a minute or so later, and screenshots stayed on the dimmed frame through `launch`, a tap and `button keyboard`, while `tree` answered. The buttons section ends with `lock`, `lock`, an edge swipe, `siri` and `home`, so one of those presses likely starts the idle timer that a fresh boot does not: try them one at a time, then idle.
 
 **Result so far (2026-11-25):** steps 1 and 2 are done. `SimulatorDevice.backlights()` reads each screen's `backlight.state` and `darwinNotificationState(_:)` reads `com.apple.springboard.lockstate`; `doctor` reports them as `backlight` (per screen: `on`, `dimmed`, `off`, `unknown`) and `locked`. On an iPhone 17, iOS 27.2, the lock state matched `notifyutil -g` through a lock and an unlock; the display read `dimmed` after 20 s idle, stayed `dimmed` rather than `off` 5 s after `button lock`, and read `on` after a second press. Step 3, waking before input, is next; F29 showed a dropped tap is not always sleep, so the wake must not stand in for F29's fix.
 
@@ -814,7 +815,9 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
   - This needs a setting kind for SimDevice-backed values in `SettingCatalog`.
 - **Test:** toggle each option and read it back; a screenshot of the probe shows the tint. Add a matrix check of the read-back.
 
-### - [ ] N8. More buttons (S)
+### - [x] N8. More buttons (S)
+
+**Result (2026-11-25):** `HardwareButton` gives each button its usage page and adds `keyboard` (0x0C/0xB8), `screenshot` (0x0C/0x65) and `action` (0x0B/0x2D), which the parser holds 500 ms by default. On a new iPhone 17, iOS 27.2: `keyboard` hides and shows the software keyboard, `screenshot` opens the guest's screenshot editor, `action` toggles silent mode, and `home --repeat 2` opens the app switcher, since `--repeat` already waits 150 ms between presses, so no `app-switcher` button was added. The matrix's `keys` section checks `keyboard` by hit-testing the keyboard area, because the tree lists a hidden keyboard's keys too: 39/39. Left out: `side` (0x0C/0x95) changed nothing visible, and `apple-pay` (0x1BA) has nothing to show without Wallet; add them once an effect can be checked. `screenshot` and `action` have no matrix check, only those screenshots.
 
 - **Do:** add to `HardwareButton` (`S:SimDriveNative/Input/GuestButtons.swift`) with a usage page per button, since `usagePage` is fixed at `0x0C` today (`:6`). Usages are from `N:NeoSimulatorKit/Simulator/Input/HIDInput.swift:13-30,64`:
 

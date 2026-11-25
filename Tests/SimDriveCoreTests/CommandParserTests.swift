@@ -110,6 +110,14 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["button", "power"]) }
     }
 
+    /// The Action button acts only when held, so its default hold is longer; --hold still overrides it.
+    @Test func actionButtonHoldsLongerByDefault() throws {
+        #expect(try CommandParser.parse(["button", "action"])
+            == .button(.action, count: 1, hold: CommandParser.actionButtonHold, legacy: false))
+        #expect(try CommandParser.parse(["button", "action", "--hold", "100"])
+            == .button(.action, count: 1, hold: .milliseconds(100), legacy: false))
+    }
+
     @Test func pasteboardReadsWithoutAnArgument() throws {
         #expect(try CommandParser.parse(["pasteboard"]) == .pasteboard(text: nil))
         #expect(try CommandParser.parse(["pasteboard", "héllo wörld"]) == .pasteboard(text: "héllo wörld"))

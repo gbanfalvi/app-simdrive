@@ -4,14 +4,24 @@ import XPC
 /// Hardware and Apple TV Remote buttons, named as the command line spells them.
 package enum HardwareButton: String, CaseIterable, Sendable {
     case home, lock, volumeUp = "volume-up", volumeDown = "volume-down", siri
+    /// `keyboard` shows or hides the software keyboard; `screenshot` takes the guest's own screenshot; `action` presses an
+    /// iPhone's Action button, by default toggling silent mode.
+    case keyboard, screenshot, action
     case menu, select, playPause = "play-pause", up, down, left, right, channelUp = "channel-up", channelDown = "channel-down"
 
-    static let usagePage: UInt16 = 0x0C
+    private static let consumerPage: UInt16 = 0x0C
+    private static let telephonyPage: UInt16 = 0x0B
 
-    /// Consumer-page usages as the guest maps them, not as HID names them: Menu (0x40) is home, the TV button on tvOS;
-    /// AC Home (0x223) is the remote's Menu (Back); Power (0x30) locks, or on tvOS opens Control Center.
+    /// The Action button is on the telephony page; the rest are consumer controls.
+    var usagePage: UInt16 { self == .action ? Self.telephonyPage : Self.consumerPage }
+
+    /// Usages as the guest maps them, not as HID names them: Menu (0x40) is home, the TV button on tvOS; AC Home (0x223)
+    /// is the remote's Menu (Back); Power (0x30) locks, or on tvOS opens Control Center. The newer ones are NeoSimulator's.
     var usage: UInt16 {
         switch self {
+        case .keyboard: 0xB8
+        case .screenshot: 0x65
+        case .action: 0x2D
         case .home: 0x40
         case .lock: 0x30
         case .volumeUp: 0xE9
@@ -69,9 +79,9 @@ package final class GuestButtons: ButtonPresser {
     package var hasFailed: Bool { connection.hasFailed }
 
     package func press(_ button: HardwareButton, hold: Duration) async throws {
-        try service.send(report(HardwareButton.usagePage, button.usage, true))
+        try service.send(report(button.usagePage, button.usage, true))
         await pause(hold)
-        try service.send(report(HardwareButton.usagePage, button.usage, false))
+        try service.send(report(button.usagePage, button.usage, false))
         try await connection.flush()
     }
 
@@ -143,9 +153,9 @@ package final class LegacyGuestButtons: ButtonPresser {
     package var hasFailed: Bool { connection.hasFailed }
 
     package func press(_ button: HardwareButton, hold: Duration) async throws {
-        try connection.post(.buttonEvent, encoded: event(HardwareButton.usagePage, button.usage, .down))
+        try connection.post(.buttonEvent, encoded: event(button.usagePage, button.usage, .down))
         await pause(hold)
-        try connection.post(.buttonEvent, encoded: event(HardwareButton.usagePage, button.usage, .up))
+        try connection.post(.buttonEvent, encoded: event(button.usagePage, button.usage, .up))
         try await connection.flush()
     }
 

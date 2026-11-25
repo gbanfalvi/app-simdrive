@@ -7,6 +7,8 @@ enum CommandParser {
     static let defaultGestureDuration: Duration = .milliseconds(500)
     private static let pinchScales: ClosedRange<Double> = 0.1...10
     static let defaultButtonHold: Duration = .milliseconds(100)
+    /// The Action button acts only when held, as NeoSimulator holds it.
+    static let actionButtonHold: Duration = .milliseconds(500)
     /// As long as `logs --until` waits by default.
     static let defaultElementTimeout: Duration = .milliseconds(5000)
     static let defaultMaxSwipes = 10
@@ -84,7 +86,8 @@ enum CommandParser {
                 throw SimDriveError.usage(
                     "Unknown button \"\(value)\"; use \(HardwareButton.allCases.map(\.rawValue).joined(separator: ", "))")
             }
-            let hold = try list.positiveInteger("hold").map { Duration.milliseconds($0) } ?? defaultButtonHold
+            let hold = try list.positiveInteger("hold").map { Duration.milliseconds($0) }
+                ?? (button == .action ? actionButtonHold : defaultButtonHold)
             return .button(button, count: try list.positiveInteger("repeat") ?? 1, hold: hold, legacy: list.flag("legacy"))
         case "posture":
             guard let value = try ArgumentList(rest).optionalSingle() else { return .posture(nil) }
@@ -383,7 +386,8 @@ enum CommandParser {
                                               two fingers turn around the point, clockwise when positive
           button <name> [--repeat N] [--hold ms] [--legacy]
                  --legacy presses through the route Xcode 27.3 removed, for older runtimes it may suit better
-                 home|lock|volume-up|volume-down|siri; Apple TV Remote: menu|select|play-pause|up|down|left|right|
+                 home|lock|volume-up|volume-down|siri|keyboard|screenshot|action (held 500 ms); home --repeat 2 opens
+                 the app switcher; Apple TV Remote: menu|select|play-pause|up|down|left|right|
                  channel-up|channel-down, with home as the TV button
           posture [closed|half|open]          reads the hinge angle without an argument
           split left|right|full [--from left|right|full]   moves an iPhone Duo inner screen's app to a half or the whole

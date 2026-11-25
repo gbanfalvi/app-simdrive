@@ -30,7 +30,7 @@ simdrive <udid|booted> <command>
 | `swipe <x1> <y1> <x2> <y2> [<x> <y> ...] --until-label <text> \| --until-id <identifier> [--max-swipes N]` | Repeats the swipe until the element is on screen, 10 times at most; no swipe when it already is |
 | `pinch <x> <y> <scale> [--duration ms] [--display D]` | Two fingers around the point spread to `scale` times their distance, or close below 1 |
 | `rotate <x> <y> <degrees> [--duration ms] [--display D]` | Two fingers turn around the point, clockwise when positive |
-| `button <name> [--repeat N] [--hold ms] [--legacy]` | Hardware or Apple TV Remote button, held 100 ms by default. `--legacy` presses through `IndigoButtonEvent`, the route before Xcode 27.3 removed it |
+| `button <name> [--repeat N] [--hold ms] [--legacy]` | Hardware or Apple TV Remote button, held 100 ms by default (`action` 500 ms). `--legacy` presses through `IndigoButtonEvent`, the route before Xcode 27.3 removed it |
 | `posture [closed\|half\|open]` | Sets or reads a foldable's hinge; returns once the hinge settles |
 | `split left\|right\|full [--from left\|right\|full]` | Moves the iPhone Duo inner screen's app to a half or the whole screen; see [Foldables](#foldables) |
 | `orientation [portrait\|landscape-left\|landscape-right\|upside-down]` | Sets or reads the device orientation |
@@ -144,7 +144,7 @@ Taps follow the interface's rotation, which simdrive reads from CoreSimulator wi
 
 ### Buttons
 
-`home`, `lock`, `volume-up`, `volume-down` and `siri` are the device's buttons. The Apple TV Remote adds `menu` (Back), `select`, `play-pause`, `up`, `down`, `left`, `right`, `channel-up` and `channel-down`; on tvOS `home` is the TV button and `lock` opens Control Center. `--hold 1000` long-presses, as for context menus.
+`home`, `lock`, `volume-up`, `volume-down` and `siri` are the device's buttons. `keyboard` shows or hides the software keyboard while a text field has focus (the tree lists its keys either way), `screenshot` takes the guest's own screenshot, and `action` presses an iPhone's Action button, held 500 ms by default, which toggles silent mode unless set otherwise. `home --repeat 2` opens the app switcher. The Apple TV Remote adds `menu` (Back), `select`, `play-pause`, `up`, `down`, `left`, `right`, `channel-up` and `channel-down`; on tvOS `home` is the TV button and `lock` opens Control Center. `--hold 1000` long-presses, as for context menus.
 
 ### Apple TV
 

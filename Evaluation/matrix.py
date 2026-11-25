@@ -456,6 +456,17 @@ def key_checks(full):
     response = sd('type', 'Grüße')
     check('type non-US (expect unsupported-character)', response.get('code') == 'unsupported-character', brief(response))
     clear_field()
+    # With the field focused, the keyboard button shows the software keyboard if hidden, and hides it if shown (N8). The
+    # tree lists its keys either way, so hit-test where the keyboard draws.
+    shown = []
+    for _ in range(3):
+        if shown:
+            sd('button', 'keyboard')
+            time.sleep(1.5)
+        hit = sd('tree', '0.5', '0.86')
+        shown.append(hit.get('result', {}).get('element', {}).get('type') == 'key')
+    check('button keyboard toggles the software keyboard', shown[0] != shown[1] and shown[1] != shown[2],
+          f'a key under the keyboard area: {shown}')
 
 
 def orientation_checks():
