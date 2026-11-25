@@ -360,7 +360,7 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 ### - [x] F29. A tap during a system alert's present transition is dropped, though it returns `ok` (M)
 
-**Result (2026-11-25):** option 2, chosen with the user. `tap --label`/`--id` sample the 44 points around the tap point from the framebuffer every 25 ms (`SimulatorDevice.screenPixels`, copying only those rows) and tap once they have not changed for 150 ms (`Stillness`), or after 1.5 s; the result reports `"settle": {"waited", "still"}`, null without a readable framebuffer. The matrix no longer sleeps before tapping the URL alert. New simulators, no sleep: iPhone 17 iOS 27.2 `tree,keys,misc` 45/45 (the alert tap waited 548 ms) and the whole matrix 132/132; iPhone 15 iOS 17.0 `tree,tap,misc` 49/49 (548 ms); iPhone Duo iOS 27.2 121/124, the alert at 201 ms and every element tap passing, with three failures outside taps that passed alone (F30). Element taps on a still screen waited 162–201 ms. Left: I27.
+**Result (2026-11-25):** option 2, chosen with the user. `tap --label`/`--id` sample the 44 points around the tap point from the framebuffer every 25 ms (`SimulatorDevice.screenPixels`, copying only those rows) and tap once they have not changed for 150 ms (`Stillness`), or after 1.5 s; the result reports `"settle": {"waited", "still"}`, null without a readable framebuffer. The matrix no longer sleeps before tapping the URL alert. New simulators, no sleep: iPhone 17 iOS 27.2 `tree,keys,misc` 45/45 (the alert tap waited 548 ms) and the whole matrix 132/132; iPhone 15 iOS 17.0 `tree,tap,misc` 49/49 (548 ms); iPhone Duo iOS 27.2 121/124, the alert at 201 ms and every element tap passing, with three failures outside taps that passed alone (F30). Element taps on a still screen waited 162–201 ms. Left: I27, then I28.
 
 - **Problem:** found after F27 (2026-11-24), first filed as I25. Without the matrix's 1 s sleep before `tap --label Open`, the full matrix on a new iPhone 17, iOS 27.2, fails `openurl from-home` and `openurl in-front`, and the alert left up then fails 8 later checks: 120/130 with v0.1.0. The matrix keeps the sleep; an agent that taps an alert as soon as `tap --label` finds it hits the same drop, and so does one that taps during an app's own transitions (the skill already says to wait about 1 s after them).
 - **Cause (2026-11-25):** SpringBoard ignores interaction events while it presents the alert. In SpringBoard's and backboardd's debug logs, backboardd hit-tests the touch to the alert's context correctly, but SpringBoard's UIKit logs `Evaluating dispatch … tagged context: <alert>; shouldSend: 0; ignoreInteractionEvents: 1` and drops it, until the present transition ends ("Alert layout appears correct"). Tapping the alert's point every ~100 ms from `openurl` on a new simulator: taps at +352 and +418 ms after "Received request to activate alertItem" were ignored, layout was correct at +568 ms, and the tap at +619 ms opened the URL. A second `openurl` with the alert still up presents it again (the `in-front` drop), with the same window (layout correct at +470 ms, a tap at +240 ms ignored). Recorded in `docs/device-behavior.md`.
@@ -734,18 +734,18 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** log `UIAccessibility.isVoiceOverRunning` and the color filter status in `STATUS`, and check the three rows in the `settings` section. With VoiceOver on, run a `tap`, a `tap --label`, a key and `type`, and record in `docs/device-behavior.md` what reaches the probe.
 - **Test:** the matrix on iOS 17.0 and 27.2; VoiceOver changes on both, the color filter on 27 only.
 
-### - [ ] I27. Check and extend the settle wait of element taps (S–M, partly unverified)
+### - [x] I27. Check the settle wait of element taps on app transitions (S)
 
-- **Problem:** left from F29 (2026-11-25). Element taps wait for 150 ms of still pixels around the tap point, checked only on the URL alert and still screens.
-- **Unverified:**
-  - App transitions: a navigation push, a sheet, a popover. Add a probe screen that pushes on a button and taps the next screen's button by label at once, with no sleep.
-  - A uniform area sliding under the point, such as a sheet's background, looks still while it moves. Check whether a sheet's button can be tapped too early.
-  - iPad, landscape and the Duo's other postures (the Duo's default posture passed the matrix). Apple TV fails element taps with `no-touchscreen` before any wait.
-  - A text field with a blinking cursor under the point: the cursor toggles about every 500 ms, so 150 ms of stillness should fall between blinks; confirm it does not hit the 1.5 s bound.
+**Result (2026-11-25):** the probe takes `-probeSheet` (an animated page sheet) and `-probePush` (an animated navigation push), each showing a Done button that logs `TAP done <name>`. The matrix's `tap` section launches with each three times and runs `tap --label Done` at once. On a new iPhone 17, iOS 27.2: 3/3 delivered for both, settle 279–361 ms for the sheet and 304–459 ms for the push; `--only tap` 44/44. With the settle wait disabled, the sheet check failed 0/3 while the push still passed 3/3: a tap during a push is not dropped, or the tree shows Done only once it ends, so the push check does not guard the wait. The sheet slides its uniform background under the point, the case feared to look still, and the wait still caught it. Left: I28.
+
+### - [ ] I28. Extend the settle wait of element taps (S, partly unverified)
+
+- **Problem:** left from I27 (2026-11-25).
+- **Unverified:** iPad, landscape and the Duo's other postures (the Duo's default posture passed the whole matrix). A text field with a blinking cursor under the point: the cursor toggles about every 500 ms, so 150 ms of stillness should fall between blinks; confirm it does not hit the 1.5 s bound.
 - **Extras not done:**
   - `--no-settle`, for scripts that know the screen is still and want the ~160 ms back. Wait until someone asks.
   - An opt-in settle for `tap <x> <y>` and swipes.
-- **Test:** the matrix's `tap` section gains the push check; time `tap --id` with `--timing` against the release before F29.
+- **Test:** run the matrix's `tap` section on an iPad and in landscape; time `tap --id` with `--timing` against the release before F29.
 
 ## 3. New features
 

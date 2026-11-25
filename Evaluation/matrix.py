@@ -288,6 +288,21 @@ def interface_turn_checks():
     sd('launch', BUNDLE)
 
 
+def transition_checks():
+    """An element tap right after a transition starts must wait for it, though the tree shows the end place at once (I27)."""
+    for name, argument in [('sheet', '-probeSheet'), ('push', '-probePush')]:
+        delivered, waits = 0, []
+        for _ in range(3):
+            sd('launch', BUNDLE, argument)
+            mark = log.mark()
+            response = sd('tap', '--label', 'Done', '--timeout', '3000')
+            settle = response.get('result', {}).get('settle') or {}
+            waits.append(f"{settle.get('waited')}{'' if settle.get('still', True) else '!'}")
+            delivered += bool(response.get('ok') and log.wait(mark, rf'TAP done {name}$', 2))
+        check(f'tap --label right after a {name} transition', delivered == 3, f'{delivered}/3 delivered, settle ms {waits}')
+    sd('launch', BUNDLE)
+
+
 def tap_checks(full):
     x, y = tap_point(element(full, 'Play'))
     mark = log.mark()
@@ -814,6 +829,7 @@ def main():
             pasteboard_write_checks(full)
         if full and want('tap'):
             tap_checks(full)
+            transition_checks()
             if not is_foldable and 'iPhone' in (doctor['result'].get('deviceType') or ''):
                 interface_turn_checks()
         if full and want('keys'):

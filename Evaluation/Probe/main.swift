@@ -328,6 +328,36 @@ final class LandscapeViewController: UIViewController {
     }
 }
 
+/// A screen with a Done button, which the probe shows in a transition with `-probeSheet` or `-probePush`, so an element
+/// tap can land while it animates (I27).
+final class TransitionViewController: UIViewController {
+    private let name: String
+
+    init(name: String) {
+        self.name = name
+        super.init(nibName: nil, bundle: nil)
+    }
+
+    required init?(coder: NSCoder) { fatalError("not used") }
+
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .systemBackground
+        let done = UIButton(type: .system)
+        done.setTitle("Done", for: .normal)
+        done.addAction(UIAction { [name] _ in Log.write("TAP done \(name)") }, for: .touchUpInside)
+        done.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(done)
+        NSLayoutConstraint.activate([done.centerXAnchor.constraint(equalTo: view.centerXAnchor),
+                                     done.centerYAnchor.constraint(equalTo: view.centerYAnchor)])
+    }
+
+    override func viewDidAppear(_ animated: Bool) {
+        super.viewDidAppear(animated)
+        Log.write("APPEARED \(name)")
+    }
+}
+
 final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     var window: UIWindow?
 
@@ -349,6 +379,19 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // After `launch` sees the app in front.
         if ProcessInfo.processInfo.arguments.contains("-probeCrash") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { fatalError("probe crash") }
+        }
+        // Starts a transition as the app becomes active, so the next element tap can land mid-animation.
+        if let root = window?.rootViewController, root.presentedViewController == nil {
+            let arguments = ProcessInfo.processInfo.arguments
+            if arguments.contains("-probeSheet") {
+                root.present(TransitionViewController(name: "sheet"), animated: true)
+            } else if arguments.contains("-probePush") {
+                let navigation = UINavigationController(rootViewController: UIViewController())
+                navigation.modalPresentationStyle = .fullScreen
+                root.present(navigation, animated: false) {
+                    navigation.pushViewController(TransitionViewController(name: "push"), animated: true)
+                }
+            }
         }
         // Turns the interface alone, as a landscape-only screen does on an upright phone, without a launch or a URL.
         if ProcessInfo.processInfo.arguments.contains("-probeLandscape"), let root = window?.rootViewController,
