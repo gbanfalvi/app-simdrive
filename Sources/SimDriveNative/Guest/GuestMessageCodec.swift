@@ -188,7 +188,7 @@ struct GuestMessageCodec {
             let info = try decodeInfo(reply)
             let nonFlat = try unsafe rawValue.unsafeInvoke(on: upright.unsafeInvoke(on: info))
             return try unsafe GuestOrientationReading(orientation: DeviceOrientation(rawValue: nonFlat),
-                physical: rawValue.unsafeInvoke(on: physical.unsafeInvoke(on: info)))
+                physical: PhysicalOrientation(rawValue: rawValue.unsafeInvoke(on: physical.unsafeInvoke(on: info))))
         })
     }
 

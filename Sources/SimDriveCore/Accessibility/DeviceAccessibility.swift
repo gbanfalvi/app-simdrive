@@ -20,11 +20,14 @@ final class DeviceAccessibility {
     private let screens: Screens
     private let split: SplitState
     private let accessibility: LazyCapability<SimulatorAccessibility>
+    private let isAppAccessibilityEnabled: @MainActor () async throws -> Bool
 
-    init(device: SimulatorDevice, screens: Screens, split: SplitState) {
+    init(device: SimulatorDevice, screens: Screens, split: SplitState,
+         isAppAccessibilityEnabled: @escaping @MainActor () async throws -> Bool) {
         self.device = device
         self.screens = screens
         self.split = split
+        self.isAppAccessibilityEnabled = isAppAccessibilityEnabled
         accessibility = LazyCapability {
             try await Self.waitForStartedScreen(of: device)
             return try await SimulatorAccessibility.open(device: device)
@@ -123,10 +126,22 @@ final class DeviceAccessibility {
     }
 
     /// The frontmost app's hierarchy and the layout that places it on the screen.
+    /// An app launched while app accessibility was off answers with an empty frame until it relaunches; that read
+    /// fails as `app-accessibility-off` rather than the translator's own error.
+    private func explainingAccessibilityOff<Value>(_ read: () async throws -> Value) async throws -> Value {
+        do {
+            return try await read()
+        } catch let error as SimDriveError where error.code == .accessibilityTranslation {
+            guard !(try await isAppAccessibilityEnabled()) else { throw error }
+            throw SimDriveError(.appAccessibilityOff, "The frontmost app launched while app accessibility was off, as it is once "
+                                + "Full Keyboard Access or another accessibility service quits; relaunch it with `launch`.")
+        }
+    }
+
     private func read(detail: TreeDetail) async throws -> (AccessibilitySnapshot, Screen, AccessibilityLayout) {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)
-        let snapshot = try await accessibility.snapshot(detail: detail)
+        let snapshot = try await explainingAccessibilityOff { try await accessibility.snapshot(detail: detail) }
         let fullLayout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen)
         let fillsHalf = fullLayout.spansUnder(Self.halfWidthLimit, windows: snapshot.element.children.map(\.frame))
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen,
@@ -164,7 +179,9 @@ final class DeviceAccessibility {
             AccessibilityLayout(appSize: $0, scale: scale, screen: screen).panelPoint(fraction)
         }
         let noElement = SimDriveError(.noElement, "No accessibility element is at \(fraction.x), \(fraction.y).")
-        guard let snapshot = try await accessibility.snapshot(at: panelPoint, display: screen.display?.index ?? 0, detail: detail) else {
+        guard let snapshot = try await explainingAccessibilityOff({
+            try await accessibility.snapshot(at: panelPoint, display: screen.display?.index ?? 0, detail: detail)
+        }) else {
             throw noElement
         }
         let pid = snapshot.application.pid

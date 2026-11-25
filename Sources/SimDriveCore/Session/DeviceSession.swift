@@ -5,9 +5,6 @@ import SimDriveNative
 /// One booted simulator's services, opened on first use. Each command runs here and returns its JSON result.
 @MainActor
 final class DeviceSession {
-    /// How long an app may take to come to the front after `simctl launch`, which returns seconds before it does. A
-    /// freshly booted, busy simulator takes tens of seconds.
-    private static let launchLimit: Duration = .seconds(30)
     /// SpringBoard's lock state, 1 while the device is locked.
     private static let lockStateNotification = "com.apple.springboard.lockstate"
     /// UIKit in the guest turns it into a shake motion event, as Simulator's Device > Shake posts it.
@@ -24,6 +21,7 @@ final class DeviceSession {
     private let settings: DeviceSettings
     private let logs: DeviceLogs
     private let apps: DeviceApps
+    private let launcher: AppLauncher
     private let orientation: LazyCapability<GuestOrientation>
     private let pasteboard: LazyCapability<CoreDevicePasteboard>
     private let hinge: LazyCapability<Hinge>
@@ -47,14 +45,20 @@ final class DeviceSession {
         screens = Screens(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
         let split = SplitState()
         self.split = split
-        accessibility = DeviceAccessibility(device: device, screens: screens, split: split)
-        logs = DeviceLogs(udid: udid, tools: tools)
-        splitView = SplitView(screens: screens, state: split, inputs: inputs, accessibility: accessibility, logs: logs)
         let settingActions = LazyCapability { GuestSettingActions.open(guest: guest, udid: udid) }
-        settings = DeviceSettings(udid: udid, device: device, tools: tools, actions: {
+        let settings = DeviceSettings(udid: udid, device: device, tools: tools, actions: {
             try await settingActions.required(orThrow: SimDriveError(.settingUnsupported, "\(device.name) has no setting actions."))
         })
+        self.settings = settings
+        let accessibility = DeviceAccessibility(device: device, screens: screens, split: split,
+                                                isAppAccessibilityEnabled: { try await settings.isApplicationAccessibilityEnabled() })
+        self.accessibility = accessibility
+        let logs = DeviceLogs(udid: udid, tools: tools)
+        self.logs = logs
+        splitView = SplitView(screens: screens, state: split, inputs: inputs, accessibility: accessibility, logs: logs)
         apps = DeviceApps(udid: udid, tools: tools)
+        launcher = AppLauncher(udid: udid, device: device, tools: tools, settings: settings, logs: logs, screens: screens,
+                               accessibility: accessibility)
     }
 
     static func open(udid: String, tools: DeveloperTools) async throws -> DeviceSession {
@@ -115,9 +119,9 @@ final class DeviceSession {
             return try await screens.screenshot(to: Self.absolutePath(path, in: workingDirectory), display: display,
                                                 maxDimension: maxDimension)
         case .tree(let point?, let detail):
-            return try await readAccessibility { try await self.accessibility.element(at: point, detail: detail) }
+            return try await accessibility.element(at: point, detail: detail)
         case .tree(nil, let detail):
-            return try await readAccessibility { try await self.accessibility.tree(detail: detail) }
+            return try await accessibility.tree(detail: detail)
         case .setting(let setting?, let value?):
             return try await settings.set(setting, to: value)
         case .setting(let setting?, nil):
@@ -125,13 +129,13 @@ final class DeviceSession {
         case .setting(nil, _):
             return try await settings.all()
         case .launch(let bundleID, let arguments):
-            return try await launch(bundleID, arguments: arguments)
+            return try await launcher.launch(bundleID, arguments: arguments)
         case .install(let path):
             return try await apps.install(Self.absolutePath(path, in: workingDirectory))
         case .uninstall(let bundleID):
             return try await apps.uninstall(bundleID)
         case .openURL(let url):
-            return try await openURL(url)
+            return try await launcher.open(url)
         case .push(let bundleID, let payload):
             return try await apps.push(payload, to: bundleID, workingDirectory: workingDirectory)
         case .privacy(let action, let service, let bundleID):
@@ -146,10 +150,10 @@ final class DeviceSession {
             try await Task.sleep(for: .milliseconds(milliseconds))
             return ["waited": JSONValue(milliseconds)]
         case .waitForElement(let selector, gone: false, let timeout):
-            let found = try await readAccessibility { try await self.accessibility.element(selector, within: timeout) }
+            let found = try await accessibility.element(selector, within: timeout)
             return ["element": found.json]
         case .waitForElement(let selector, gone: true, let timeout):
-            try await readAccessibility { try await self.accessibility.waitUntilGone(selector, within: timeout) }
+            try await accessibility.waitUntilGone(selector, within: timeout)
             return ["absent": true]
         case .logs(let query):
             return try await logs.read(query)
@@ -211,7 +215,7 @@ final class DeviceSession {
     /// Taps the element's tap point once the pixels there hold still, and reports the element, whose `point` says where,
     /// and the wait.
     private func tap(_ selector: ElementSelector, within limit: Duration) async throws -> JSONValue {
-        let found = try await readAccessibility { try await self.accessibility.element(selector, within: limit) }
+        let found = try await accessibility.element(selector, within: limit)
         try await accessibility.checkReachable(found.element, in: found.pid, among: found.screen, as: selector)
         let screen = try await screens.touchscreen(.automatic, usesPixels: false)
         let point = ScreenPoint.normalized(found.element.fraction)
@@ -258,7 +262,7 @@ final class DeviceSession {
         var swipes = 0
         var before: String?
         while true {
-            let seen = try await readAccessibility { try await self.accessibility.shownElementAtRest(selector) }
+            let seen = try await accessibility.shownElementAtRest(selector)
             if let found = seen.found {
                 return ["element": found.json, "swipes": JSONValue(swipes)]
             }
@@ -320,41 +324,6 @@ final class DeviceSession {
     }
 
     // MARK: Apps, steps and diagnostics
-
-    private func launch(_ bundleID: String, arguments: [String]) async throws -> JSONValue {
-        try await settings.enableApplicationAccessibility()
-        let output = logs.prepareLaunch(dataDirectory: device.dataDirectory)
-        let launchedAt = Date.now
-        // Restarts a running app, so it starts from its launch screen with these arguments.
-        let result = try await tools.simctl(["launch", "--terminate-running-process"] + output.launchOptions + [udid, bundleID] + arguments,
-                                            childEnvironment: AppOutput.environment)
-        screens.forgetScreenshots()
-        // simctl prints `<bundle-id>: <pid>`.
-        let pid = result.standardOutput.split(separator: ":").last.flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
-        logs.recordLaunch(bundleID: bundleID, pid: pid, at: launchedAt, output: output)
-        if let pid, !(await accessibility.becomesFrontmost(pid, within: Self.launchLimit)) {
-            throw SimDriveError(.launchNotFrontmost, "\(bundleID) launched as pid \(pid) but did not come to the front within "
-                                + "\(Self.launchLimit.components.seconds) s; take a screenshot to see what is in front.")
-        }
-        return ["bundleID": .string(bundleID), "pid": JSONValue(pid)]
-    }
-
-    /// An app launched while app accessibility was off has an empty frame until it relaunches.
-    private func readAccessibility<Value>(_ read: () async throws -> Value) async throws -> Value {
-        do {
-            return try await read()
-        } catch let error as SimDriveError where error.code == .accessibilityTranslation {
-            guard !(try await settings.isApplicationAccessibilityEnabled()) else { throw error }
-            throw SimDriveError(.appAccessibilityOff, "The frontmost app launched while app accessibility was off, as it is once "
-                                + "Full Keyboard Access or another accessibility service quits; relaunch it with `launch`.")
-        }
-    }
-
-    private func openURL(_ url: String) async throws -> JSONValue {
-        try await tools.simctl(["openurl", udid, url])
-        screens.forgetScreenshots()
-        return ["url": .string(url)]
-    }
 
     private func run(_ steps: [Step], attachesLogs: Bool, workingDirectory: String) async throws -> JSONValue {
         var results: [JSONValue] = []

@@ -167,23 +167,6 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** extract `ScreenRecordPolicy`, `LogCursorStart`, a settle detector and `DragPlan` (which checks path lengths) as pure types. Add a layout fixture file for `KeyboardLayout`, a table test of button usages, and socket tests in a temporary directory.
 - **Test:** prove each new test can fail by breaking the code it covers.
 
-### - [ ] I21. Move `launch` out of `DeviceSession`, and keep private shapes in Native (S)
-
-- **Seen (2026-11-24, I19):** `GuestTouchscreen.open` never returns nil on tvOS, and `SimulatorDevice.hasTouchscreen` decides from the runtime's name. Have the driver return nil there and delete `hasTouchscreen`, checking the matrix's `tv` section on an Apple TV.
-
-- **Why:** found in the architecture review (2026-11-24).
-  - `DeviceSession.launch` runs the whole launch: it enables app accessibility, prepares the output files, runs `simctl launch`, parses the pid, forgets screen records and waits for the app to come to the front. That is logic beyond calling a driver, while `DeviceApps` stays thin. `readAccessibility`'s error mapping belongs in `DeviceAccessibility`.
-  - Native leaks a few shapes into Core:
-    - `KeyboardBindings.init(runtime: ABIRuntime = .shared)` puts an ABIBridge type in its signature;
-    - `SimulatorDevice.interfaceChoice` takes raw `Int`s in CoreSimulator's order;
-    - `GuestOrientationReading.physical` is a raw CoreDevice string that reaches the JSON.
-- **Read:** `S:SimDriveCore/Session/DeviceSession.swift`, `S:SimDriveCore/Apps/DeviceApps.swift`, `S:SimDriveNative/Input/KeyboardBindings.swift`, `S:SimDriveNative/Simulator/SimulatorDevice.swift`, `S:SimDriveNative/DeviceControl/GuestOrientation.swift`.
-- **Do:**
-  - Move launch and `openURL` into `DeviceApps`, with the pid parse as a pure, tested function, and the error mapping into `DeviceAccessibility`.
-  - Make the runtime parameter internal, and give each setting option a typed choice.
-  - Keep the `physical` JSON spelling while mapping it from an enum.
-- **Test:** `swift test`; the matrix's `basics`, `tree`, `settings` and `logs` sections.
-
 ### - [ ] I24. Send keys over the digitizer connection instead of a keyboard service (S experiment, unverified)
 
 - **Why:** found in the upstream review (2026-11-24). AXe sends `IndigoKeyboardButtonEvent {usageCode, state}` on the same `remote.hid.digitizer` XPC connection as its touches, creating no keyboard service and using no UniversalHIDKit observer. If keys reach apps that way in simdrive too, the guest might not count a hardware keyboard as connected, which hides the software keyboard and is half the reason inputs are released after 30 s, and `GuestKeyboard` would get simpler.

@@ -13,7 +13,11 @@ package struct KeyboardBindings {
     private let translate: (NativeSwiftValue, NSEvent) throws -> [NativeSwiftValue]
     private let makeMainKeyboardDescriptor: () throws -> NativeSwiftValue
 
-    package init(runtime: ABIRuntime = .shared) async throws {
+    package init() async throws {
+        try await self.init(runtime: .shared)
+    }
+
+    init(runtime: ABIRuntime) async throws {
         let translation = try await runtime.prepare { try await Self.translation(runtime: $0) }
         makeObserver = translation.makeObserver
         translate = translation.translate

@@ -1,3 +1,4 @@
+import SimDriveNative
 import Testing
 @testable import SimDriveCore
 
@@ -49,16 +50,25 @@ struct SettingCatalogTests {
 
     @Test func interfaceOptionsMapTheirChoices() throws {
         let contrast = try #require(Self.increaseContrast)
-        #expect(contrast.value(fromInterfaceChoice: 1) == true)
-        #expect(contrast.value(fromInterfaceChoice: 0) == false)
+        #expect(contrast.value(fromInterfaceChoice: "on") == true)
+        #expect(contrast.value(fromInterfaceChoice: "off") == false)
         #expect(contrast.value(fromInterfaceChoice: nil) == .unsupported)
-        #expect(contrast.interfaceChoice(for: true) == 1)
-        #expect(SettingCatalog.appearance.value(fromInterfaceChoice: 1) == "dark")
-        #expect(SettingCatalog.appearance.value(fromInterfaceChoice: 2) == .unsupported)
-        #expect(SettingCatalog.appearance.interfaceChoice(for: "dark") == 1)
+        #expect(contrast.interfaceChoice(for: true) == "on")
+        #expect(SettingCatalog.appearance.value(fromInterfaceChoice: "dark") == "dark")
+        #expect(SettingCatalog.appearance.value(fromInterfaceChoice: "sepia") == .unsupported)
+        #expect(SettingCatalog.appearance.interfaceChoice(for: "dark") == "dark")
         let textSize = try #require(SettingCatalog.setting(named: "text-size"))
-        #expect(textSize.value(fromInterfaceChoice: 3) == "large")
-        #expect(textSize.interfaceChoice(for: "accessibility-extra-extra-extra-large") == 11)
+        #expect(textSize.value(fromInterfaceChoice: "large") == "large")
+        #expect(textSize.interfaceChoice(for: "huge") == nil)
+    }
+
+    /// CoreSimulator numbers each option's choices in this order; the catalog's names must match it.
+    @Test func interfaceChoicesFollowCoreSimulatorsOrder() {
+        typealias Option = SimulatorDevice.InterfaceOption
+        #expect(Option.appearance.choices == ["light", "dark"])
+        #expect(Option.textSize.choices.firstIndex(of: "large") == 3)
+        #expect(Option.textSize.choices.firstIndex(of: "accessibility-extra-extra-extra-large") == 11)
+        #expect(Option.increaseContrast.choices == ["off", "on"])
     }
 
     @Test func accessibilityPreferencesNotifyRunningApps() {

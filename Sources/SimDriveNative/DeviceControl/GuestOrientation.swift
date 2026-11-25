@@ -5,12 +5,33 @@ package enum DeviceOrientation: String, Codable, CaseIterable, Sendable {
     case portrait, portraitUpsideDown, landscapeLeft, landscapeRight
 }
 
+/// How the device itself lies: upright in an orientation, or flat. `other` keeps a CoreDevice raw value this list lacks.
+package enum PhysicalOrientation: Equatable, Sendable {
+    case upright(DeviceOrientation)
+    case faceUp, faceDown, unknown
+    case other(String)
+
+    /// From CoreDevice's `DeviceOrientation` raw value.
+    init(rawValue: String) {
+        if let orientation = DeviceOrientation(rawValue: rawValue) {
+            self = .upright(orientation)
+            return
+        }
+        switch rawValue {
+        case "faceUp": self = .faceUp
+        case "faceDown": self = .faceDown
+        case "unknown": self = .unknown
+        default: self = .other(rawValue)
+        }
+    }
+}
+
 /// The guest's orientation readings.
 package struct GuestOrientationReading: Equatable, Sendable {
     /// The last orientation that was not flat, which the interface follows; nil when the guest reports none.
     package let orientation: DeviceOrientation?
-    /// The CoreDevice `DeviceOrientation` raw value of the device itself, which may be `faceUp`, `faceDown` or `unknown`.
-    package let physical: String
+    /// The device itself, which may lie flat.
+    package let physical: PhysicalOrientation
 }
 
 /// Reads and sets the guest's device orientation.

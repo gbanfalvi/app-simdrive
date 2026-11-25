@@ -31,7 +31,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Session` | `DeviceSession` and `LazyCapability`. |
 | `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes, on US or a `KeyboardLayout`. |
 | `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. `Stillness`: whether the pixels under an element tap have stopped changing. `StatusBarOverride`, checked values for `simctl status_bar`. |
-| `SimDriveCore/Apps` | `DeviceApps`: install, uninstall, `push` and `privacy` through `simctl`, with `PushPayload` and `PrivacyAction`. |
+| `SimDriveCore/Apps` | `DeviceApps`: install, uninstall, `push` and `privacy` through `simctl`, with `PushPayload` and `PrivacyAction`. `AppLauncher`: `launch`, which turns on app accessibility, captures the app's output and waits for it to come to the front, and `openurl`. |
 | `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes. |
 | `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs; `SplitState`, the half simdrive set, kept per app pid since reading SpringBoard's log for it takes seconds. |
 | `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |
@@ -143,7 +143,7 @@ Guest services are reached the way CoreDevice's simulator plugin reaches them: `
 - **`LazyCapability<Service>`** opens a driver on first use and keeps it: nil means the device lacks it, for good; a throw is retried next time; `isUsable` reopens a failed one. Callers that arrive while it opens share that open.
 - **`DeviceInputs`** owns the keyboard, touchscreen and buttons, and releases all three after 30 s idle. Each input holds an **`IdleRelease`** while it runs, so the release never closes a service mid-input.
 - **`Screens`** knows the device's displays and each one's last screenshot; it returns a **`Screen`**, which maps that display's points to the digitizer through **`ScreenMapping`**. `ScreenStore` persists the screenshot records across processes.
-- **`DeviceAccessibility`** places **`SimulatorAccessibility`**'s snapshots on the screen with **`AccessibilityLayout`**, and answers `becomesFrontmost` for `launch`.
+- **`DeviceAccessibility`** places **`SimulatorAccessibility`**'s snapshots on the screen with **`AccessibilityLayout`**, and answers `becomesFrontmost` for `launch`. It names an app launched while app accessibility was off (`app-accessibility-off`) itself.
 - **`SimulatorDevice`** wraps CoreSimulator's `SimDevice`; **`SimulatorGuest`** opens a **`GuestConnection`** per guest service, and a connection that ends reports `hasFailed`.
 - **`CoreDeviceRemote`** is the simulator's CoreDevice `RemoteDevice`, opened once per session and shared by the pasteboard and hinge.
 - **`DeveloperTools`** runs `simctl` and other tools for the session's developer directory, and streams `log stream` lines.

@@ -556,6 +556,30 @@ Items from [backlog.md](backlog.md) that have landed, each with its **Result:**,
 
 **Result (2026-11-25):** the probe takes `-probeSheet` (an animated page sheet) and `-probePush` (an animated navigation push), each showing a Done button that logs `TAP done <name>`. The matrix's `tap` section launches with each three times and runs `tap --label Done` at once. On a new iPhone 17, iOS 27.2: 3/3 delivered for both, settle 279–361 ms for the sheet and 304–459 ms for the push; `--only tap` 44/44. With the settle wait disabled, the sheet check failed 0/3 while the push still passed 3/3: a tap during a push is not dropped, or the tree shows Done only once it ends, so the push check does not guard the wait. The sheet slides its uniform background under the point, the case feared to look still, and the wait still caught it. Left: I28.
 
+### - [x] I21. Move `launch` out of `DeviceSession`, and keep private shapes in Native (S)
+
+**Result (2026-11-25):**
+- **Launch:** `AppLauncher` (`S:SimDriveCore/Apps/AppLauncher.swift`) runs `launch` and `openurl`, with `pid(fromLaunchOutput:)` as a pure, tested function. Not in `DeviceApps`, as planned: a launch needs settings, logs, screens and accessibility, and `DeviceApps` stays a thin `simctl` wrapper.
+- **Error mapping:** `DeviceAccessibility` maps the translator's error for an app launched with app accessibility off to `app-accessibility-off` itself, given a closure that reads the setting, so `DeviceSession` lost `readAccessibility` and its six wrapped calls. Hit tests get the mapping too, which they lacked.
+- **Native shapes:** `KeyboardBindings()` hides its runtime parameter; `SimulatorDevice.InterfaceOption` names its `choices` in CoreSimulator's order and reads and writes a choice by name, so Core knows no index order (`interfaceChoicesFollowCoreSimulatorsOrder` pins it); `GuestOrientationReading.physical` is a `PhysicalOrientation`, whose JSON keeps the old spelling (`PhysicalOrientationTests`).
+- **Not done, on purpose:** deleting `hasTouchscreen` for a nil `GuestTouchscreen.open`. It also picks Apple TV's landscape panel and skips its screen-start wait, so the driver would only repeat the runtime-name check.
+- **Checks:** `swift test` 171 and 30; on a new iPhone 17, iOS 27.2, `basics,tree,settings,logs,orientation` 89/89.
+
+- **Seen (2026-11-24, I19):** `GuestTouchscreen.open` never returns nil on tvOS, and `SimulatorDevice.hasTouchscreen` decides from the runtime's name. Have the driver return nil there and delete `hasTouchscreen`, checking the matrix's `tv` section on an Apple TV.
+
+- **Why:** found in the architecture review (2026-11-24).
+  - `DeviceSession.launch` runs the whole launch: it enables app accessibility, prepares the output files, runs `simctl launch`, parses the pid, forgets screen records and waits for the app to come to the front. That is logic beyond calling a driver, while `DeviceApps` stays thin. `readAccessibility`'s error mapping belongs in `DeviceAccessibility`.
+  - Native leaks a few shapes into Core:
+    - `KeyboardBindings.init(runtime: ABIRuntime = .shared)` puts an ABIBridge type in its signature;
+    - `SimulatorDevice.interfaceChoice` takes raw `Int`s in CoreSimulator's order;
+    - `GuestOrientationReading.physical` is a raw CoreDevice string that reaches the JSON.
+- **Read:** `S:SimDriveCore/Session/DeviceSession.swift`, `S:SimDriveCore/Apps/DeviceApps.swift`, `S:SimDriveNative/Input/KeyboardBindings.swift`, `S:SimDriveNative/Simulator/SimulatorDevice.swift`, `S:SimDriveNative/DeviceControl/GuestOrientation.swift`.
+- **Do:**
+  - Move launch and `openURL` into `DeviceApps`, with the pid parse as a pure, tested function, and the error mapping into `DeviceAccessibility`.
+  - Make the runtime parameter internal, and give each setting option a typed choice.
+  - Keep the `physical` JSON spelling while mapping it from an enum.
+- **Test:** `swift test`; the matrix's `basics`, `tree`, `settings` and `logs` sections.
+
 ## 3. New features
 
 ### - [x] N1. `openurl <url>`: open a URL or deep link (S)

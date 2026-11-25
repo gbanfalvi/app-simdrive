@@ -9,9 +9,21 @@ extension AccessibilityApplication {
 }
 
 extension GuestOrientationReading {
-    /// `physical` keeps a raw value that names no orientation, such as face-up.
     var json: JSONValue {
-        ["orientation": JSONValue(orientation?.name), "physical": .string(DeviceOrientation(rawValue: physical)?.name ?? physical)]
+        ["orientation": JSONValue(orientation?.name), "physical": .string(physical.name)]
+    }
+}
+
+extension PhysicalOrientation {
+    /// An upright orientation's command name; flat ones keep CoreDevice's spelling, such as `faceUp`.
+    var name: String {
+        switch self {
+        case .upright(let orientation): orientation.name
+        case .faceUp: "faceUp"
+        case .faceDown: "faceDown"
+        case .unknown: "unknown"
+        case .other(let rawValue): rawValue
+        }
     }
 }
 

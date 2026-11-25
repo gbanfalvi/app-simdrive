@@ -24,6 +24,8 @@ struct Setting: Equatable, Sendable {
     }
 
     private static let toggleNames: [String: Bool] = ["on": true, "off": false, "true": true, "false": false]
+    private static let onChoice = "on"
+    private static let offChoice = "off"
     /// Preferences keep numbers as 32-bit floats; four decimals drop their rounding error.
     private static let numberPrecision = 10_000.0
 
@@ -70,19 +72,20 @@ struct Setting: Equatable, Sendable {
         }
     }
 
-    /// The value of an interface option's choice index, which is nil when the device lacks the option.
-    func value(fromInterfaceChoice choice: Int?) -> JSONValue {
+    /// The value of an interface option's choice, which is nil when the device lacks the option. A toggle's choices are
+    /// `off` and `on`.
+    func value(fromInterfaceChoice choice: String?) -> JSONValue {
         switch (kind, choice) {
-        case (.toggle, let choice?): return .bool(choice != 0)
-        case (.choice(let choices), let choice?) where choices.indices.contains(choice): return .string(choices[choice])
+        case (.toggle, let choice?): return .bool(choice == Self.onChoice)
+        case (.choice(let choices), let choice?) where choices.contains(choice): return .string(choice)
         default: return .unsupported
         }
     }
 
-    func interfaceChoice(for value: JSONValue) -> Int? {
+    func interfaceChoice(for value: JSONValue) -> String? {
         switch (kind, value) {
-        case (.toggle, .bool(let isOn)): isOn ? 1 : 0
-        case (.choice(let choices), .string(let choice)): choices.firstIndex(of: choice)
+        case (.toggle, .bool(let isOn)): isOn ? Self.onChoice : Self.offChoice
+        case (.choice(let choices), .string(let choice)) where choices.contains(choice): choice
         default: nil
         }
     }
@@ -119,13 +122,8 @@ enum SettingCatalog {
     /// The guest reads a color filter on iOS 17 and 26 but refuses to change one before iOS 27 (CoreDevice error 21049).
     private static let colorFilterOSVersion = 27
     private static let fullKeyboardAccessService = "com.apple.fullkeyboardaccess"
-    private static let textSizes = [
-        "extra-small", "small", "medium", "large", "extra-large", "extra-extra-large", "extra-extra-extra-large",
-        "accessibility-medium", "accessibility-large", "accessibility-extra-large", "accessibility-extra-extra-large",
-        "accessibility-extra-extra-extra-large",
-    ]
-
-    static let appearance = Setting(name: "appearance", kind: .choice(["light", "dark"]), storage: .interface(.appearance))
+    static let appearance = Setting(name: "appearance", kind: .choice(SimulatorDevice.InterfaceOption.appearance.choices),
+                                    storage: .interface(.appearance))
 
     /// Not a setting of its own: Settings turns it on before starting a setting's service, so running apps answer that service,
     /// and `launch` before launching, so the app answers `tree`. backboardd turns it off when its last client, such as that
@@ -135,7 +133,7 @@ enum SettingCatalog {
 
     static let all: [Setting] = [
         appearance,
-        Setting(name: "text-size", kind: .choice(textSizes), storage: .interface(.textSize)),
+        Setting(name: "text-size", kind: .choice(SimulatorDevice.InterfaceOption.textSize.choices), storage: .interface(.textSize)),
         Setting(name: "increase-contrast", kind: .toggle, storage: .interface(.increaseContrast)),
         accessibilityToggle("bold-text", key: "EnhancedTextLegibilityEnabled", notification: "text.legibility.status",
                             cache: "enhance.text.legibility"),

@@ -19,12 +19,22 @@ package final class SimulatorDevice {
 
     /// A setting CoreSimulator changes itself, as `simctl ui` does.
     package enum InterfaceOption: Sendable {
-        /// Light, dark.
         case appearance
-        /// Extra small to accessibility extra extra extra large.
         case textSize
-        /// Off, on.
         case increaseContrast
+
+        /// The option's choices, named as simdrive names them, in the order CoreSimulator numbers them.
+        package var choices: [String] {
+            switch self {
+            case .appearance: ["light", "dark"]
+            case .textSize: [
+                "extra-small", "small", "medium", "large", "extra-large", "extra-extra-large", "extra-extra-extra-large",
+                "accessibility-medium", "accessibility-large", "accessibility-extra-large", "accessibility-extra-extra-large",
+                "accessibility-extra-extra-extra-large",
+            ]
+            case .increaseContrast: ["off", "on"]
+            }
+        }
 
         fileprivate var getter: Selector {
             switch self {
@@ -158,24 +168,28 @@ package final class SimulatorDevice {
         }
     }
 
-    /// The index of `option`'s current choice, in the order its cases document; nil when the device lacks the option.
-    package func interfaceChoice(_ option: InterfaceOption) -> Int? {
+    /// `option`'s current choice, one of its `choices`; nil when the device lacks the option or reports another value.
+    package func interfaceChoice(_ option: InterfaceOption) -> String? {
         guard device.responds(to: option.getter) else { return nil }
         let read = unsafeBitCast(device.method(for: option.getter), to: ReadIntFunction.self)
-        let value = read(device, option.getter)
-        return value >= Self.firstInterfaceValue ? value - Self.firstInterfaceValue : nil
+        let index = read(device, option.getter) - Self.firstInterfaceValue
+        return option.choices.indices.contains(index) ? option.choices[index] : nil
     }
 
-    package func setInterfaceChoice(_ option: InterfaceOption, to choice: Int) throws {
+    /// Sets `option` to one of its `choices`.
+    package func setInterfaceChoice(_ option: InterfaceOption, to choice: String) throws {
+        guard let index = option.choices.firstIndex(of: choice) else {
+            throw SimDriveError(.interfaceOption, "\(option) has no choice \(choice).")
+        }
         guard device.responds(to: option.setter) else {
             throw SimDriveError(.interfaceOption, "CoreSimulator cannot change \(option) on \(name).")
         }
         var error: NSError?
         let method = device.method(for: option.setter)
         let changed = switch option {
-        case .increaseContrast: unsafeBitCast(method, to: SetBoolFunction.self)(device, option.setter, choice != 0, &error)
+        case .increaseContrast: unsafeBitCast(method, to: SetBoolFunction.self)(device, option.setter, index != 0, &error)
         case .appearance, .textSize:
-            unsafeBitCast(method, to: SetIntFunction.self)(device, option.setter, choice + Self.firstInterfaceValue, &error)
+            unsafeBitCast(method, to: SetIntFunction.self)(device, option.setter, index + Self.firstInterfaceValue, &error)
         }
         guard changed else {
             throw SimDriveError(.interfaceOption, "Could not change \(option): \(error?.localizedDescription ?? "no reason given")")
