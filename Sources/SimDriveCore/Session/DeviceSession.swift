@@ -158,6 +158,12 @@ final class DeviceSession {
         case .shake:
             try device.postDarwinNotification(Self.shakeNotification)
             return [:]
+        case .memoryWarning:
+            guard let file = device.memoryWarningFile() else {
+                throw SimDriveError(.memoryWarningUnsupported, "\(device.name) reports no memory warning file.")
+            }
+            try Data().write(to: file)
+            return [:]
         case .doctor:
             return await doctor()
         case .stop, .serve:

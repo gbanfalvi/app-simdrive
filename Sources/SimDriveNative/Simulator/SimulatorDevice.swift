@@ -210,6 +210,12 @@ package final class SimulatorDevice {
         try await ScreenAdapter(device: device).interfaceOrientations()
     }
 
+    /// Sends running apps a memory warning, as `SimDevice simulateMemoryWarning` does: the guest watches for this file.
+    /// Nil when CoreSimulator reports no file for the device.
+    package func memoryWarningFile() -> URL? {
+        string(forKey: "memoryWarningFilePath").map { URL(fileURLWithPath: $0) }
+    }
+
     /// The current pixels of screen `screenID`, or nil when CoreSimulator does not share them.
     package func screenFrame(screenID: Int) -> ScreenFrame? {
         ScreenFramebuffers(device: device).frame(screenID: screenID)

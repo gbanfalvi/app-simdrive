@@ -193,6 +193,11 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["shake", "twice"]) }
     }
 
+    @Test func memoryWarningTakesNoArguments() throws {
+        #expect(try CommandParser.parse(["memory-warning"]) == .memoryWarning)
+        expectUsageError { try CommandParser.parse(["memory-warning", "critical"]) }
+    }
+
     @Test func installTakesAPathAndUninstallABundleIdentifier() throws {
         #expect(try CommandParser.parse(["install", "build/My App.ipa"]) == .install(path: "build/My App.ipa"))
         #expect(try CommandParser.parse(["uninstall", "com.example"]) == .uninstall(bundleID: "com.example"))

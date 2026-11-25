@@ -778,7 +778,9 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
 - **Do:** `SimDevice postDarwinNotification` of `com.apple.UIKit.SimulatorShake` (`N:NeoSimulatorKit/Simulator/Session/DeviceSession.swift:856`). simdrive already posts notifications (`S:SimDriveNative/Simulator/SimulatorDevice.swift:96`). Put the name in a `SimDriveCore` constant, used by a `DeviceSession` method.
 - **Test:** the probe logs `SHAKE` from `motionEnded(_:with:)` on its view controller; add a matrix check.
 
-### - [ ] N4. `memory-warning` (S)
+### - [x] N4. `memory-warning` (S)
+
+**Result (2026-11-25):** `memory-warning` writes an empty file at the `SimDevice`'s `memoryWarningFilePath` (`SimulatorDevice.memoryWarningFile()`), which the guest watches, and returns `{}`; a device that reports no path fails with the new `memory-warning-unsupported`. The probe logs `MEMORY` from `applicationDidReceiveMemoryWarning`, and the matrix's `services` section checks it: 12/12 on a new iPhone 17, iOS 27.2. Not checked: older runtimes and tvOS.
 
 - **Do:** write an empty file at `SimDevice.memoryWarningFilePath`, as `SimDevice.simulateMemoryWarning` does (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:164-165,1038-1044`; `N:NeoSimulatorKit/Simulator/Session/DeviceSession.swift:1301`). Add `memoryWarningFilePath` to `SimulatorDevice`.
 - **Test:** the probe logs `MEMORY` from `UIApplication.didReceiveMemoryWarningNotification`; add a matrix check.

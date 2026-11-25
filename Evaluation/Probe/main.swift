@@ -424,6 +424,10 @@ final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationC
         return true
     }
 
+    func applicationDidReceiveMemoryWarning(_ application: UIApplication) {
+        Log.write("MEMORY")
+    }
+
     /// A push that `simdrive push` sends while the probe is in front.
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
                                 withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {

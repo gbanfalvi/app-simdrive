@@ -57,6 +57,7 @@ $S <udid> privacy grant photos com.example.app   # or revoke, reset; location, c
 $S <udid> status-bar override --time 9:41 --battery 100 --battery-state charged   # fixed status bar; status-bar clear
 echo '{"aps":{"alert":{"title":"Hi"}}}' | $S <udid> push com.example.app -       # or a payload file
 $S <udid> shake                         # the first responder gets motionEnded(.motionShake)
+$S <udid> memory-warning                # running apps get didReceiveMemoryWarning
 $S <udid> logs                         # the launched app's entries, stdout, stderr and crashes since the last logs
 $S <udid> logs --level error --grep timeout --source log   # also --subsystem, --category, --predicate, --level debug
 $S <udid> logs --since launch --peek   # reread from launch without moving the cursor; also --since 30s or an ISO 8601 time

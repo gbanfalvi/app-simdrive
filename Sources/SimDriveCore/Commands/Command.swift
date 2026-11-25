@@ -72,6 +72,8 @@ enum Command: Equatable, Sendable {
     case run(steps: [Step], attachesLogs: Bool)
     /// Shakes the device, as Simulator's Device > Shake does.
     case shake
+    /// Sends running apps a memory warning, as Simulator's Debug > Simulate Memory Warning does.
+    case memoryWarning
     case doctor
     case stop
     case serve

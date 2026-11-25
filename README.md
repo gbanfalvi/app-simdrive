@@ -45,6 +45,7 @@ simdrive <udid|booted> <command>
 | `push <bundle-id> <payload.json\|->` | Sends a simulated remote notification, from a file or standard input; the payload is a JSON object with an `aps` key, 4096 bytes at most |
 | `privacy grant\|revoke\|reset <service> [<bundle-id>]` | Sets an app's access to a service, such as `photos`, `location`, `contacts`, `microphone` or `all`, without its alert; `reset` without an app resets every app. Some changes terminate the app |
 | `shake` | Shakes the device, as Simulator's Device > Shake does: the first responder gets `motionEnded` with `.motionShake` |
+| `memory-warning` | Sends running apps a memory warning, as Simulator's Debug > Simulate Memory Warning does |
 | `status-bar override [--time T] [--battery 0-100] [--battery-state S] [--data-network N] [--wifi-mode M] [--wifi-bars 0-3] [--cellular-mode M] [--cellular-bars 0-4] [--operator name]` | Shows fixed status bar values, for screenshots that compare; `status-bar clear` shows the real ones again |
 | `logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until regex [--timeout ms]] [--limit N] [--width N]` | Reads the launched app's new log entries, output and crashes, or waits for an entry; see [Logs](#logs) |
 | `wait <ms>` | Pauses, for `run` |
@@ -81,7 +82,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `push` | `{"bundleID"}` |
 | `privacy` | `{"action", "service", "bundleID"}`, the bundle identifier null for every app |
 | `status-bar` | `{"overrides": {option: value}}`, or `{"cleared": true}` |
-| `shake` | `{}` |
+| `shake`, `memory-warning` | `{}` |
 | `logs` | `{"since", "entries": [entry], "stdout": [lines], "stderr": [lines], "crashes": [crash], "dropped"}`, each source's key only when read. An entry is `{"ms", "message", "level", "process", "subsystem", "category", "repeats"}`, described under [Logs](#logs); a crash is `{"process", "pid", "time", "exception", "reason", "frames", "path"}` |
 | `wait` | `{"waited": milliseconds}`; with `--label` or `--id`, `{"element"}`, or `{"absent": true}` with `--absent` |
 | `run` | `{"steps": [each step's result]}`; with `--logs`, each step also has `"logs": [entry]`, and a failed read adds `"logsError"` |
@@ -109,7 +110,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `screenshot`, `screenshot-read`, `screenshot-scale`, `screenshot-write` | A screenshot could not be captured, read, scaled or written | no |
 | `single-display`, `unknown-display` | `--display` names a display the device lacks | no |
 | `legacy-buttons-unavailable` | `button --legacy` needs `IndigoButtonEvent`, which Xcode 27.3 removed; press without `--legacy` | no |
-| `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `setting-unsupported`, `accessibility-unsupported` | The device lacks the capability | no |
+| `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `setting-unsupported`, `accessibility-unsupported`, `memory-warning-unsupported` | The device lacks the capability | no |
 | `posture-timeout` | The hinge did not reach or settle at the posture | yes |
 | `split-unsupported` | Split view needs a Duo's inner screen, unfolded and in landscape | no |
 | `split-side-unknown` | The app fills a half simdrive did not set; pass `--from` | no |

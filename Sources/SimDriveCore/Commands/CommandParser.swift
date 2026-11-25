@@ -198,6 +198,9 @@ enum CommandParser {
         case "shake":
             try ArgumentList(rest).none()
             return .shake
+        case "memory-warning":
+            try ArgumentList(rest).none()
+            return .memoryWarning
         case "doctor":
             try ArgumentList(rest).none()
             return .doctor
@@ -402,6 +405,7 @@ enum CommandParser {
                      [--wifi-mode M] [--cellular-mode M]
           status-bar clear                    shows the real status bar again
           shake                               shakes the device; the first responder gets motionEnded
+          memory-warning                      sends running apps a memory warning
           wait <ms>
           wait --label <text> | --id <identifier> [--absent] [--timeout ms]
                                               waits until the element is on screen, or with --absent until it is not

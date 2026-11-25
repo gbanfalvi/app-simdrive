@@ -34,6 +34,7 @@ extension ErrorCode {
     static let splitSideUnknown = ErrorCode(rawValue: "split-side-unknown")
     static let splitDropped = ErrorCode(rawValue: "split-dropped", retryable: true)
     static let accessibilityUnsupported = ErrorCode(rawValue: "accessibility-unsupported")
+    static let memoryWarningUnsupported = ErrorCode(rawValue: "memory-warning-unsupported")
     static let ambiguousElement = ErrorCode(rawValue: "ambiguous-element")
     static let elementOffscreen = ErrorCode(rawValue: "element-offscreen")
     static let elementStillShown = ErrorCode(rawValue: "element-still-shown")

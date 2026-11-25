@@ -546,7 +546,8 @@ def accept_url_prompt():
 
 
 def service_checks():
-    """push, privacy, status-bar and shake simulate what a device or the system does; the probe logs what reaches it (N11, N3)."""
+    """push, privacy, status-bar, shake and memory-warning simulate what a device or the system does; the probe logs what
+    reaches it (N11, N3, N4)."""
     launch_probe()
     mark = log.mark()
     # The probe never asks to post notifications, so simctl reports "Source is not authorized" though the push reaches
@@ -579,6 +580,9 @@ def service_checks():
     mark = log.mark()
     response = sd('shake')
     check('shake', response.get('ok') and log.wait(mark, r'SHAKE$', 3), brief(response))
+    mark = log.mark()
+    response = sd('memory-warning')
+    check('memory-warning', response.get('ok') and log.wait(mark, r'MEMORY$', 3), brief(response))
 
 
 def misc_checks(is_foldable):
