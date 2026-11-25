@@ -31,8 +31,15 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 ### - [ ] F31. The matrix fails a check on a retryable error right after a first boot (S)
 
 - **Problem:** found with N6 (2026-11-25). On a new iPhone 17, iOS 27.2, booted while another new simulator booted, `setting bold-text on` failed with `tool-timeout` ("simctl spawn did not finish within 60 s") and the section went 46/47; rerun on the same simulator, 47/47. The first `simctl push` after a boot also takes ~52 s (N11). `setting_snapshot` already runs a read again when it says `retry`, but other checks do not, so a slow first boot fails checks that would pass.
+- **Seen (2026-11-25, I18):** on a new iPhone 17, iOS 27.2, the first `tap` and `tap --no-daemon` failed with `guest-service-timeout` on the digitizer, and on a new Duo `posture half` with `posture-timeout` reading 0.0. Both sections passed on the same simulators rerun, and `posture` on a second new Duo.
 - **Do:** in `sd()` (`Evaluation/matrix.py`), run a command once more when its response has `"retry": true`, and mark the check's detail with the first error so a retry stays visible rather than hidden. Leave commands whose retry changes the outcome, such as taps, to the check itself.
 - **Test:** `Evaluation/fresh.py --only settings` on two new simulators booted at once.
+
+### - [ ] F32. The matrix's crash check fails when another simulator crashed the probe recently (S)
+
+- **Problem:** found with I18 (2026-11-25). The Mac's ReportCrash writes no new report for a repeat of the same crash, wherever it happened. On a new iPhone 17, iOS 27.2, the probe's `-probeCrash` wrote nothing because another simulator's matrix had crashed it at 15:25. The matrix's fallback, `logs --peek --source crash --since 24h`, then finds nothing, since `logs` rightly keeps only this device's reports, and `logs crash summary` fails. The check passes on a simulator whose probe crash is the first in a while.
+- **Do:** make the probe's crash unique per run, such as by crashing in a function named after a random argument or with a varying stack depth, so ReportCrash never treats it as a repeat. Check `docs/open-questions.md` ("Repeated crashes") first: if a repeat can be told apart, `logs` itself should report it.
+- **Test:** the matrix's `logs` section on two new simulators in a row.
 
 ## 2. Improvements to existing commands
 
@@ -136,21 +143,6 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - On "channel disconnected" AXe runs `simctl spawn <udid> launchctl kickstart -k user/foreground/com.apple.testmanagerd` and retries once; when SpringBoard died (zero frame, dead pid) it restarts `com.apple.CoreSimulator.bridge` (`A:Sources/AXe/Utilities/AccessibilityFetcher.swift:281-356`, `A:Packages/IDBKit/FBSimulatorControl/Commands/FBSimulatorAccessibilityCommands.swift:214-273`).
   - idb reports `springBoardRestarting` for 30 s after a restart, and reconnects its own accessibility connection when CoreSimulatorBridge restarts (`I:FBSimulatorAX/Commands/SimulatorAccessibilityCommands.swift:222-293`, `I:FBSimulatorAX/Translation/AXTranslationTransport.swift:72-198`).
 - **Do:** once F15 shows which restart clears the stuck state, run it after repeated unanswered reads, once per session, and say so in the result.
-
-### - [ ] I18. One way to wait with a deadline (M)
-
-- **Why:** found in the architecture review (2026-11-24). Each subsystem waits in its own way, and they behave differently:
-  - `Hinge.waitForAngle` polls every 100 ms for 15 s.
-  - `DeviceAccessibility.becomesFrontmost` polls, but each `application()` it calls retries for up to 20 s, so `launch`'s 30 s limit can stretch to about 50 s.
-  - `Screens.knownDeviceOrientation(within:)` races two tasks and leaves one reading the guest after the command returns.
-  - `DeviceLogs.entry` and `events(until:)` are two stream-plus-deadline implementations, and only one of them waits for the stream to attach.
-  - Native has `waitForCompletion` as well.
-
-  Tasks left running, and `DeviceAccessibility.prepare()`'s background read, also undercut `docs/architecture.md`'s claim that a request's awaits never interleave with another's.
-- **Read:** the files named above, and `S:SimDriveNative/Support/` (`waitForCompletion`).
-- **Seen (2026-11-24, F20):** `DeveloperTools.collect` blocks two dispatch threads per running tool, one per pipe, so about 30 tools at once in one process exhaust the pool and stall until their limits. Reading both pipes with `readabilityHandler`, as `ToolLines` does, would block none.
-- **Do:** one Core helper, `poll(every:within:)` with `withDeadline`, whose deadline also bounds the inner call and cancels what it started. Move the waits above onto it, and share `events(until:)`'s attach handling with `entry`.
-- **Test:** unit tests for the helper with an injected clock. The matrix's `basics`, `posture` and `logs` sections.
 
 ### - [ ] I20. Unit tests for the pure logic inside I/O types, and for the daemon (M)
 

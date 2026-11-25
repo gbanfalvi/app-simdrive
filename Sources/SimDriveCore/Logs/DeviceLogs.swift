@@ -6,9 +6,9 @@ import SimDriveNative
 struct DeviceLogs {
     /// Where a cursor that has never read starts when no app was launched.
     private static let defaultLookback: TimeInterval = 60
-    private static let streamAttachLimit: Duration = .seconds(5)
+    nonisolated private static let streamAttachLimit: Duration = .seconds(5)
     /// How long a stream outlives its wait should simdrive fail to stop it.
-    private static let streamBackstop: Duration = .seconds(60)
+    nonisolated private static let streamBackstop: Duration = .seconds(60)
     /// `log show` over a long `--since` reads the guest's whole log store.
     private static let showLimit: Duration = .seconds(120)
     /// Past the last entry read, so the next read starts after it.
@@ -132,15 +132,18 @@ struct DeviceLogs {
         try await show(Self.query(subsystem: subsystem, category: category), target: .all, since: start)
     }
 
-    /// Runs `action` while streaming `subsystem`'s `category`, and returns the first entry `accepts` takes by `timeout`
-    /// after it; nil also when the stream attached too late to see it.
+    /// Runs `action` once `subsystem`'s `category` is streaming, and returns the first entry `accepts` takes by `timeout`
+    /// after it, or nil.
     func entry(subsystem: String, category: String, within timeout: Duration, where accepts: @escaping @Sendable (LogEvent) -> Bool,
                during action: () async throws -> Void) async throws -> LogEvent? {
         let query = Self.query(subsystem: subsystem, category: category)
-        let stream = try tools.simctlLines(query.streamArguments(udid: udid, target: .all, limit: timeout + Self.streamBackstop))
+        let attached = try await attachedStream(query, target: .all, limit: timeout)
+        let stream = attached.stream
         defer { stream.stop() }
-        let watch = Task { () -> LogEvent? in
-            for await line in stream.lines {
+        // Reads off the main actor while `action` runs on it; the iterator moves into the task.
+        let watch = Task.detached { [lines = attached.lines] () -> LogEvent? in
+            var lines = lines
+            while let line = await lines.next() {
                 if let event = LogEvent(ndjson: line), accepts(event) { return event }
             }
             return nil
@@ -150,6 +153,26 @@ struct DeviceLogs {
         let deadline = Task { try await Task.sleep(for: timeout); stream.stop() }
         defer { deadline.cancel() }
         return await watch.value
+    }
+
+    /// Starts `log stream` and returns its lines once it has attached, so no entry logged from then on is missed. Fails
+    /// with the retryable `tool-timeout` past `streamAttachLimit`, as under load (F30).
+    nonisolated private func attachedStream(_ query: LogQuery, target: LogTarget, limit: Duration)
+        async throws -> sending (stream: ToolLines, lines: AsyncStream<String>.Iterator) {
+        let stream = try tools.simctlLines(query.streamArguments(udid: udid, target: target, limit: limit + Self.streamBackstop))
+        var lines = stream.lines.makeAsyncIterator()
+        let attachStart = ContinuousClock.now
+        let attachWatch = Task { try await Task.sleep(for: Self.streamAttachLimit); stream.stop() }
+        defer { attachWatch.cancel() }
+        // `log stream` prints a header once it is attached.
+        while let line = await lines.next() {
+            if LogEvent(ndjson: line) == nil { return (stream, lines) }
+        }
+        stream.stop()
+        guard ContinuousClock.now - attachStart < Self.streamAttachLimit else {
+            throw SimDriveError(.toolTimeout, "log stream did not start within \(Self.streamAttachLimit.components.seconds) s.")
+        }
+        throw SimDriveError(.logRead, "log stream ended before it started.")
     }
 
     private static func query(subsystem: String, category: String) -> LogQuery {
@@ -172,27 +195,10 @@ struct DeviceLogs {
         func matches(_ event: LogEvent) -> Bool {
             digest.includes(event) && pattern.firstMatch(in: event.message, range: NSRange(event.message.startIndex..., in: event.message)) != nil
         }
-        let stream = try tools.simctlLines(query.streamArguments(udid: udid, target: target, limit: query.timeout + Self.streamBackstop))
+        let attached = try await attachedStream(query, target: target, limit: query.timeout)
+        let stream = attached.stream
+        var lines = attached.lines
         defer { stream.stop() }
-        var lines = stream.lines.makeAsyncIterator()
-        let attachStart = ContinuousClock.now
-        let attachWatch = Task { try await Task.sleep(for: Self.streamAttachLimit); stream.stop() }
-        // `log stream` prints a header once it is attached.
-        var isAttached = false
-        while let line = await lines.next() {
-            if LogEvent(ndjson: line) == nil {
-                isAttached = true
-                break
-            }
-        }
-        attachWatch.cancel()
-        guard isAttached else {
-            // Under load, as with several simulators busy, attaching can outlast the limit and work when run again (F30).
-            guard ContinuousClock.now - attachStart < Self.streamAttachLimit else {
-                throw SimDriveError(.toolTimeout, "log stream did not start within \(Self.streamAttachLimit.components.seconds) s.")
-            }
-            throw SimDriveError(.logRead, "log stream ended before it started.")
-        }
         var events = try await show(query, target: target, since: start)
         if let match = events.firstIndex(where: matches) { return Array(events[...match]) }
         let shownUntil = events.last?.date ?? start

@@ -38,7 +38,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Settings` | `SettingCatalog` (one row per setting), `DeviceSettings`, `GuestPreferences`, and `CoreDeviceSetting`, which maps rows to setting actions' JSON. |
 | `SimDriveCore/Logs` | `DeviceLogs`, `LogQuery`, `LogDigest`, `LogStore`, `LogEvent`, `CrashReports`. |
 | `SimDriveCore/Tools` | `DeveloperTools`, which runs `simctl` and friends for one developer directory, and `BootedSimulators`. |
-| `SimDriveCore/Support` | Core's `ErrorCode` constants and `JSONValue`. |
+| `SimDriveCore/Support` | Core's `ErrorCode` constants, `JSONValue`, and `poll` and `withDeadline`, the one way Core waits with a limit. |
 
 ## Request path
 
@@ -155,7 +155,7 @@ Every failure an agent can act on is a `SimDriveError`: an `ErrorCode`, the `cod
 
 ## Concurrency
 
-- Core's stateful types and the drivers are `@MainActor`; value types such as `Command` and `LogQuery` are `Sendable`. The daemon serves one request at a time, so a command's awaits never interleave with another's.
+- Core's stateful types and the drivers are `@MainActor`; value types such as `Command` and `LogQuery` are `Sendable`. The daemon serves one request at a time, so a command's awaits never interleave with another's, with two deliberate exceptions, both reads: `DeviceAccessibility.prepare()` starts the accessibility server as a session opens, and a screenshot that stops waiting for the device orientation after 1 s leaves that read running for the next command (F14). Waits with a limit go through `poll(every:within:)` and `withDeadline` (`Support/Deadline.swift`), which cancel what they started and leave no timer behind; a deadline also bounds the check in progress, unless the wait passes `finishingChecks`, as element waits do, since their first read can outlast the limit.
 - `SimulatorAccessibility` runs translator calls on its own serial queue, since `AXPTranslator` calls its delegate synchronously and the delegate blocks until the guest replies.
 - Every wait on something outside the process is bounded, since the daemon's queue waits behind it:
   - `SharedInitialization` gives CoreDevice's process-wide start one task that concurrent callers share, each waiting at most 30 s. A start that outlasts a caller is kept for the next caller rather than started again.

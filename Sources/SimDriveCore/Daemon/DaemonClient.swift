@@ -54,20 +54,17 @@ enum DaemonClient {
         let path = StatePaths.socket(for: udid).path
         if let socketDescriptor = UnixSocket.connect(to: path) { return socketDescriptor }
         try spawnDaemon(udid: udid, tools: tools)
-        let deadline = ContinuousClock.now + startLimit
-        while ContinuousClock.now < deadline {
-            try await Task.sleep(for: poll)
-            if let socketDescriptor = UnixSocket.connect(to: path) { return socketDescriptor }
+        guard let socketDescriptor = try await SimDriveCore.poll(every: poll, within: startLimit, until: { UnixSocket.connect(to: path) })
+        else {
+            throw SimDriveError(.daemonStart, "The daemon did not start; see \(StatePaths.log(for: udid).path).")
         }
-        throw SimDriveError(.daemonStart, "The daemon did not start; see \(StatePaths.log(for: udid).path).")
+        return socketDescriptor
     }
 
+    /// Returns once the daemon removed its socket, or after `exitLimit` either way.
     private static func waitForExit(udid: String) async throws {
         let path = StatePaths.socket(for: udid).path
-        let deadline = ContinuousClock.now + exitLimit
-        while FileManager.default.fileExists(atPath: path), ContinuousClock.now < deadline {
-            try await Task.sleep(for: poll)
-        }
+        _ = try await SimDriveCore.poll(every: poll, within: exitLimit) { FileManager.default.fileExists(atPath: path) ? nil : true }
     }
 
     /// Starts `simdrive <udid> serve` in its own session, so it outlives this process and its terminal.

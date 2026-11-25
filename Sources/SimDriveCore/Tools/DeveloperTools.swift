@@ -1,5 +1,6 @@
 import Foundation
 import SimDriveNative
+import Synchronization
 
 /// A finished tool's exit status and output.
 struct ToolResult: Sendable {
@@ -111,35 +112,63 @@ struct DeveloperTools: Sendable {
                                     + "or take a screenshot to see whether the simulator responds.")
         do {
             // The wait is bounded on its own, since a process the tool started can keep its pipes open after it exits.
-            // `waitUntilExit` sees the exit only on the thread that launched the process, so both happen on one thread.
+            // Handlers collect both pipes and the exit, so a running tool blocks no thread (I18).
             return try await waitForCompletion(within: limit, timeout: timeout) { done in
-                DispatchQueue.global().async {
-                    done(Result {
-                        try process.run()
-                        return collect(process, output: output, errors: errors)
-                    })
-                }
+                let collection = ToolOutputCollection(done)
+                collection.read(output, into: \.output)
+                collection.read(errors, into: \.errors)
+                process.terminationHandler = { collection.exited(with: $0.terminationStatus) }
+                do { try process.run() } catch { done(.failure(error)) }
             }.get()
         } catch let error as SimDriveError where error == timeout {
             if process.isRunning { process.terminate() }
             throw error
         }
     }
+}
 
-    private static func collect(_ process: Process, output: Pipe, errors: Pipe) -> ToolResult {
-        // Both pipes drain while the process runs, so neither can fill and block it.
-        nonisolated(unsafe) var errorData = Data()
-        let group = DispatchGroup()
-        group.enter()
-        DispatchQueue.global().async {
-            errorData = errors.fileHandleForReading.readDataToEndOfFile()
-            group.leave()
+/// A tool's two pipes and its exit, gathered from their handlers' threads, which reports once all three have ended.
+private final class ToolOutputCollection: Sendable {
+    struct State {
+        var output = Data()
+        var errors = Data()
+        var openPipes = 2
+        var status: Int32?
+        var done: (@Sendable (Result<ToolResult, any Error>) -> Void)?
+    }
+
+    private let state: Mutex<State>
+
+    init(_ done: @escaping @Sendable (Result<ToolResult, any Error>) -> Void) {
+        state = Mutex(State(done: done))
+    }
+
+    /// Drains `pipe` as data arrives, so it can never fill and block the tool.
+    func read(_ pipe: Pipe, into keyPath: WritableKeyPath<State, Data> & Sendable) {
+        pipe.fileHandleForReading.readabilityHandler = { [self] handle in
+            let data = handle.availableData
+            if data.isEmpty {
+                handle.readabilityHandler = nil
+                finishIfDone { $0.openPipes -= 1 }
+            } else {
+                state.withLock { $0[keyPath: keyPath].append(data) }
+            }
         }
-        let outputData = output.fileHandleForReading.readDataToEndOfFile()
-        group.wait()
-        process.waitUntilExit()
-        return ToolResult(status: process.terminationStatus, standardOutput: String(decoding: outputData, as: UTF8.self),
-                          standardError: String(decoding: errorData, as: UTF8.self))
+    }
+
+    func exited(with status: Int32) {
+        finishIfDone { $0.status = status }
+    }
+
+    private func finishIfDone(_ change: (inout State) -> Void) {
+        let finished: (@Sendable (Result<ToolResult, any Error>) -> Void, ToolResult)? = state.withLock { state in
+            change(&state)
+            guard state.openPipes == 0, let status = state.status, let done = state.done else { return nil }
+            state.done = nil
+            return (done, ToolResult(status: status, standardOutput: String(decoding: state.output, as: UTF8.self),
+                                     standardError: String(decoding: state.errors, as: UTF8.self)))
+        }
+        finished.map { $0.0(.success($0.1)) }
     }
 }
 

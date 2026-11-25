@@ -580,6 +580,29 @@ Items from [backlog.md](backlog.md) that have landed, each with its **Result:**,
   - Keep the `physical` JSON spelling while mapping it from an enum.
 - **Test:** `swift test`; the matrix's `basics`, `tree`, `settings` and `logs` sections.
 
+### - [x] I18. One way to wait with a deadline (M)
+
+**Result (2026-11-25):**
+- **The helper:** `withDeadline` and `poll(every:within:)` in `S:SimDriveCore/Support/Deadline.swift`. A deadline races the work against a timer, cancels the loser and returns at once, even when the work ignores cancellation, as a guest XPC call does; no timer outlives it, and cancelling the caller cancels the work. `poll` bounds the check in progress too, except with `finishingChecks`, which element waits pass: `tap --label --timeout 2000` must still finish a first read after boot that takes 13–15 s. `DeadlineTests` (9) use real 200 ms limits with wide margins rather than an injected clock, and fail when the cancellation is removed.
+- **Moved onto it:** the screen-start wait, `element(within:)`, `waitUntilGone`, `becomesFrontmost` (now bounded at 30 s, reads included), the hinge's angle and settle waits, and the daemon client's start and exit waits. `Screens.settle` keeps its own loop, since it taps anyway when the limit passes.
+- **Logs:** `attachedStream` is the one attach wait; `entry` (for `split`) now starts its action only once the stream has attached, instead of missing entries logged before it did.
+- **Tools:** `DeveloperTools.run` collects both pipes with `readabilityHandler` and the exit with `terminationHandler`, so a running tool blocks no thread: 80 one-second tools at once finish in 1.07 s, against a timeout after 21 s before (`manyRunningToolsBlockNoThreads`).
+- **Kept, on purpose:** the screenshot's orientation read that goes on after 1 s, for the next command (F14), and `prepare()`'s warm-up read. `docs/architecture.md` now names both as the only work that outlives a request.
+- **Checks:** `swift test` 181 and 30. On new simulators, iOS 27.2: iPhone 17 `basics,tree,tap,logs,settings` 97/100, then `tap,logs` 53/54 on the same simulator; the failures were a first-boot `tap` timeout (F31) and the crash check (F32). Duo `posture` 11/14 on a new simulator (`posture-timeout`, F31), then 14/14 on it and 14/14 on a second new one. `split` was not run.
+
+- **Why:** found in the architecture review (2026-11-24). Each subsystem waits in its own way, and they behave differently:
+  - `Hinge.waitForAngle` polls every 100 ms for 15 s.
+  - `DeviceAccessibility.becomesFrontmost` polls, but each `application()` it calls retries for up to 20 s, so `launch`'s 30 s limit can stretch to about 50 s.
+  - `Screens.knownDeviceOrientation(within:)` races two tasks and leaves one reading the guest after the command returns.
+  - `DeviceLogs.entry` and `events(until:)` are two stream-plus-deadline implementations, and only one of them waits for the stream to attach.
+  - Native has `waitForCompletion` as well.
+
+  Tasks left running, and `DeviceAccessibility.prepare()`'s background read, also undercut `docs/architecture.md`'s claim that a request's awaits never interleave with another's.
+- **Read:** the files named above, and `S:SimDriveNative/Support/` (`waitForCompletion`).
+- **Seen (2026-11-24, F20):** `DeveloperTools.collect` blocks two dispatch threads per running tool, one per pipe, so about 30 tools at once in one process exhaust the pool and stall until their limits. Reading both pipes with `readabilityHandler`, as `ToolLines` does, would block none.
+- **Do:** one Core helper, `poll(every:within:)` with `withDeadline`, whose deadline also bounds the inner call and cancels what it started. Move the waits above onto it, and share `events(until:)`'s attach handling with `entry`.
+- **Test:** unit tests for the helper with an injected clock. The matrix's `basics`, `posture` and `logs` sections.
+
 ## 3. New features
 
 ### - [x] N1. `openurl <url>`: open a URL or deep link (S)

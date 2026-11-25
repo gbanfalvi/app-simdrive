@@ -39,14 +39,11 @@ final class DeviceAccessibility {
     /// and its reads were never affected, so it does not wait.
     private static func waitForStartedScreen(of device: SimulatorDevice) async throws {
         guard device.hasTouchscreen else { return }
-        let deadline = ContinuousClock.now + startLimit
-        while try await !device.hasStartedScreen() {
-            guard ContinuousClock.now < deadline else {
-                throw SimDriveError(.simulatorStarting, "\(device.name) has not started its screen within \(startLimit.components.seconds) s, "
-                                    + "so its accessibility was not read: a read this early can stop it answering until a reboot. Retry "
-                                    + "once a screenshot shows the Home screen or an app.")
-            }
-            try await Task.sleep(for: startPoll)
+        let started = try await poll(every: startPoll, within: startLimit) { try await device.hasStartedScreen() ? true : nil }
+        guard started == true else {
+            throw SimDriveError(.simulatorStarting, "\(device.name) has not started its screen within \(startLimit.components.seconds) s, "
+                                + "so its accessibility was not read: a read this early can stop it answering until a reboot. Retry "
+                                + "once a screenshot shows the Home screen or an app.")
         }
     }
 
@@ -69,19 +66,17 @@ final class DeviceAccessibility {
     /// `no-element` when none appears within `limit`; reads once when `limit` is zero.
     func element(_ selector: ElementSelector, within limit: Duration)
         async throws -> (element: PlacedElement, json: JSONValue, pid: Int32?, screen: [PlacedElement]) {
-        let deadline = ContinuousClock.now + limit
-        while true {
-            let (snapshot, _, layout) = try await read(detail: .light)
+        let found = try await poll(every: Self.elementPollInterval, within: limit, finishingChecks: true) {
+            let (snapshot, _, layout) = try await self.read(detail: .light)
             let elements = layout.placedElements(snapshot.element)
-            if let found = try selector.resolve(in: elements) {
-                return (found, layout.summary(found), snapshot.application.pid, elements)
-            }
-            guard ContinuousClock.now < deadline else {
-                throw SimDriveError(.noElement, "No onscreen element matches \(selector.argument) within \(Self.milliseconds(limit)) "
-                                    + "ms; read the tree to see the labels and identifiers on screen.")
-            }
-            try await Task.sleep(for: Self.elementPollInterval)
+            return try selector.resolve(in: elements).map { (element: $0, json: layout.summary($0), pid: snapshot.application.pid,
+                                                             screen: elements) }
         }
+        guard let found else {
+            throw SimDriveError(.noElement, "No onscreen element matches \(selector.argument) within \(Self.milliseconds(limit)) "
+                                + "ms; read the tree to see the labels and identifiers on screen.")
+        }
+        return found
     }
 
     /// The one onscreen element `selector` names, or nil while none is on screen, read once the screen is at rest: once
@@ -109,15 +104,12 @@ final class DeviceAccessibility {
 
     /// Reads the light tree until `selector` names no onscreen element, failing with `element-still-shown` after `limit`.
     func waitUntilGone(_ selector: ElementSelector, within limit: Duration) async throws {
-        let deadline = ContinuousClock.now + limit
-        while true {
-            let (snapshot, _, layout) = try await read(detail: .light)
-            guard selector.isShown(in: layout.placedElements(snapshot.element)) else { return }
-            guard ContinuousClock.now < deadline else {
-                throw SimDriveError(.elementStillShown, "\(selector.argument) is still on screen after "
-                                    + "\(Self.milliseconds(limit)) ms.")
-            }
-            try await Task.sleep(for: Self.elementPollInterval)
+        let gone = try await poll(every: Self.elementPollInterval, within: limit, finishingChecks: true) {
+            let (snapshot, _, layout) = try await self.read(detail: .light)
+            return selector.isShown(in: layout.placedElements(snapshot.element)) ? nil : true
+        }
+        guard gone == true else {
+            throw SimDriveError(.elementStillShown, "\(selector.argument) is still on screen after \(Self.milliseconds(limit)) ms.")
         }
     }
 
@@ -213,18 +205,16 @@ final class DeviceAccessibility {
     }
 
     /// Whether the app of `pid` comes to the front within `limit`; true when accessibility cannot tell.
+    /// The limit bounds each read too, whose own retries once stretched a 30 s wait to about 50 s (I18).
     func becomesFrontmost(_ pid: Int, within limit: Duration) async -> Bool {
         guard let accessibility = try? await accessibility.value() else { return true }
-        let deadline = ContinuousClock.now + limit
-        repeat {
+        let front = try? await poll(every: Self.frontmostPollInterval, within: limit) { () -> Bool? in
             // A launching app answers with nothing at first.
-            if let application = try? await accessibility.application() {
-                guard let frontmost = application.pid else { return true }
-                if Int(frontmost) == pid { return true }
-            }
-            try? await Task.sleep(for: Self.frontmostPollInterval)
-        } while ContinuousClock.now < deadline
-        return false
+            guard let application = try? await accessibility.application() else { return nil }
+            guard let frontmost = application.pid else { return true }
+            return Int(frontmost) == pid ? true : nil
+        }
+        return front == true
     }
 
     /// The frontmost app, or "unsupported".

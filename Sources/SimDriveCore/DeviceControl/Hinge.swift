@@ -65,33 +65,34 @@ final class Hinge {
         }
     }
 
-    private func waitForAngle(until condition: (Double?) -> Bool) async throws {
+    private func waitForAngle(until condition: @escaping (Double?) -> Bool) async throws {
         observe()
-        let deadline = ContinuousClock.now + Timing.limit
-        while !condition(angle) {
+        let reached = try await poll(every: Timing.poll, within: Timing.limit) { [self] () throws -> Bool? in
+            if condition(angle) { return true }
             // An observation that failed explains a missing angle better than the timeout would.
             if let observationFailure, !(observationFailure is CancellationError) { throw observationFailure }
-            guard ContinuousClock.now < deadline else {
-                throw SimDriveError(.postureTimeout, "The hinge did not report the expected angle; it reads \(describedAngle).")
-            }
-            try await Task.sleep(for: Timing.poll)
+            return nil
+        }
+        guard reached == true else {
+            throw SimDriveError(.postureTimeout, "The hinge did not report the expected angle; it reads \(describedAngle).")
         }
     }
 
     /// Waits for the hinge animation to end, which settles near but not at the requested angle.
     private func waitUntilSettled() async throws {
-        let deadline = ContinuousClock.now + Timing.limit
-        var settledSince = ContinuousClock.now
-        var lastAngle = angle
-        while ContinuousClock.now - settledSince < Timing.settle {
-            guard ContinuousClock.now < deadline else {
-                throw SimDriveError(.postureTimeout, "The hinge kept moving; it reads \(describedAngle).")
+        let settled = try await withDeadline(Timing.limit) { [self] in
+            var settledSince = ContinuousClock.now
+            var lastAngle = angle
+            while ContinuousClock.now - settledSince < Timing.settle {
+                try await Task.sleep(for: Timing.poll)
+                if angle != lastAngle {
+                    lastAngle = angle
+                    settledSince = .now
+                }
             }
-            try await Task.sleep(for: Timing.poll)
-            if angle != lastAngle {
-                lastAngle = angle
-                settledSince = .now
-            }
+        }
+        guard settled != nil else {
+            throw SimDriveError(.postureTimeout, "The hinge kept moving; it reads \(describedAngle).")
         }
     }
 
