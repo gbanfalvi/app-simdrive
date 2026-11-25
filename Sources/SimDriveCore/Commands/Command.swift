@@ -58,6 +58,12 @@ enum Command: Equatable, Sendable {
     case uninstall(bundleID: String)
     /// Opens a URL, such as a deep link, in the app that handles it.
     case openURL(String)
+    /// Sends a simulated remote push notification to an app.
+    case push(bundleID: String, payload: PushPayload)
+    /// Grants, revokes or resets an app's access to a privacy service, such as photos, without its alert.
+    case privacy(PrivacyAction, service: String, bundleID: String?)
+    /// Overrides the status bar's values, or with nil clears every override.
+    case statusBar(StatusBarOverride?)
     case wait(milliseconds: Int)
     /// Waits up to `timeout` until the element a selector names is on screen, or, when `gone`, until it is not.
     case waitForElement(ElementSelector, gone: Bool, timeout: Duration)

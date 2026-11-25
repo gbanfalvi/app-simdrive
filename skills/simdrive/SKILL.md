@@ -53,6 +53,9 @@ $S <udid> setting full-keyboard-access on   # then key tab, key tab --mods shift
 $S <udid> launch com.example.app -someArgument   # captures its stdout and stderr, and resets the log cursors
 $S <udid> install build/MyApp.app       # or an .ipa; returns its bundleID. uninstall <bundle-id> removes it
 $S <udid> openurl myapp://item/42      # deep link; the first one of a scheme shows "Open in “App”?": tap Open
+$S <udid> privacy grant photos com.example.app   # or revoke, reset; location, contacts, microphone, all: no alert
+$S <udid> status-bar override --time 9:41 --battery 100 --battery-state charged   # fixed status bar; status-bar clear
+echo '{"aps":{"alert":{"title":"Hi"}}}' | $S <udid> push com.example.app -       # or a payload file
 $S <udid> logs                         # the launched app's entries, stdout, stderr and crashes since the last logs
 $S <udid> logs --level error --grep timeout --source log   # also --subsystem, --category, --predicate, --level debug
 $S <udid> logs --since launch --peek   # reread from launch without moving the cursor; also --since 30s or an ISO 8601 time

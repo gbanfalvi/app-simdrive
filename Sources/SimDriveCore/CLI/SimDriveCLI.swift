@@ -7,6 +7,7 @@ package enum SimDriveCLI {
     private static let helpNames: Set<String> = ["-h", "--help", "help"]
     private static let listCommand = "list"
     private static let runCommand = "run"
+    private static let pushCommand = "push"
     private static let standardInputPath = "-"
     private static let inlineStepsOption = "--json"
 
@@ -62,10 +63,13 @@ package enum SimDriveCLI {
         }
     }
 
-    /// Replaces a steps file or standard input with its contents, since the daemon does not share this directory or input.
+    /// Replaces `run`'s steps file or `push`'s payload file, or standard input, with its contents, since the daemon does
+    /// not share this directory or input.
     private static func inlineSteps(_ arguments: [String]) throws -> [String] {
-        guard arguments.first == runCommand, !arguments.contains(inlineStepsOption),
-              let index = arguments.indices.dropFirst().first(where: { !arguments[$0].hasPrefix("--") }) else {
+        // The file is run's first argument and push's second, after the bundle identifier.
+        let position = [runCommand: 0, pushCommand: 1]
+        guard let first = arguments.first, let skip = position[first], !arguments.contains(inlineStepsOption),
+              let index = arguments.indices.dropFirst().filter({ !arguments[$0].hasPrefix("--") }).dropFirst(skip).first else {
             return arguments
         }
         let source = arguments[index]

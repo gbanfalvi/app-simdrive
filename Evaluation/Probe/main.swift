@@ -1,8 +1,10 @@
 import Accessibility
 import AVFoundation
 import os
+import Photos
 import SwiftUI
 import UIKit
+import UserNotifications
 
 enum Log {
     static let url = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("probe.log")
@@ -376,6 +378,8 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
 
     func sceneDidBecomeActive(_ scene: UIScene) {
         Log.write("SCENE active")
+        // What `simdrive privacy` granted, revoked or reset: 0 not determined, 2 denied, 3 authorized.
+        Log.write("PRIVACY photos=\(PHPhotoLibrary.authorizationStatus(for: .readWrite).rawValue)")
         // After `launch` sees the app in front.
         if ProcessInfo.processInfo.arguments.contains("-probeCrash") {
             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { fatalError("probe crash") }
@@ -408,10 +412,19 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
     func sceneWillEnterForeground(_ scene: UIScene) { Log.write("SCENE foreground") }
 }
 
-final class AppDelegate: UIResponder, UIApplicationDelegate {
+final class AppDelegate: UIResponder, UIApplicationDelegate, UNUserNotificationCenterDelegate {
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?) -> Bool {
         Log.write("ARGS \(ProcessInfo.processInfo.arguments.dropFirst().joined(separator: " "))")
+        UNUserNotificationCenter.current().delegate = self
         return true
+    }
+
+    /// A push that `simdrive push` sends while the probe is in front.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification,
+                                withCompletionHandler completionHandler: @escaping (UNNotificationPresentationOptions) -> Void) {
+        let content = notification.request.content
+        Log.write("PUSH \(content.title.isEmpty ? content.body : content.title)")
+        completionHandler([])
     }
 }
 

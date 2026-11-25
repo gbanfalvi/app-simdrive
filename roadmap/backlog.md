@@ -832,7 +832,9 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
 - **Do:** `simctl location <udid> set <lat>,<lon>`, `run <scenario>` and `clear`, as NeoSimulator does (`N:NeoSimulatorKit/Devices/DeviceSettingsBackend.swift:333-345`). Use `availableLocationScenarios` on `SimDevice` for `list` (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:357-367,1140-1166`), or `simctl location list` if it exists.
 - **Test:** the probe adds `CLLocationManager` updates (with `NSLocationWhenInUseUsageDescription`, after granting with N11's `privacy`) and logs `LOCATION lat lon`.
 
-### - [ ] N11. `push`, `privacy` and `status-bar` wrappers (S)
+### - [x] N11. `push`, `privacy` and `status-bar` wrappers (S)
+
+**Result (2026-11-25):** the three commands wrap `simctl` and add no error codes: `simctl` checks services, payloads and values, and its failures come back as `simctl`. The parser checks shapes first: `privacy`'s action and that grant and revoke name an app, and each `status-bar` option's values and ranges (`StatusBarOverride`). `push -` reads standard input in the client, which inlines it as `--json`, as `run -` does. `simctl status_bar` still works on Xcode 27, so devicectl was not needed. The matrix's new `services` section passes 10/10 on a new iPhone 17, iOS 27.2: a push from standard input reaches the probe's notification center delegate; `privacy grant` and `reset` of photos show as authorization 3 and 0 on relaunch; an unknown service fails with `simctl`; equal status bar overrides draw byte-equal screenshots and a different time a different one. Learned (in `docs/device-behavior.md`): the first push after a boot takes ~52 s, hence a 120 s limit; `simctl push` reports "Source is not authorized" for an app without notification permission, though an app in front still receives it, so the matrix accepts that; overrides do not change what accessibility reads. Not done: `status-bar list`, and a `push-not-authorized` code instead of `simctl` for that failure, a contract choice left for the user.
 
 NeoSimulator has none of these; `simctl` covers them.
 

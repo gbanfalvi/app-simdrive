@@ -42,6 +42,9 @@ simdrive <udid|booted> <command>
 | `install <path.app\|path.ipa>` | Installs or updates an app |
 | `uninstall <bundle-id>` | Removes an app |
 | `openurl <url>` | Opens a URL or deep link in the app that handles it, returning once iOS accepts it |
+| `push <bundle-id> <payload.json\|->` | Sends a simulated remote notification, from a file or standard input; the payload is a JSON object with an `aps` key, 4096 bytes at most |
+| `privacy grant\|revoke\|reset <service> [<bundle-id>]` | Sets an app's access to a service, such as `photos`, `location`, `contacts`, `microphone` or `all`, without its alert; `reset` without an app resets every app. Some changes terminate the app |
+| `status-bar override [--time T] [--battery 0-100] [--battery-state S] [--data-network N] [--wifi-mode M] [--wifi-bars 0-3] [--cellular-mode M] [--cellular-bars 0-4] [--operator name]` | Shows fixed status bar values, for screenshots that compare; `status-bar clear` shows the real ones again |
 | `logs [scope] [filters] [--since S] [--cursor NAME] [--peek] [--until regex [--timeout ms]] [--limit N] [--width N]` | Reads the launched app's new log entries, output and crashes, or waits for an entry; see [Logs](#logs) |
 | `wait <ms>` | Pauses, for `run` |
 | `wait --label <text> \| --id <identifier> [--absent] [--timeout ms]` | Waits until the element is on screen, or with `--absent` until it is not; 5000 ms by default |
@@ -74,6 +77,9 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `launch` | `{"bundleID", "pid"}` |
 | `install`, `uninstall` | `{"bundleID"}` |
 | `openurl` | `{"url"}` |
+| `push` | `{"bundleID"}` |
+| `privacy` | `{"action", "service", "bundleID"}`, the bundle identifier null for every app |
+| `status-bar` | `{"overrides": {option: value}}`, or `{"cleared": true}` |
 | `logs` | `{"since", "entries": [entry], "stdout": [lines], "stderr": [lines], "crashes": [crash], "dropped"}`, each source's key only when read. An entry is `{"ms", "message", "level", "process", "subsystem", "category", "repeats"}`, described under [Logs](#logs); a crash is `{"process", "pid", "time", "exception", "reason", "frames", "path"}` |
 | `wait` | `{"waited": milliseconds}`; with `--label` or `--id`, `{"element"}`, or `{"absent": true}` with `--absent` |
 | `run` | `{"steps": [each step's result]}`; with `--logs`, each step also has `"logs": [entry]`, and a failed read adds `"logsError"` |
@@ -232,6 +238,8 @@ The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR
 - The first `tree` after a boot takes up to 20 s while the guest's accessibility server starts; it fails with `accessibility-timeout` past that, or `accessibility-unavailable` when CoreSimulator cannot reach the server. Retry either. On a Duo, the server occasionally stops answering until the simulator reboots, though the app shows in front: `tree` keeps timing out and `launch` fails with `launch-not-frontmost`.
 - On iOS 27, turning off Full Keyboard Access also turns off app accessibility, and apps launched after that, outside `launch`, have no tree: `tree` fails with `app-accessibility-off` after 20 s. `launch` turns app accessibility on before launching.
 - iOS asks "Open in “App”?" before the first `openurl` of an app's custom scheme; tap Open. The app may come to the front after `openurl` returns.
+- `push` fails with `simctl` ("Source is not authorized") for an app the user has not allowed notifications, though an app in front still receives it through its notification center delegate. The first push after a boot takes about 50 s while the guest's notification service starts, and so does an app's first permission alert.
+- `status-bar override` changes what the status bar draws, not what accessibility reads: `tree` still reports the real time.
 - `logs` captures stdout and stderr only from apps started with `launch`. A repeat of the same crash brings no new crash report, and the unified log shows values the app did not log as public as `<private>`.
 - Built on CoreSimulator, CoreDevice, UniversalHIDKit and AccessibilityPlatformTranslation private API, so Xcode and macOS updates may break it. Tested with Xcode 27.0 and 27.2 on iPhone iOS 17.0, 18.3, 26.5 and 27.0, iPad iOS 26.5 and 27.0, iPhone Duo iOS 27.2 and Apple TV 4K tvOS simulators.
 

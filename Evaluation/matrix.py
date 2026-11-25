@@ -545,6 +545,37 @@ def accept_url_prompt():
     return f"settle {settle['waited']} ms{'' if settle['still'] else ', not still'}" if settle else 'no alert'
 
 
+def service_checks():
+    """push, privacy and status-bar wrap simctl; the probe logs what reaches it (N11)."""
+    launch_probe()
+    mark = log.mark()
+    # The probe never asks to post notifications, so simctl reports "Source is not authorized" though the push reaches
+    # it in front; the first push after a boot takes ~50 s while the guest's notification service starts.
+    response = sd('push', BUNDLE, '-', stdin=json.dumps({'aps': {'alert': {'title': 'Probe push'}}}))
+    unauthorized = response.get('code') == 'simctl' and 'not authorized' in response.get('error', '')
+    check('push from standard input', (response.get('ok') or unauthorized) and log.wait(mark, r'PUSH Probe push$', 5),
+          brief(response)[:120])
+    for action, status in [('grant', 3), ('reset', 0)]:
+        response = sd('privacy', action, 'photos', BUNDLE)
+        mark = log.mark()
+        launch_probe()
+        check(f'privacy {action} photos', response.get('ok') and log.wait(mark, rf'PRIVACY photos={status}$', 5), brief(response))
+    response = sd('privacy', 'grant', 'nonsense', BUNDLE)
+    check('privacy grant nonsense (expect simctl)', response.get('code') == 'simctl', brief(response)[:120])
+    # Accessibility reads the real time, so compare screenshots: equal overrides draw equal pixels.
+    shots = []
+    for time_text in ['9:41', '10:10', '9:41']:
+        response = sd('status-bar', 'override', '--time', time_text, '--battery', '100', '--battery-state', 'charged')
+        time.sleep(1)
+        shot = output_path(f'status-bar-{len(shots)}')
+        sd('screenshot', shot)
+        shots.append(open(shot, 'rb').read() if response.get('ok') and os.path.exists(shot) else None)
+    check('status-bar override', None not in shots and shots[0] == shots[2] and shots[0] != shots[1],
+          'equal overrides drew equal screens, and a different time a different one')
+    response = sd('status-bar', 'clear')
+    check('status-bar clear', response.get('ok') and response['result'].get('cleared') is True, brief(response))
+
+
 def misc_checks(is_foldable):
     shot = output_path('run')
     steps = json.dumps([f'launch {BUNDLE}', 'key b', f'screenshot {shot}'])
@@ -838,6 +869,8 @@ def main():
             logs_checks(full)
         if want('misc'):
             misc_checks(is_foldable)
+        if want('services'):
+            service_checks()
         if is_foldable and want('posture'):
             posture_checks(doctor)
         if not is_foldable and want('orientation'):

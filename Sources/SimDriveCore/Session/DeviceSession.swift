@@ -130,6 +130,16 @@ final class DeviceSession {
             return try await apps.uninstall(bundleID)
         case .openURL(let url):
             return try await openURL(url)
+        case .push(let bundleID, let payload):
+            return try await apps.push(payload, to: bundleID, workingDirectory: workingDirectory)
+        case .privacy(let action, let service, let bundleID):
+            return try await apps.privacy(action, service: service, bundleID: bundleID)
+        case .statusBar(let override?):
+            try await tools.simctl(["status_bar", udid, "override"] + override.simctlArguments)
+            return ["overrides": .object(override.values.mapValues(JSONValue.string))]
+        case .statusBar(nil):
+            try await tools.simctl(["status_bar", udid, "clear"])
+            return ["cleared": true]
         case .wait(let milliseconds):
             try await Task.sleep(for: .milliseconds(milliseconds))
             return ["waited": JSONValue(milliseconds)]

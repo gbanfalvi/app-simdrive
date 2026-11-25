@@ -142,6 +142,36 @@ enum CommandParser {
                 throw SimDriveError.usage("openurl needs a URL with a scheme, such as myapp://path")
             }
             return .openURL(text)
+        case "push":
+            let list = try ArgumentList(rest, options: ["json"])
+            if let json = list.option("json") {
+                return .push(bundleID: try list.single("a bundle identifier, then a payload file or -"), payload: .json(json))
+            }
+            let positionals = try list.exactly(2, "a bundle identifier, then a payload file or -")
+            return .push(bundleID: positionals[0], payload: .file(positionals[1]))
+        case "privacy":
+            let list = try ArgumentList(rest)
+            guard (2...3).contains(list.positionals.count), let action = PrivacyAction(rawValue: list.positionals[0]) else {
+                throw SimDriveError.usage("privacy needs grant, revoke or reset, a service such as photos, and a bundle identifier")
+            }
+            let bundleID = list.positionals.count == 3 ? list.positionals[2] : nil
+            guard bundleID != nil || !action.needsBundleID else {
+                throw SimDriveError.usage("privacy \(action.rawValue) needs a bundle identifier")
+            }
+            return .privacy(action, service: list.positionals[1], bundleID: bundleID)
+        case "status-bar":
+            switch rest.first {
+            case "clear":
+                try ArgumentList(Array(rest.dropFirst())).none()
+                return .statusBar(nil)
+            case "override":
+                let list = try ArgumentList(Array(rest.dropFirst()), options: StatusBarOverride.options)
+                try list.none()
+                let values = StatusBarOverride.options.reduce(into: [String: String]()) { $0[$1] = list.option($1) }
+                return .statusBar(try StatusBarOverride(values))
+            default:
+                throw SimDriveError.usage("status-bar needs override with values, or clear")
+            }
         case "wait":
             let list = try ArgumentList(rest, options: ["label", "id", "timeout"], flags: ["absent"])
             if let selector = try elementSelector(list) {
@@ -361,6 +391,13 @@ enum CommandParser {
           install <path.app|path.ipa>         installs or updates an app, returning its bundle identifier
           uninstall <bundle-id>
           openurl <url>                       opens a URL or deep link in the app that handles it
+          push <bundle-id> <payload.json|->   sends a simulated remote notification; the payload has an aps key
+          privacy grant|revoke|reset <service> [<bundle-id>]   sets an app's access without its alert; services
+                                              as simctl privacy lists them, such as photos, location, contacts, all
+          status-bar override [--time T] [--battery 0-100] [--battery-state charging|charged|discharging]
+                     [--data-network wifi|5g|...] [--wifi-bars 0-3] [--cellular-bars 0-4] [--operator name]
+                     [--wifi-mode M] [--cellular-mode M]
+          status-bar clear                    shows the real status bar again
           wait <ms>
           wait --label <text> | --id <identifier> [--absent] [--timeout ms]
                                               waits until the element is on screen, or with --absent until it is not

@@ -30,7 +30,8 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Daemon` | `DaemonServer`, `DaemonClient`, the wire types in `DaemonProtocol`, `UnixSocket`, `StatePaths`. |
 | `SimDriveCore/Session` | `DeviceSession` and `LazyCapability`. |
 | `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes, on US or a `KeyboardLayout`. |
-| `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. `Stillness`: whether the pixels under an element tap have stopped changing. |
+| `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. `Stillness`: whether the pixels under an element tap have stopped changing. `StatusBarOverride`, checked values for `simctl status_bar`. |
+| `SimDriveCore/Apps` | `DeviceApps`: install, uninstall, `push` and `privacy` through `simctl`, with `PushPayload` and `PrivacyAction`. |
 | `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes. |
 | `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs; `SplitState`, the half simdrive set, kept per app pid since reading SpringBoard's log for it takes seconds. |
 | `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |

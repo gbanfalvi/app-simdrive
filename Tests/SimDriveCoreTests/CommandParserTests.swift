@@ -152,6 +152,42 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["openurl"]) }
     }
 
+    @Test func pushTakesABundleIdentifierAndAPayloadFileOrInlinedJSON() throws {
+        #expect(try CommandParser.parse(["push", "com.example.app", "push.json"])
+                == .push(bundleID: "com.example.app", payload: .file("push.json")))
+        #expect(try CommandParser.parse(["push", "com.example.app", "--json", "{\"aps\":{}}"])
+                == .push(bundleID: "com.example.app", payload: .json("{\"aps\":{}}")))
+        expectUsageError { try CommandParser.parse(["push", "com.example.app"]) }
+        expectUsageError { try CommandParser.parse(["push", "com.example.app", "a.json", "b.json"]) }
+    }
+
+    @Test func privacyNeedsABundleIdentifierExceptToReset() throws {
+        #expect(try CommandParser.parse(["privacy", "grant", "photos", "com.example.app"])
+                == .privacy(.grant, service: "photos", bundleID: "com.example.app"))
+        #expect(try CommandParser.parse(["privacy", "reset", "all"]) == .privacy(.reset, service: "all", bundleID: nil))
+        expectUsageError { try CommandParser.parse(["privacy", "grant", "photos"]) }
+        expectUsageError { try CommandParser.parse(["privacy", "allow", "photos", "com.example.app"]) }
+        expectUsageError { try CommandParser.parse(["privacy"]) }
+    }
+
+    @Test func statusBarOverridesCheckedValuesOrClears() throws {
+        let parsed = try CommandParser.parse(["status-bar", "override", "--time", "9:41", "--battery", "100", "--operator", ""])
+        #expect(parsed == .statusBar(try StatusBarOverride(["time": "9:41", "battery": "100", "operator": ""])))
+        #expect(try CommandParser.parse(["status-bar", "clear"]) == .statusBar(nil))
+        expectUsageError { try CommandParser.parse(["status-bar", "override"]) }
+        expectUsageError { try CommandParser.parse(["status-bar", "override", "--battery", "101"]) }
+        expectUsageError { try CommandParser.parse(["status-bar", "override", "--wifi-bars", "4"]) }
+        expectUsageError { try CommandParser.parse(["status-bar", "override", "--battery-state", "full"]) }
+        expectUsageError { try CommandParser.parse(["status-bar", "clear", "now"]) }
+        expectUsageError { try CommandParser.parse(["status-bar"]) }
+    }
+
+    /// simctl's flags come in a fixed order, whatever order the options came in.
+    @Test func statusBarOverridePassesSimctlFlags() throws {
+        let override = try StatusBarOverride(["cellular-bars": "4", "time": "9:41", "battery-state": "charged"])
+        #expect(override.simctlArguments == ["--time", "9:41", "--batteryState", "charged", "--cellularBars", "4"])
+    }
+
     @Test func installTakesAPathAndUninstallABundleIdentifier() throws {
         #expect(try CommandParser.parse(["install", "build/My App.ipa"]) == .install(path: "build/My App.ipa"))
         #expect(try CommandParser.parse(["uninstall", "com.example"]) == .uninstall(bundleID: "com.example"))
