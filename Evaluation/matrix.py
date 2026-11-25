@@ -513,7 +513,7 @@ def button_checks():
 
 def accept_url_prompt():
     """Taps Open on the "Open in AXProbe?" alert iOS shows before a scheme's URLs; without one, tap finds no Open.
-    The alert is in the tree while it still animates in, and a tap then is dropped, so it waits for the animation first."""
+    On a new simulator, a tap on it right after `openurl` is dropped though it returns ok; waiting 1 s avoids that (F29)."""
     time.sleep(1)
     sd('tap', '--label', 'Open', '--timeout', '2000')
 

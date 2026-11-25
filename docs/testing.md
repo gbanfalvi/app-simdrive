@@ -27,7 +27,7 @@ Evaluation/fresh.py [--device 'iPhone Duo'] [--runtime 27.2] [--only …]   # on
 
 Results at v0.0.2: iPhone iOS 27 94/94, iOS 26 94/94, iOS 18 94/94, iOS 17 93/93, Duo 87/87, Apple TV 15/15.
 
-Results at v0.1.0: a new iPhone 17, iOS 27.2, 125/125 for the whole matrix (before I10). After I10, the `settings` section: iOS 27.2 45/45, iOS 26.5 41/41, iOS 17.0 40/40. Not run for this release: iOS 18, the Duo and Apple TV.
+Results at v0.1.0: a new iPhone 17, iOS 27.2, 125/125 for the whole matrix (before I10). After I10, the `settings` section: iOS 27.2 45/45, iOS 26.5 41/41, iOS 17.0 40/40. After release, on new simulators: Duo iOS 27.2 124/124, Apple TV tvOS 18.0 15/15, iPhone 16 iOS 18.0 128/128.
 
 ## The probe app
 

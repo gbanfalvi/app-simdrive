@@ -356,6 +356,20 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** replace the tree scan with `tap --label Open --timeout 2000`, treating `no-element` as no prompt.
 - **Test:** the matrix's `misc` section on a fresh Duo and a fresh iPhone.
 
+### - [ ] F29. A tap on the "Open in …?" URL alert is dropped on a new simulator, though it returns `ok` (M, cause unknown)
+
+- **Problem:** found after F27 (2026-11-24), first filed as I25 on the guess that the alert was still animating in. Without the matrix's 1 s sleep before `tap --label Open`, the full matrix on a new iPhone 17, iOS 27.2, fails `openurl from-home` and `openurl in-front`, and the alert left up then fails 8 later checks (orientation, `button home`, launch from home, the Home edge swipe): 120/130 with v0.1.0 (2026-11-25). The matrix keeps the sleep meanwhile; agents tapping the alert at once hit the same drop.
+- **Ruled out (2026-11-25):**
+  - **Animation, as accessibility sees it:** reading `tree` every 100 ms from the moment of `openurl`, the Open button's point is final from the first read, so I25's planned fix, waiting for two reads to place the element alike, waits for nothing. It was written and backed out.
+  - **The idle input release:** after 35 s idle, `tap --label Play` and `tap 0.5 0.17` each reached the probe, twice each.
+  - **`tap --label` alone:** `--only misc` on a new simulator, with no sleep, passed 11/11 with v0.1.0 and with the I25 build. Only the full run reproduced it.
+- **Seen on the kept simulator:** minutes later the alert was still up, fully drawn; `tap --label Open` returned `ok` and left it up, and `tap 0.6841 0.5423`, the same point, right after dismissed it. So a first tap on it is dropped, not one at a particular moment of the animation.
+- **Reproducing:** iOS asks only for a scheme's first URL on a simulator; reinstalling the app does not ask again, so each try needs a new simulator: remove the sleep in `accept_url_prompt` and run `Evaluation/fresh.py`. The failing simulator `25EA3652` (`simdrive fresh iPhone 17 27.2`) is kept, shut down, with the alert dismissed.
+- **Next:**
+  1. Check whether the display was dimmed or asleep (I6's `backlight.state`, 1 or 0) when the first tap went: the full matrix runs long sections before `misc`, and `docs/device-behavior.md` says a sleeping display drops the first touch.
+  2. Log the guest's digitizer events (`simctl spawn <udid> log stream --predicate 'subsystem == "com.apple.backboard"'`) for the dropped tap and the one that worked.
+  3. If it is display sleep, this is I6; fix it there rather than with a retry.
+
 ## 2. Improvements to existing commands
 
 ### - [x] I1. Type without per-key delays (S)
@@ -697,13 +711,6 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Why:** found in the upstream review (2026-11-24). AXe sends `IndigoKeyboardButtonEvent {usageCode, state}` on the same `remote.hid.digitizer` XPC connection as its touches, creating no keyboard service and using no UniversalHIDKit observer. If keys reach apps that way in simdrive too, the guest might not count a hardware keyboard as connected, which hides the software keyboard and is half the reason inputs are released after 30 s, and `GuestKeyboard` would get simpler.
 - **Read:** `A:Packages/IDBKit/FBSimulatorControl/HID/FBSimulatorDTUHIDTransport.swift:188-205 @1ffbd35`, `A:Packages/IDBKit/FBSimulatorControl/HID/DTUHIDModels.swift:76-91 @1ffbd35`. `IndigoKeyboardButtonEvent` is not a type CoreDeviceUtilities exports, even on 27.2 (checked with `nm`): AXe builds that XPC dictionary by hand (`XPCEncoder`), so simdrive would have to encode it the same way, outside its ABIBridge bindings. Check that the guest still takes it on Xcode 27.3, since F28's `IndigoButtonEvent` did not survive there.
 - **Do:** a spike. Send one key that way on 27.2, check that the probe logs `KEY`, and check whether the software keyboard still shows for a focused text field. Adopt it only if both answers favor it. Then record the result in `docs/private-apis.md`.
-
-### - [ ] I25. `tap --label|--id`: wait for the element to stop moving before tapping (S)
-
-- **Problem:** found after F27 (2026-11-24). An alert is in the light tree while it still animates in, and a tap then is dropped by the guest, though `tap --label Open` returns `ok`. On an iPhone 17, iOS 27.2, `openurl` followed at once by `tap --label Open` left the URL undelivered. The matrix now waits 1 s first, but agents do the same.
-- **Read:** `S:SimDriveCore/Session/DeviceSession.swift` (`tap(_:within:)`), `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`shownElementAtRest`, which I22 added).
-- **Do:** resolve the element from reads at rest, as `swipe --until` does: read until two reads in a row agree on the element's frame, bounded at about 1 s, then tap.
-- **Test:** `openurl` then `tap --label Open` with no wait; the probe logs the URL. Measure what it adds to `tap --label` on a still screen (`--timeout 0`).
 
 ### - [ ] I26. Check VoiceOver and color filters in the matrix, and say what VoiceOver changes about input (S)
 
