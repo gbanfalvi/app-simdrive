@@ -154,6 +154,16 @@ final class DeviceAccessibility {
     }
 
     /// The frontmost app's hierarchy and the layout that places it on the screen.
+    /// On a device with two panels, SpringBoard's tree without the other panel's windows, and with this panel's native
+    /// ones turned to the interface (`PanelWindows`, I12).
+    private func withPanelWindowsNormalized(_ snapshot: AccessibilitySnapshot, on screen: Screen) async throws -> AccessibilitySnapshot {
+        let otherPanels = try await screens.otherPanelSizes(than: screen)
+        guard !otherPanels.isEmpty, let scale = device.screenScale else { return snapshot }
+        let interface = AccessibilityLayout.screenSize(screenshot: screen.record.full, scale: scale, appSize: snapshot.application.screenSize)
+        return snapshot.with(element: PanelWindows.normalize(snapshot.element, interfaceSize: interface, otherPanels: otherPanels,
+                                                             scale: CGFloat(scale), mapping: screen.mapping))
+    }
+
     /// An app launched while app accessibility was off answers with an empty frame until it relaunches; that read
     /// fails as `app-accessibility-off` rather than the translator's own error.
     private func explainingAccessibilityOff<Value>(_ read: () async throws -> Value) async throws -> Value {
@@ -169,7 +179,7 @@ final class DeviceAccessibility {
     private func read(detail: TreeDetail, process: Int32? = nil) async throws -> (AccessibilitySnapshot, Screen, AccessibilityLayout) {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)
-        let snapshot = try await explainingAccessibilityOff { () async throws -> AccessibilitySnapshot in
+        let read = try await explainingAccessibilityOff { () async throws -> AccessibilitySnapshot in
             guard let process else { return try await accessibility.snapshot(detail: detail) }
             do {
                 guard let snapshot = try await accessibility.snapshot(ofProcess: process, detail: detail) else {
@@ -182,6 +192,7 @@ final class DeviceAccessibility {
                                     + "answers again once something shows it, such as an alert over it or `launch`.")
             }
         }
+        let snapshot = try await withPanelWindowsNormalized(read, on: screen)
         let fullLayout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen)
         let fillsHalf = fullLayout.spansUnder(Self.halfWidthLimit, windows: snapshot.element.children.map(\.frame))
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen,

@@ -20,6 +20,11 @@ package struct AccessibilityApplication: Equatable, Sendable {
 package struct AccessibilitySnapshot: Equatable, Sendable {
     package let application: AccessibilityApplication
     package let element: AccessibilityElement
+
+    /// The same app with another element, as one whose windows were rearranged.
+    package func with(element: AccessibilityElement) -> AccessibilitySnapshot {
+        AccessibilitySnapshot(application: application, element: element)
+    }
 }
 
 /// A simulator's accessibility hierarchy, read from the Mac through AccessibilityPlatformTranslation, as Simulator and

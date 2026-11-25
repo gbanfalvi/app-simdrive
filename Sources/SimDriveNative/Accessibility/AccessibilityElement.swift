@@ -33,6 +33,26 @@ package struct AccessibilityElement: Equatable, Sendable {
 
     init() {}
 
+    /// The element with other children.
+    package func with(children: [AccessibilityElement]) -> AccessibilityElement {
+        var copy = self
+        copy.children = children
+        return copy
+    }
+
+    /// The element and its descendants with every frame and activation point passed through `point`, for frames read
+    /// in another coordinate space than the interface's. A frame becomes the rectangle its corners map to.
+    package func converting(_ point: (CGPoint) -> CGPoint) -> AccessibilityElement {
+        var copy = self
+        if !frame.isEmpty {
+            let (one, other) = (point(CGPoint(x: frame.minX, y: frame.minY)), point(CGPoint(x: frame.maxX, y: frame.maxY)))
+            copy.frame = CGRect(x: min(one.x, other.x), y: min(one.y, other.y), width: abs(one.x - other.x), height: abs(one.y - other.y))
+        }
+        copy.activationPoint = activationPoint.map(point)
+        copy.children = children.map { $0.converting(point) }
+        return copy
+    }
+
     /// A snapshot node and its descendants. `customContent` reads a VoiceOver element's content from its snapshot object.
     init?(snapshot: Any, customContent: (AnyObject) -> [AccessibilityCustomContent]) {
         var seen = Set<ObjectIdentifier>()

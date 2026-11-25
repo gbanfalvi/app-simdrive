@@ -32,7 +32,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes, on US or a `KeyboardLayout`. |
 | `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. `Stillness`: whether the pixels under an element tap have stopped changing. `StatusBarOverride`, checked values for `simctl status_bar`. |
 | `SimDriveCore/Apps` | `DeviceApps`: install, uninstall, `push` and `privacy` through `simctl`, with `PushPayload` and `PrivacyAction`. `AppLauncher`: `launch`, which turns on app accessibility, captures the app's output and waits for it to come to the front, and `openurl`. |
-| `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes. |
+| `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes, with what a presentation covers marked. `PanelWindows`: the Duo SpringBoard's windows from the active panel only. `AlertReader`: the alert in a tree, and the button that answers it. |
 | `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs; `SplitState`, the half simdrive set, kept per app pid since reading SpringBoard's log for it takes seconds. |
 | `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |
 | `SimDriveCore/Settings` | `SettingCatalog` (one row per setting), `DeviceSettings`, `GuestPreferences`, and `CoreDeviceSetting`, which maps rows to setting actions' JSON. |

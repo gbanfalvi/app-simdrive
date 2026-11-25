@@ -31,6 +31,15 @@ struct ScreenMapping: Equatable, Sendable {
         return orientation == .portraitUpsideDown ? CGPoint(x: 1 - x, y: 1 - y) : point
     }
 
+    /// The inverse of `digitizerPoint`: a point in the panel's native unit coordinates as a screenshot's.
+    func screenshotPoint(fromDigitizer point: CGPoint) -> CGPoint {
+        let (x, y) = (point.x, point.y)
+        if isRotated {
+            return orientation == .landscapeLeft ? CGPoint(x: y, y: 1 - x) : CGPoint(x: 1 - y, y: x)
+        }
+        return orientation == .portraitUpsideDown ? CGPoint(x: 1 - x, y: 1 - y) : point
+    }
+
     /// The panel edge that a screenshot edge lies on.
     func digitizerEdge(_ edge: ScreenEdge) -> ScreenEdge {
         let point = switch edge {

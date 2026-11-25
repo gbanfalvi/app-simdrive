@@ -102,6 +102,14 @@ final class Screens {
         store.removeRecords()
     }
 
+    /// The native sizes, in points, of the panels other than `screen`'s; empty on a single-display device.
+    func otherPanelSizes(than screen: Screen) async throws -> [CGSize] {
+        guard let display = screen.display else { return [] }
+        let scale = device.screenScale ?? Self.fallbackScale
+        return try await displays().filter { $0.index != display.index }
+            .map { CGSize(width: Double($0.nativeSize.width) / scale, height: Double($0.nativeSize.height) / scale) }
+    }
+
     func displaysJSON() async throws -> JSONValue {
         .array(try await displays().map(\.json))
     }
