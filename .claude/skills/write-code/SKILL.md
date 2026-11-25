@@ -31,7 +31,9 @@ description: >-
 - **Watch for retain cycles** in XPC handlers and daemon callbacks. Use `[unowned self]` only when ownership
   guarantees the lifetime, and say so in a comment.
 - **Concurrency:** async/await, actors for serialized state, `Task` for asynchronous work. Bound every wait on the
-  guest with a deadline; a silent guest must fail with a named code, never hang the daemon.
+  guest with a deadline; a silent guest must fail with a named code, never hang the daemon. Background work must
+  not outlive its process: a `--no-daemon` run exits right after its command, so start fire-and-forget work only
+  in the daemon, and repeat a one-shot command about 20 times when you add some.
 - **Comments only for what the code can't say**, 1–3 lines; an inline one-liner where the "what" isn't obvious.
   Private-API facts and observed device behavior go in `docs/`, with a short pointer in the code when needed.
 - **Validate at boundaries**, narrow types there, and keep the inside consistent instead of re-checking.
@@ -58,7 +60,11 @@ description: >-
   `swift test --filter <Suite>`, watch the test fail for the right reason, then undo exactly that edit (not
   `git checkout` of the file, which drops your other changes). If it still passes, it doesn't test what you think.
 - **Caches hide first-call bugs.** The daemon and `LazyCapability` cache; assert on the first call, and run the
-  matrix against a fresh daemon (`simdrive <udid> stop` first) when the change is on an open path.
+  matrix against a fresh daemon (`simdrive <udid> stop` first) when the change is on an open path, and on a new
+  simulator (`Evaluation/fresh.py`) when it touches booting, opening a session or the first command.
+- **A wait you remove may have been load-bearing.** Before deleting a sleep or retry in the matrix or the code,
+  find what it waited for; if it waited on the guest (an animation, a boot), replace it with a check for that
+  state or keep it with a comment, and run the affected section on a new simulator.
 - **A fix that breaks other tests isn't done.** Find out why before touching those tests. Change a test's
   expectation only when it asserted something incidental, and say so in the commit.
 
@@ -70,7 +76,10 @@ description: >-
 - **Edit with the editor;** keep scripts for multi-file changes.
 - **One commit per step,** with a message that says why, and the backlog item's ID in the subject when there is
   one (`Add pinch and rotate (N9)`). In the same commit, update the README's command table and JSON, the skill
-  in `skills/simdrive/SKILL.md`, `docs/` and the backlog item when they're affected.
+  in `skills/simdrive/SKILL.md`, `docs/` and the backlog item when they're affected. A measured device behavior
+  or private-API fact goes into `docs/`, not only into the backlog item's Result.
+- **Every commit stands alone.** After splitting one working tree into several commits, run
+  `scripts/check-commits`, which builds and tests each unpushed commit in a temporary worktree.
 - **Record what you didn't do.** Edge cases left unhandled, extras skipped, devices or runtimes not run: add them
   to the backlog with the `backlog` skill before reporting done.
 - **Then run the `review` skill on your own change** before reporting it done. Report what you verified, on which

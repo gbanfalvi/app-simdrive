@@ -32,6 +32,9 @@ description: >-
 - `AGENTS.md`: the module layering, "Adding a capability" (every step, including README and skill), and the
   Working agreements, in particular root causes rather than symptoms, and mechanisms rather than reminders.
 - `docs/design-decisions.md`: settled choices and the alternatives that already failed.
+- `docs/` as a whole: a change that measured a device behavior, used a new private API or reversed a decision
+  updates the page in the same commit. Grep `docs/` for what the change contradicts; a "left out" line can go
+  stale when the thing is added.
 - The contract: command syntax, JSON fields and error codes agents rely on, and the README and skill describing
   them accurately.
 

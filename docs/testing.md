@@ -15,7 +15,10 @@ Evaluation/matrix.py <udid> --only tree,tap         # some sections
 Evaluation/matrix.py <udid> --pasteboard            # also write the pasteboard; needs the user's consent
 Evaluation/matrix.py <udid> --timing --label base   # time common commands into .build/evaluation
 SIMDRIVE=/path/to/other/simdrive Evaluation/matrix.py <udid> --timing --label other
+Evaluation/fresh.py [--device 'iPhone Duo'] [--runtime 27.2] [--only …]   # on a simulator created and cold-booted for the run
 ```
+
+`Evaluation/fresh.py` creates a simulator, waits for `bootstatus`, runs the matrix with the remaining arguments, and deletes the simulator when every check passes. A failing run keeps it and prints how to delete it. Use it for changes to opening a session, booting or the first command: a long-used simulator has lost the first-boot alerts, the slow accessibility start and the unstarted screen that such changes meet.
 
 - **iPhones and iPads** install the probe app and check the tree, light tree, taps, keys, typing, orientation with hit tests and taps in each landscape, buttons (home, lock and unlock, Siri, volume), edge swipes, `run`, settings as the app sees them, the pasteboard, and logs: a tap's entries and stdout, the cursor, `run --logs`, `--until` inside and beside `run`, `log-timeout`, and a crash's stderr and summary. The crash section ends by relaunching the probe.
 - **Foldables** replace the orientation and button sections with every posture, checking that screenshots and trees follow the expected panel.
@@ -56,6 +59,9 @@ Launched with `-probeCrash`, the probe calls `fatalError("probe crash")` 2 s aft
 - **Use your own simulators.** Create them with `xcrun simctl create`, and leave other simulators and their settings alone.
 - **One matrix at a time per Mac when possible.** Several booted simulators slow each other: launches took up to 67 s with six booted, and `swipe scrolls` fails intermittently under load. Rerun a single failure alone before investigating it.
 - **Wake the display first.** An idle iPhone simulator's display sleeps and drops rotations and the first touch; see [device behavior](device-behavior.md#iphone-and-ipad).
+- **Keep a failing simulator until the failure is understood.** Deleting it loses the guest log, its state and the only reproduction; delete it once the cause is found or a fresh simulator reproduces it.
+- **One-shot runs can fail where the daemon does not.** A `--no-daemon` process exits right after its command, so work it left in the background races the exit. Repeat a one-shot command (20 runs found nothing after the fix where one matrix run had crashed) when a change starts background work.
+- **Check each commit, not just the last.** `scripts/check-commits [<range>]` builds and tests every commit in the range, by default the unpushed ones, in a temporary worktree. Run it after splitting one working tree into several commits.
 - **Clean up.** Stop the daemons you started (`simdrive <udid> stop`), return the Duo to its original posture and devices to portrait, and shut down the runtimes you booted.
 - **Compare timings in rounds.** `tree` timings are bimodal, so one round's median can swing by 100 ms or more between identical builds. Run several rounds of each build before concluding.
 - **Never write the Mac clipboard.** Pasteboard checks write the simulator's pasteboard only with `--pasteboard`, since a syncing host copies the write to the Mac.

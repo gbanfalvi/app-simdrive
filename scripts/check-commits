@@ -1,0 +1,30 @@
+#!/bin/bash
+# Builds and tests each commit in a range on its own, in a temporary worktree, so a commit split out of a larger
+# working tree still stands alone. One scratch path serves every commit, so each build after the first is incremental.
+#
+# Usage: scripts/check-commits [<range>]    The range defaults to the commits not pushed yet, @{upstream}..HEAD.
+set -euo pipefail
+
+repo="$(git rev-parse --show-toplevel)"
+unpushed='@{upstream}..HEAD'
+range="${1:-$unpushed}"
+commits=($(git -C "$repo" rev-list --reverse "$range"))
+if [ ${#commits[@]} -eq 0 ]; then
+    echo "No commits in $range."
+    exit 0
+fi
+
+worktree="$(mktemp -d "${TMPDIR:-/tmp}/simdrive-check.XXXXXX")"
+scratch="$repo/.build/check-commits"
+trap 'git -C "$repo" worktree remove --force "$worktree" >/dev/null 2>&1 || rm -rf "$worktree"' EXIT
+git -C "$repo" worktree add --detach --quiet "$worktree" "${commits[0]}"
+
+for commit in "${commits[@]}"; do
+    git -C "$worktree" checkout --quiet --detach "$commit"
+    echo "== $(git -C "$worktree" log --oneline -1)"
+    if ! (cd "$worktree" && swift build --scratch-path "$scratch" -q && swift test --scratch-path "$scratch" -q); then
+        echo "FAIL: $(git -C "$repo" log --oneline -1 "$commit")"
+        exit 1
+    fi
+done
+echo "All ${#commits[@]} commits build and pass their tests."

@@ -66,6 +66,7 @@ A device setting is one row in `Sources/SimDriveCore/Settings/SettingCatalog.swi
 ### Verifying
 
 - Check behavior end to end with `Evaluation/matrix.py <udid>` after `swift build -c release`; a command that returns `ok` may still have been dropped by the guest. On iPhones it installs the probe app in `Evaluation/Probe`, which logs the events it receives. `--only tree,tap` runs some sections, and `--timing --label <name>` times common commands into `.build/evaluation`; `SIMDRIVE=<path>` compares another build.
-- Use simulators you created; leave the user's other simulators, and their state, alone.
+- Use simulators you created; leave the user's other simulators, and their state, alone. `Evaluation/fresh.py` creates one, runs the matrix on it cold, and deletes it if every check passes. Keep a simulator that failed until you know why.
+- After splitting work into several commits, `scripts/check-commits` builds and tests each unpushed one on its own.
 - Never write the Mac clipboard, and only write a simulator's pasteboard with the user's consent: a syncing host such as DeviceHub copies it to the Mac clipboard.
 - Stop the daemons you started: `simdrive <udid> stop`.
