@@ -47,6 +47,8 @@ $S <udid> screenshot /tmp/s.png --max-dim 1024 --display inner
 $S <udid> tree                         # frontmost app's VoiceOver elements, flat, with tap points
 $S <udid> tree --full                  # every node and field, nested: frames, hints, classes, custom content…
 $S <udid> tree --covered               # marks covered: true what an alert, sheet or the keyboard keeps a tap from
+$S <udid> alert                         # the alert on screen, app or system: title, message, buttons; or null
+$S <udid> alert accept                  # or dismiss: taps Allow/OK/… or Don’t Allow/Cancel/…, waits up to --timeout 5000 ms
 $S <udid> tree --app com.example.app   # a running app not in front, as behind a system alert (SpringBoard is front)
 $S <udid> tree 0.5 0.25                # the element at a point
 $S <udid> setting                      # every setting's value

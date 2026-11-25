@@ -71,6 +71,8 @@ enum Command: Equatable, Sendable {
     case logs(LogQuery)
     /// With `attachesLogs`, each step's result lists the entries logged while it ran.
     case run(steps: [Step], attachesLogs: Bool)
+    /// Reads the newest alert, waiting up to `timeout` for one, and with an answer taps the button that gives it.
+    case alert(AlertAnswer?, timeout: Duration)
     /// Shakes the device, as Simulator's Device > Shake does.
     case shake
     /// Sends running apps a memory warning, as Simulator's Debug > Simulate Memory Warning does.

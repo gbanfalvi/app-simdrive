@@ -37,6 +37,7 @@ simdrive <udid|booted> <command>
 | `pasteboard [text]` | Reads the device's pasteboard items (types and text), or replaces it with text |
 | `screenshot <path.png> [--display D] [--max-dim N]` | Captures a screen, downscaled to 1024 px by default; the original is kept as `<path>.full.png`. The Dynamic Island shows as a black pill |
 | `tree [<x> <y>] [--full]` | Lists the frontmost app's VoiceOver elements, or reads the element at a point; `--full` returns every node and field |
+| `alert [accept\|dismiss] [--timeout ms]` | Reads the alert on screen, an app's own or a system one such as a permission request, or taps the button that accepts or dismisses it. Answering waits 5000 ms for an alert by default; reading looks once unless given `--timeout` |
 | `tree [--covered \| --full] [--app <bundle-id>]` | `--covered` adds `covered: true` to elements a tap would not reach, as behind an alert or a sheet; `--app` reads a running app that may not be in front |
 | `setting [<name> [<value>]]` | Lists every setting, or reads or changes one |
 | `launch <bundle-id> [args...]` | Relaunches an app, capturing its stdout and stderr, and waits until it is frontmost |
@@ -75,7 +76,8 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `orientation` | `{"orientation", "physical"}`: the interface's orientation, and the device's own, which may be `faceUp`, `faceDown` or `unknown` |
 | `pasteboard` | Reading: `{"items": [{"types": [UTIs], "text"}]}`. Writing: `{"characters"}` |
 | `screenshot` | `{"path", "width", "height", "fullPath", "fullWidth", "fullHeight", "display", "orientation"}`; `orientation` is null on devices that cannot rotate, or when the guest does not report it, as right after boot |
-| `tree` | `{"app": {"name", "pid"}, "display", "elements": [element]}`, or `"root"` with `--full`. With a point: `{"app", "display", "point", "element"}`. Elements are described under [Accessibility](#accessibility) |
+| `tree` | `{"app": {"name", "pid"}, "display", "elements": [element]}`, or `"root"` with `--full`. With a point: `{"app", "display", "point", "element"}`. Elements are described under [Accessibility](#accessibility); `--covered` adds `"covered": true` to those a tap would not reach |
+| `alert` | `{"app", "alert": {"title", "message", "buttons": [element]}}`, or `{"app": null, "alert": null}` with none. With `accept` or `dismiss`: also `{"button", "display", "settle"}`, the button tapped |
 | `setting` | Listing: `{"settings": {name: value}}`. Otherwise `{"setting", "value"}`, the value read back after a change |
 | `launch` | `{"bundleID", "pid"}` |
 | `install`, `uninstall` | `{"bundleID"}` |
@@ -127,6 +129,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `launch-not-frontmost` | The launched app did not come to the front in time | yes |
 | `app-invalid`, `app-not-installed` | The app bundle is invalid, or not installed | no |
 | `app-not-running` | `tree --app` names an app that is not running; launch it first | no |
+| `no-alert` | `alert accept` or `alert dismiss` found no alert, or no button to answer it with | no |
 | `no-log-scope` | `logs` needs an app launched with `launch`, or a scope | no |
 | `log-timeout` | `logs --until` saw no matching entry in time | no |
 | `log-read` | `log show` failed | no |
@@ -176,6 +179,8 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 `tree <x> <y>` returns the element VoiceOver finds at a point, with its descendants under `--full`, or fails with `no-element`. On a foldable, both refer to the panel in use.
 
 The tree lists everything the app has on screen, including what its own alert or sheet covers. `tree --covered` marks those elements `covered: true`: every element behind the newest presentation (UIKit's alert, sheet or popover), and others where a hit test at its point finds something else, such as the keyboard. It costs a hit test per element left, about 0.2 s for 20. `tree --app <bundle-id>` reads a running app whether or not it is in front, as behind a system alert, where SpringBoard is the frontmost app; with `--covered`, all of an app that is not in front is covered.
+
+`alert` finds the newest alert in the frontmost app's tree, which is SpringBoard's for a system alert. `alert accept` and `alert dismiss` pick a permission alert's button by its identifier (`…-allow-button`, `…-deny-button`), then by label (Allow, OK, Open… or Don’t Allow, Cancel, Not Now…), then by UIKit's order: the default action last, the cancel action first. For another button, `tap --label` it. A system permission alert can take tens of seconds to show after a boot, so wait for it with `--timeout`.
 
 `tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view; `swipe … --until-label` scrolls one into view. Before tapping, they fail with `element-covered` when the element is behind an alert, sheet or popover the app presents, or when a hit test at the point finds something else there, such as a key of the software keyboard. Then they wait until the 44 points around it have not changed for 150 ms, since the guest ignores touches while a transition animates though the tree already shows where it ends: a system alert takes about 0.5 s. On a still screen that adds about 150 ms; content that keeps moving, such as a spinner, is tapped after 1.5 s with `"still": false`. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
 

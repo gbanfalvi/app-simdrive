@@ -204,6 +204,13 @@ enum CommandParser {
                 try Data(contentsOf: URL(fileURLWithPath: try list.single("a steps file")))
             }
             return .run(steps: try steps(Steps.parse(data)), attachesLogs: list.flag("logs"))
+        case "alert":
+            let list = try ArgumentList(rest, options: ["timeout"])
+            guard let word = try list.optionalSingle() else {
+                return .alert(nil, timeout: list.option("timeout") == nil ? .zero : try elementTimeout(list))
+            }
+            guard let answer = AlertAnswer(rawValue: word) else { throw SimDriveError.usage("alert takes accept or dismiss, or nothing") }
+            return .alert(answer, timeout: try elementTimeout(list))
         case "shake":
             try ArgumentList(rest).none()
             return .shake
@@ -416,6 +423,8 @@ enum CommandParser {
                      [--data-network wifi|5g|...] [--wifi-bars 0-3] [--cellular-bars 0-4] [--operator name]
                      [--wifi-mode M] [--cellular-mode M]
           status-bar clear                    shows the real status bar again
+          alert [accept|dismiss] [--timeout ms]   reads the alert on screen, an app's or the system's, or taps the
+                                              button that accepts or dismisses it, waiting 5000 ms for one by default
           shake                               shakes the device; the first responder gets motionEnded
           memory-warning                      sends running apps a memory warning
           wait <ms>

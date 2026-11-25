@@ -87,6 +87,34 @@ final class DeviceAccessibility {
         return found
     }
 
+    /// An alert on screen, an app's own or SpringBoard's, with its buttons placed for tapping.
+    struct FoundAlert {
+        let app: JSONValue
+        let json: JSONValue
+        let buttons: [(element: AccessibilityElement, placed: PlacedElement, json: JSONValue)]
+
+        func button(for answer: AlertAnswer) -> (placed: PlacedElement, json: JSONValue)? {
+            guard let chosen = AlertReader.button(for: answer, in: buttons.map(\.element)),
+                  let button = buttons.first(where: { $0.element == chosen }) else { return nil }
+            return (button.placed, button.json)
+        }
+    }
+
+    /// The newest alert in the frontmost app's tree, read until one shows or `limit` passes; nil then.
+    func alert(within limit: Duration) async throws -> FoundAlert? {
+        try await poll(every: Self.elementPollInterval, within: limit, finishingChecks: true) { () async throws -> FoundAlert? in
+            let (snapshot, _, layout) = try await self.read(detail: .light)
+            guard let alert = AlertReader.alert(in: snapshot.element) else { return nil }
+            let placed = layout.placedElements(snapshot.element)
+            let buttons = alert.buttons.compactMap { button in
+                placed.first { $0.element == button }.map { (element: button, placed: $0, json: layout.summary($0)) }
+            }
+            let json: JSONValue = ["title": JSONValue(alert.title), "message": JSONValue(alert.message),
+                                   "buttons": .array(buttons.map(\.json))]
+            return FoundAlert(app: snapshot.application.json, json: json, buttons: buttons)
+        }
+    }
+
     /// The one onscreen element `selector` names, or nil while none is on screen, read once the screen is at rest: once
     /// two reads in a row have the same signature, which is returned too, so a scroll can tell whether it moved anything.
     func shownElementAtRest(_ selector: ElementSelector)

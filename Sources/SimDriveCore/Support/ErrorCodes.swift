@@ -12,6 +12,7 @@ extension ErrorCode {
     static let launchNotFrontmost = ErrorCode(rawValue: "launch-not-frontmost", retryable: true)
     static let appNotInstalled = ErrorCode(rawValue: "app-not-installed")
     static let appNotRunning = ErrorCode(rawValue: "app-not-running")
+    static let noAlert = ErrorCode(rawValue: "no-alert")
     static let appInvalid = ErrorCode(rawValue: "app-invalid")
     static let noLogScope = ErrorCode(rawValue: "no-log-scope")
     static let logTimeout = ErrorCode(rawValue: "log-timeout")

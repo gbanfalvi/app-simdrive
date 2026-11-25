@@ -756,3 +756,14 @@ NeoSimulator has none of these; `simctl` covers them.
 - **Read:** N27's sources (AXe's `gesture scroll-* --until-id`, agent-device's `scroll --until`); `S:SimDriveCore/Accessibility/ElementSelector.swift` (`isShown`), `S:SimDriveCore/Accessibility/DeviceAccessibility.swift` (`element(_:within:)`).
 - **Do:** repeat the swipe, then read the light tree, until the selector is shown or `--max-swipes` runs out; fail with `no-element` naming how many swipes ran. Return the element, as `wait --label` does.
 - **Test:** parser tests; the matrix's `tap` section scrolls the probe's list until its last row is on screen.
+
+### - [x] N29. `alert`: read, accept and dismiss system alerts (M, needs I8)
+
+**Result (2026-11-25), on an iPhone 17, iOS 27.2:**
+- **What an alert looks like:** an app's own alert and SpringBoard's system ones are the same `_UIAlertControllerPhoneTVMacView` (view controller `UIAlertController` or `_SBAlertController`), labelled with the title, holding the title and message labels and then the buttons. Permission buttons carry identifiers ending `-allow-button`, `-deny-button` and `-limited-button`. Recorded in `docs/device-behavior.md`.
+- **`alert [accept|dismiss] [--timeout ms]`:** `AlertReader` (pure, `AlertReaderTests`) finds the newest alert in the frontmost tree, the light read now carrying class names (I8). Answering picks by permission identifier, then English labels, then UIKit's order (default action last, cancel first), and taps the button's placed point with the settle wait, as `tap --label` does, so a same-labelled element behind the alert cannot be hit. It waits 5000 ms for an alert by default and fails with the new `no-alert`; reading looks once unless given `--timeout`.
+- **Checks:** the matrix's `covered_checks` reads and dismisses the probe's alert, denies the photo permission (`PHOTOS status=2`) and grants it (`status=3`), and checks `no-alert`; `tree,tap` 56/56. Left: N33.
+
+- **Read:** agent-device's `alert get|wait|accept|dismiss` ranks localized button labels (`D:website/docs/docs/commands.md:473-484`). idb detects modals from `SBAlertItemWindow` and `_UIAlertController*` windows (`I:SimulatorFrameworkBridge/Swift/AccessibilityService.swift:162-165,785-820`).
+- **Do:** after I8 reads SpringBoard, find an alert's buttons in its tree and tap them by label; `alert` returns the title, message and buttons, or null.
+- **Test:** the probe requests a permission at launch; accept and deny it in the matrix.

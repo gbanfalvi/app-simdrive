@@ -301,6 +301,20 @@ def covered_checks():
           f"Play {seen.get('Play')}, Confirm {seen.get('Confirm')}")
     response = sd('tap', '--label', 'Play')
     check('tap --label behind an app alert (expect element-covered)', response.get('code') == 'element-covered', brief(response))
+    response = sd('alert')
+    alert = response.get('result', {}).get('alert') or {}
+    check('alert reads an app alert', alert.get('title') == 'Probe alert' and alert.get('message') == 'Covers the probe'
+          and [b.get('label') for b in alert.get('buttons', [])] == ['Dismiss', 'Confirm'], brief(response)[:160])
+    mark = log.mark()
+    response = sd('alert', 'dismiss')
+    check('alert dismiss (N29)', response.get('result', {}).get('button', {}).get('label') == 'Dismiss'
+          and log.wait(mark, r'ALERT dismiss$', 3), brief(response)[:120])
+    response = sd('alert')
+    check('alert with none up', response.get('ok') and response['result'].get('alert') is None, brief(response))
+    response = sd('alert', 'accept', '--timeout', '300')
+    check('alert accept with none up (expect no-alert)', response.get('code') == 'no-alert', brief(response))
+    sd('launch', BUNDLE, '-probeAlert')
+    sd('wait', '--label', 'Confirm', '--timeout', '3000')
     mark = log.mark()
     sd('tap', '--label', 'Confirm')
     check('tap the alert by label', log.wait(mark, r'ALERT confirm$', 3))
@@ -315,9 +329,19 @@ def covered_checks():
         seen = marks(response)
         check('tree --app reads the probe behind a system alert', response.get('result', {}).get('app', {}).get('name') == 'AXProbe'
               and seen.get('Play') is True, brief(response)[:120])
-        sd('tap', '--label', 'Don’t Allow')
+        mark = log.mark()
+        response = sd('alert', 'dismiss')
+        check('alert dismiss denies a permission (N29)', response.get('result', {}).get('button', {}).get('label') == 'Don’t Allow'
+              and log.wait(mark, r'PHOTOS status=2$', 5), brief(response)[:120])
     else:
         check('tree --app reads the probe behind a system alert', False, 'the photos permission alert did not show within 60 s')
+    sd('privacy', 'reset', 'photos', BUNDLE)
+    mark = log.mark()
+    sd('launch', BUNDLE, '-probePhotos')
+    response = sd('alert', 'accept', '--timeout', '60000')
+    check('alert accept grants a permission (N29)', response.get('result', {}).get('button', {}).get('label') == 'Allow Full Access'
+          and log.wait(mark, r'PHOTOS status=3$', 5), brief(response)[:120])
+    sd('privacy', 'reset', 'photos', BUNDLE)
     response = sd('tree', '--app', 'com.simdrive.missing')
     check('tree --app (expect app-not-running)', response.get('code') == 'app-not-running', brief(response))
     launch_probe()

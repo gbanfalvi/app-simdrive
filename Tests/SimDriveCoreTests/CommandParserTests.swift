@@ -205,6 +205,16 @@ struct CommandParserTests {
         expectUsageError { try CommandParser.parse(["tree", "0.5", "0.5", "--app", "com.example.app"]) }
     }
 
+    /// Reading looks once unless given a timeout; answering waits as `tap --label` does.
+    @Test func alertReadsOrAnswers() throws {
+        #expect(try CommandParser.parse(["alert"]) == .alert(nil, timeout: .zero))
+        #expect(try CommandParser.parse(["alert", "--timeout", "3000"]) == .alert(nil, timeout: .milliseconds(3000)))
+        #expect(try CommandParser.parse(["alert", "accept"]) == .alert(.accept, timeout: CommandParser.defaultElementTimeout))
+        #expect(try CommandParser.parse(["alert", "dismiss", "--timeout", "0"]) == .alert(.dismiss, timeout: .zero))
+        expectUsageError { try CommandParser.parse(["alert", "allow"]) }
+        expectUsageError { try CommandParser.parse(["alert", "accept", "now"]) }
+    }
+
     @Test func shakeTakesNoArguments() throws {
         #expect(try CommandParser.parse(["shake"]) == .shake)
         expectUsageError { try CommandParser.parse(["shake", "twice"]) }

@@ -387,11 +387,11 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
 - **Do:** start with `simctl io recordVideo` stopped by SIGINT, as Not planned describes; move to the framebuffer surfaces simdrive already reads (I7) if `simctl` is slow to start or misses the Duo's panels. The daemon owns the recording, so it survives between calls.
 - **Test:** record a matrix tap sequence on an iPhone and a Duo; check duration and frames with `ffprobe`.
 
-### - [ ] N29. `alert`: read, accept and dismiss system alerts (M, needs I8)
+### - [ ] N33. `alert` on iPad, for action sheets, and in other languages (S, unverified)
 
-- **Read:** agent-device's `alert get|wait|accept|dismiss` ranks localized button labels (`D:website/docs/docs/commands.md:473-484`). idb detects modals from `SBAlertItemWindow` and `_UIAlertController*` windows (`I:SimulatorFrameworkBridge/Swift/AccessibilityService.swift:162-165,785-820`).
-- **Do:** after I8 reads SpringBoard, find an alert's buttons in its tree and tap them by label; `alert` returns the title, message and buttons, or null.
-- **Test:** the probe requests a permission at launch; accept and deny it in the matrix.
+- **Problem:** left from N29 (2026-11-25). `alert` was checked only on an iPhone 17, iOS 27.2, in English, with `.alert`-style alerts.
+- **Unverified:** an iPad's alert view, expected to be `_UIAlertControllerView`, which `AlertReader` also accepts; an action sheet (`.actionSheet`), whose cancel button may sit apart from the others, and on iPad in a popover; alerts from other system services, such as location ("Allow While Using App"), tracking and notifications; and labels in other languages, where only the permission identifiers and UIKit's order help, since the label lists are English.
+- **Do:** add an action sheet to the probe, run the matrix's `tap` section on an iPad, and try `alert accept|dismiss` with the simulator's language set to another one. Add labels or rules only where the order fallback picks wrong.
 
 ### - [ ] N30. Install simdrive with Homebrew, and the skill with `simdrive init` (M)
 

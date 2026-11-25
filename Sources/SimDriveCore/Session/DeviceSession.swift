@@ -161,6 +161,8 @@ final class DeviceSession {
             return try await logs.read(query)
         case .run(let steps, let attachesLogs):
             return try await run(steps, attachesLogs: attachesLogs, workingDirectory: workingDirectory)
+        case .alert(let answer, let timeout):
+            return try await alert(answer, within: timeout)
         case .shake:
             try device.postDarwinNotification(Self.shakeNotification)
             return [:]
@@ -219,13 +221,33 @@ final class DeviceSession {
     private func tap(_ selector: ElementSelector, within limit: Duration) async throws -> JSONValue {
         let found = try await accessibility.element(selector, within: limit)
         try await accessibility.checkReachable(found.element, in: found.pid, among: found.screen, as: selector)
+        return try await tapOnceStill(found.element, ["element": found.json])
+    }
+
+    /// Taps a placed element's point once the pixels there hold still, adding the display and the wait to `result`.
+    private func tapOnceStill(_ element: PlacedElement, _ result: [String: JSONValue]) async throws -> JSONValue {
         let screen = try await screens.touchscreen(.automatic, usesPixels: false)
-        let point = ScreenPoint.normalized(found.element.fraction)
+        let point = ScreenPoint.normalized(element.fraction)
         let settle = try await screens.settle(around: point, on: screen)
         try await inputs.tap(at: screen.digitizerPoint(point), on: screen.digitizerTarget)
-        return ["display": JSONValue(screen.display?.index), "element": found.json,
-                "settle": settle.map { ["waited": JSONValue(Int(($0.waited / .milliseconds(1)).rounded())), "still": .bool($0.still)] }
-                    ?? .null]
+        return .object(result.merging([
+            "display": JSONValue(screen.display?.index),
+            "settle": settle.map { ["waited": JSONValue(Int(($0.waited / .milliseconds(1)).rounded())), "still": .bool($0.still)] } ?? .null,
+        ]) { $1 })
+    }
+
+    /// Reads the newest alert, waiting up to `limit` for one; with an answer, taps the button that gives it.
+    private func alert(_ answer: AlertAnswer?, within limit: Duration) async throws -> JSONValue {
+        let found = try await accessibility.alert(within: limit)
+        guard let answer else { return ["app": found?.app ?? .null, "alert": found?.json ?? .null] }
+        guard let found else {
+            throw SimDriveError(.noAlert, "No alert showed within \(Int((limit / .milliseconds(1)).rounded())) ms; take a screenshot to "
+                                + "see what is on screen.")
+        }
+        guard let button = found.button(for: answer) else {
+            throw SimDriveError(.noAlert, "The alert has no button to \(answer.rawValue) it with.")
+        }
+        return try await tapOnceStill(button.placed, ["app": found.app, "alert": found.json, "button": button.json])
     }
 
     private func twoFingerGesture(around center: ScreenPoint, duration: Duration, display: DisplaySelector, result: [String: JSONValue],
