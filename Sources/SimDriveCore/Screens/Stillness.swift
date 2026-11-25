@@ -1,7 +1,7 @@
 import Foundation
 
 /// Whether samples of the same pixels have stopped changing. UIKit ignores touches while a transition animates, though
-/// the accessibility tree places the element finally from the start (F29 in `roadmap/backlog.md`,
+/// the accessibility tree places the element finally from the start (F29 in `roadmap/completed.md`,
 /// `docs/device-behavior.md`), so an element tap waits for the pixels under its point to hold still.
 struct Stillness {
     /// The summed change of blue, green and red at which a pixel counts as changed, above compression-free noise.

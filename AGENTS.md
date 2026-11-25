@@ -22,7 +22,7 @@ Reinstall after changing the skill here; the repo copy is the source. Other repo
 | `write-code` | writing or changing code or tests, however small, including the matrix and the probe app |
 | `review` | reviewing a diff, PR, module or plan, and self-reviewing before telling the user work is done |
 | `refactor` | restructuring, renaming, moving, deleting or deduplicating code without changing behavior |
-| `backlog` | recording work left undone (findings, extras, deferred fixes, unverified devices or runtimes), and when an item lands |
+| `backlog` | recording work left undone (findings, extras, deferred fixes, unverified devices or runtimes), and moving an item to `roadmap/completed.md` when it lands |
 
 They chain: a design ends in a backlog item's plan that `write-code` carries out, every implementation or refactor ends with a `review` pass, and whatever any of them leaves undone ends in the backlog. If a skill can't be invoked (in a subagent, or a session started before the skill existed), read `.claude/skills/<name>/SKILL.md` and follow it. `.claude/hooks/skill-reminder` repeats this table in one line on every Claude Code prompt.
 
@@ -45,7 +45,7 @@ To drive a simulator while working here, follow `skills/simdrive/SKILL.md` with 
 
 - Builds need Xcode 27 and macOS 26. Set `DEVELOPER_DIR` to the Xcode in use, such as `/Applications/Xcode_27_2.app/Contents/Developer`, when `xcode-select` points elsewhere.
 - Build with `swift build`, test with `swift test`, and release with `swift build -c release`.
-- Planned work, with context for each item, is in [roadmap/backlog.md](roadmap/backlog.md). What the code doesn't say (architecture, design decisions and the alternatives that failed, private APIs, device behavior) is in [docs/](docs/README.md); read the relevant page before changing that area, and update it in the same commit.
+- Planned work, with context for each item, is in [roadmap/backlog.md](roadmap/backlog.md); landed items, with their results, move to [roadmap/completed.md](roadmap/completed.md). What the code doesn't say (architecture, design decisions and the alternatives that failed, private APIs, device behavior) is in [docs/](docs/README.md); read the relevant page before changing that area, and update it in the same commit.
 - `swift build`, `swift test` and read-only git commands are pre-approved in `.claude/settings.json`.
 - Modules, lowest first. Each uses only the one below:
   - `SimDriveNative`: private-framework drivers for CoreSimulator, the guest's HID and device-control services, CoreDevice, and AccessibilityPlatformTranslation. `Guest*` types reach the guest's Mach services directly; `CoreDevice*` types go through CoreDevice.

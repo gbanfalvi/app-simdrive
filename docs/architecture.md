@@ -175,7 +175,7 @@ Every failure an agent can act on is a `SimDriveError`: an `ErrorCode`, the `cod
 - To add a command, follow "Adding a capability" in [AGENTS.md](../AGENTS.md): driver, session method, `Command` case and parser, JSON result, tests, docs.
 - To add a setting, add a row to `SettingCatalog`.
 - Before touching a private API, read [private APIs](private-apis.md) for how each one was found, and [device behavior](device-behavior.md) for what the guest does that the API does not say.
-- [Design decisions](design-decisions.md) explains choices that look odd at first, such as the daemon and the 30 s input release; [open questions](open-questions.md) and the [backlog](../roadmap/backlog.md) list what is unknown or planned.
+- [Design decisions](design-decisions.md) explains choices that look odd at first, such as the daemon and the 30 s input release; [open questions](open-questions.md) and the [backlog](../roadmap/backlog.md) list what is unknown or planned, and [completed](../roadmap/completed.md) what landed, with each item's result.
 
 ## Calling private Swift API
 

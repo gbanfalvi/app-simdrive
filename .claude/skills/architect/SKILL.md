@@ -84,7 +84,8 @@ architectural problems.
    Order steps so earlier ones unblock later ones; put deletions and guard rails first.
 8. **Write the plan down** in the backlog item it carries out (`roadmap/backlog.md`): Problem or Why, Read, Do,
    Test, in that file's style. A plan with no item gets one first (`backlog` skill). Record results under a
-   **Result:** line as steps land, and move what was learned into `docs/`.
+   **Result:** line as steps land, move what was learned into `docs/`, and move the item to `roadmap/completed.md`
+   once it has landed. Past designs and their results are there, under the same IDs.
 9. **Backlog what's deferred.** Alternatives set aside, milestones past this plan, steps cut and edge cases
    accepted rather than handled go into `roadmap/backlog.md` (`backlog` skill).
 
