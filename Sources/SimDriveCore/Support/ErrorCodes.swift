@@ -9,7 +9,6 @@ extension ErrorCode {
     static let developerDirectory = ErrorCode(rawValue: "developer-directory")
     static let simctl = ErrorCode(rawValue: "simctl")
     static let toolTimeout = ErrorCode(rawValue: "tool-timeout", retryable: true)
-    static let devicectl = ErrorCode(rawValue: "devicectl")
     static let launchNotFrontmost = ErrorCode(rawValue: "launch-not-frontmost", retryable: true)
     static let appNotInstalled = ErrorCode(rawValue: "app-not-installed")
     static let appInvalid = ErrorCode(rawValue: "app-invalid")

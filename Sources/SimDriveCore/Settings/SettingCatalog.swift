@@ -16,7 +16,7 @@ struct Setting: Equatable, Sendable {
         /// A guest preference, and the Darwin notifications that tell running apps it changed. `defaultValue` applies
         /// while the key is unset.
         case preference(domain: String, key: String, defaultValue: JSONValue, notifications: [String])
-        /// A setting CoreDevice keeps, through `xcrun devicectl`.
+        /// A setting the guest applies through CoreDevice's setting actions.
         case coreDevice(CoreDeviceSetting)
     }
 
@@ -113,8 +113,8 @@ enum SettingCatalog {
     private static let defaultGlassTint = 0.5
     private static let nonBlinkingCursorOSVersion = 18
     private static let glassOSVersion = 26
-    /// Checked on iOS 27.2 only; `devicectl` settings may reach older runtimes too.
-    private static let coreDeviceSettingsOSVersion = 27
+    /// The guest reads a color filter on iOS 17 and 26 but refuses to change one before iOS 27 (CoreDevice error 21049).
+    private static let colorFilterOSVersion = 27
     private static let fullKeyboardAccessService = "com.apple.fullkeyboardaccess"
     private static let textSizes = [
         "extra-small", "small", "medium", "large", "extra-large", "extra-extra-large", "extra-extra-extra-large",
@@ -163,11 +163,11 @@ enum SettingCatalog {
         Setting(name: "glass-tint", kind: .number(0...1), storage: .preference(domain: uiKit, key: "UIViewGlassTintAmount",
             defaultValue: .number(defaultGlassTint), notifications: ["UIViewGlassTintAmountUpdateNotification"]),
             minimumOSVersion: glassOSVersion),
-        Setting(name: "voiceover", kind: .toggle, storage: .coreDevice(.voiceOver), minimumOSVersion: coreDeviceSettingsOSVersion),
+        Setting(name: "voiceover", kind: .toggle, storage: .coreDevice(.voiceOver)),
         Setting(name: "color-filter", kind: .choice([CoreDeviceSetting.colorFilterOff] + CoreDeviceSetting.colorFilterTypes),
-                storage: .coreDevice(.colorFilter), minimumOSVersion: coreDeviceSettingsOSVersion),
+                storage: .coreDevice(.colorFilter), minimumOSVersion: colorFilterOSVersion),
         Setting(name: "color-filter-intensity", kind: .number(0.25...1), storage: .coreDevice(.colorFilterIntensity),
-                minimumOSVersion: coreDeviceSettingsOSVersion),
+                minimumOSVersion: colorFilterOSVersion),
     ]
 
     static func setting(named name: String) -> Setting? {

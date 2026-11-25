@@ -46,7 +46,10 @@ final class DeviceSession {
         accessibility = DeviceAccessibility(device: device, screens: screens, split: split)
         logs = DeviceLogs(udid: udid, tools: tools)
         splitView = SplitView(screens: screens, state: split, inputs: inputs, accessibility: accessibility, logs: logs)
-        settings = DeviceSettings(udid: udid, device: device, tools: tools)
+        let settingActions = LazyCapability { GuestSettingActions.open(guest: guest, udid: udid) }
+        settings = DeviceSettings(udid: udid, device: device, tools: tools, actions: {
+            try await settingActions.required(orThrow: SimDriveError(.settingUnsupported, "\(device.name) has no setting actions."))
+        })
         apps = DeviceApps(udid: udid, tools: tools)
     }
 

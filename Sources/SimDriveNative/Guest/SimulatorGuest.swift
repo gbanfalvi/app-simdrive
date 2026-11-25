@@ -111,7 +111,8 @@ final class GuestConnection {
         try await reply(to: try codec.message(type, to: feature, payload: payload))
     }
 
-    private func reply(to message: xpc_object_t) async throws -> xpc_object_t {
+    /// Sends a message its sender built whole, as CoreDevice's actions are, and waits for the reply.
+    func reply(to message: xpc_object_t) async throws -> xpc_object_t {
         if let failure { throw failure }
         let connection = self.connection
         let deadline = Task { @MainActor in

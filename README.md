@@ -93,7 +93,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `developer-directory` | No Xcode is selected | no |
 | `state-directory` | `/tmp/simdrive-<uid>` is a symlink or belongs to another user | no |
 | `simctl` | A `simctl` call failed; the message has its output | no |
-| `devicectl` | A `devicectl` call failed, as setting `voiceover` or `color-filter` can; the message has its error | no |
+| `guest-setting` | The guest refused a setting action, or has no service for it, as `voiceover` or `color-filter` can; the message has CoreDevice's error | no |
 | `tool-timeout` | A `simctl` call ran past its limit and was stopped | yes |
 | `unknown-key`, `unsupported-character` | A key or character the keyboard layout cannot type; paste it instead | no |
 | `no-touchscreen` | The device has no touchscreen, as an Apple TV | no |
@@ -190,13 +190,13 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 | `non-blinking-cursor` | toggle, iOS 18 and later | `AccessibilitySettings.prefersNonBlinkingTextInsertionIndicator` |
 | `full-keyboard-access` | toggle, iOS only | Full Keyboard Access: `key tab` and the arrows then move its focus ring |
 | `glass-tint` | 0 to 1, 0.5 by default, iOS 26 and later | Settings' Liquid Glass Tint Amount slider |
-| `voiceover` | `on` or `off`, iOS 27 and later | VoiceOver. While it runs, a tap selects an element and a double tap activates it |
-| `color-filter` | `off`, `grayscale`, `protanopia`, `deuteranopia` or `tritanopia`, iOS 27 and later | Display & Text Size's Color Filters |
-| `color-filter-intensity` | 0.25 to 1, iOS 27 and later; needs a `color-filter` other than `off` | Color Filters' Intensity |
+| `voiceover` | `on` or `off`, iOS | VoiceOver. While it runs, a tap selects an element and a double tap activates it |
+| `color-filter` | `off`, `grayscale`, `protanopia`, `deuteranopia` or `tritanopia`, iOS 27 and later | Display & Text Size's Color Filters; changing the type keeps the intensity |
+| `color-filter-intensity` | 0.25 to 1, iOS 27 and later; needs a `color-filter` other than `off` or `grayscale` | Color Filters' Intensity |
 
-`voiceover` and the color filter go through `xcrun devicectl`, which starts CoreDevice in its own process, so each read or change takes about 3 s. Listing every setting takes about 7 s.
+`voiceover` and the color filter are applied by the guest itself, as the Settings app applies them, through the CoreDevice actions `xcrun devicectl device settings` also uses; simdrive sends them straight to the guest, so a read or change takes tens of milliseconds.
 
-The first three are changed by CoreSimulator in process, as `simctl ui` does; tvOS lacks them: there they read `unsupported`, and changing them fails with `setting-unsupported`, as do settings on systems older than they are. The others are guest preferences followed by the Darwin notifications that UIKit and the accessibility cache listen for; iOS 17 and 18 apps miss some changes without the cache's. Turning on `full-keyboard-access` also turns on app accessibility and starts its on-demand daemon, as Settings does; turning it off leaves app accessibility on. VoiceOver, Zoom, AssistiveTouch and Switch Control are left out: they take over input, or do not start from a preference.
+The first three are changed by CoreSimulator in process, as `simctl ui` does; tvOS lacks them: there they read `unsupported`, and changing them fails with `setting-unsupported`, as do settings on systems older than they are. The others are guest preferences followed by the Darwin notifications that UIKit and the accessibility cache listen for; iOS 17 and 18 apps miss some changes without the cache's. Turning on `full-keyboard-access` also turns on app accessibility and starts its on-demand daemon, as Settings does; turning it off leaves app accessibility on. Zoom, AssistiveTouch and Switch Control are left out: they take over input, or do not start from a preference.
 
 ### Logs
 

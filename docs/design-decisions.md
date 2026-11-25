@@ -71,10 +71,10 @@ simdrive runs CoreSimulator's own `simctl` (`/Library/Developer/PrivateFramework
 
 ## Settings as a catalog
 
-Each setting is one row in `SettingCatalog`, with no new command. Three are `SimDevice` interface options, which `simctl ui` also uses; VoiceOver and the color filter are CoreDevice settings, through `xcrun devicectl`; the rest are guest preferences plus the Darwin notifications that UIKit and the accessibility cache listen for.
+Each setting is one row in `SettingCatalog`, with no new command. Three are `SimDevice` interface options, which `simctl ui` also uses; VoiceOver and the color filter are CoreDevice setting actions, which the guest applies itself; the rest are guest preferences plus the Darwin notifications that UIKit and the accessibility cache listen for.
 
 - Preferences are written and read with `simctl spawn <udid> defaults`, not the plist on disk, since `cfprefsd` caches and may not flush. Notifications go through `SimDevice postDarwinNotification:error:` instead of a second spawn.
-- CoreDevice settings run `devicectl` (about 3 s a call) rather than the in-process CoreDevice capability `pasteboard` uses, which may be faster but was not tried (N20).
+- Setting actions go straight to the guest service, not through `xcrun devicectl`, which first shipped them (N20) at about 3 s a call against tens of milliseconds (I10). The cost is private message shapes that an Xcode update can move, as 27.3 moved `executionLocation`.
 - A row stays only if a running probe app sees the change on the oldest and newest runtimes; candidates it did not see were dropped. The CoreDevice rows are the exception so far, checked by reading back (I26).
 - VoiceOver is offered since N20, as AXe and NeoSimulator offer it, though it may change how taps and keys land (I26). Zoom, AssistiveTouch and Switch Control stay out: they take over input, which would break simdrive's own.
 - `set` returns the value read back, so an agent sees what took effect.

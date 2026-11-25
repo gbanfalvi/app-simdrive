@@ -90,22 +90,6 @@ struct DeveloperTools: Sendable {
         return result
     }
 
-    /// Runs `xcrun devicectl` with its JSON output on stdout, and returns the JSON's `result`. It starts CoreDevice afresh in
-    /// its own process, which takes about 3 s.
-    func devicectl(_ arguments: [String], limit: Duration = defaultLimit) async throws -> [String: Any] {
-        var environment = ProcessInfo.processInfo.environment
-        environment[Self.developerDirectoryVariable] = developerDirectory
-        let result = try await Self.run([Self.xcrun, "devicectl"] + arguments + ["--quiet", "--json-output", "-"], environment: environment,
-                                        limit: limit, name: "devicectl \(arguments.prefix(3).joined(separator: " "))")
-        let json = (try? JSONSerialization.jsonObject(with: Data(result.standardOutput.utf8))) as? [String: Any]
-        guard result.succeeded, let output = json?["result"] as? [String: Any] else {
-            let error = (json?["error"] as? [String: Any]).flatMap { $0["userInfo"] as? [String: Any] }
-                .flatMap { $0["NSLocalizedDescription"] as? [String: Any] }?["string"] as? String
-            throw SimDriveError(.devicectl, "devicectl \(arguments.prefix(3).joined(separator: " ")) failed: \(error ?? result.diagnostics)")
-        }
-        return output
-    }
-
     /// Extracts the members of a zip archive that match `pattern` into `directory`.
     func unzip(_ archive: String, members pattern: String, into directory: String) async throws -> ToolResult {
         try await Self.run([Self.unzip, "-qq", "-o", archive, pattern, "-d", directory], environment: ProcessInfo.processInfo.environment,

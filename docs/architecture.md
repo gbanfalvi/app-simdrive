@@ -21,7 +21,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveNative/Simulator` | `SimulatorDevice`, CoreSimulator's `SimDevice`: state, boot date, screen scale, service lookup, Darwin notifications and the accessibility request channel. Framebuffer reads (`ScreenFramebuffers`, `ScreenAdapter`) and `InterfaceOrientation`. |
 | `SimDriveNative/Guest` | `SimulatorGuest` and `GuestConnection`, XPC connections to the guest's Mach services; `GuestMessageCodec`, which encodes their messages as CoreDevice does; `GuestInputTiming`. |
 | `SimDriveNative/Input` | `GuestKeyboard`, `GuestTouchscreen`, `GuestButtons`, `KeyboardBindings`, which turns Mac key events into HID reports, and `KeyboardLayout`, the guest's hardware keyboard layout. |
-| `SimDriveNative/DeviceControl` | `GuestOrientation`, `CoreDevicePasteboard`, `CoreDeviceHinge`. |
+| `SimDriveNative/DeviceControl` | `GuestOrientation`, `GuestSettingActions`, `CoreDevicePasteboard`, `CoreDeviceHinge`. |
 | `SimDriveNative/CoreDevice` | `CoreDeviceManager` and `CoreDeviceRemote`: finding the simulator's CoreDevice record and calling its capabilities. |
 | `SimDriveNative/Accessibility` | `SimulatorAccessibility`, which drives `AXPTranslator`, and `AccessibilityElement`, the snapshot it returns. |
 | `SimDriveNative/Support` | `SimDriveError` and `ErrorCode`, `SharedInitialization`, `waitForCompletion`, ABIBridge setup. |
@@ -34,7 +34,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes. |
 | `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs; `SplitState`, the half simdrive set, kept per app pid since reading SpringBoard's log for it takes seconds. |
 | `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |
-| `SimDriveCore/Settings` | `SettingCatalog` (one row per setting), `DeviceSettings`, `GuestPreferences`. |
+| `SimDriveCore/Settings` | `SettingCatalog` (one row per setting), `DeviceSettings`, `GuestPreferences`, and `CoreDeviceSetting`, which maps rows to setting actions' JSON. |
 | `SimDriveCore/Logs` | `DeviceLogs`, `LogQuery`, `LogDigest`, `LogStore`, `LogEvent`, `CrashReports`. |
 | `SimDriveCore/Tools` | `DeveloperTools`, which runs `simctl` and friends for one developer directory, and `BootedSimulators`. |
 | `SimDriveCore/Support` | Core's `ErrorCode` constants and `JSONValue`. |
@@ -62,6 +62,7 @@ flowchart LR
   Hinge --> CoreDevice["CoreDevice RemoteDevice"]
   AX --> Translator["AXPTranslator, via SimDevice"]
   Settings --> Spawn["SimDevice interface options and notifications, simctl spawn defaults"]
+  Settings --> Actions["CoreDevice setting actions, to guest services"]
 ```
 
 1. `SimDriveCLI` resolves the developer directory and the UDID (`booted` means the only booted simulator), parses the command, and sends the raw arguments to the device's daemon, starting it if needed.
@@ -129,6 +130,7 @@ The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.s
 | Launch | CoreSimulator's own `simctl` binary | — |
 | Appearance, text size, contrast | `SimDevice` interface options, in process | tvOS |
 | Preference settings | `simctl spawn defaults`, then `SimDevice postDarwinNotification:error:` | — |
+| VoiceOver, color filter | CoreDevice setting actions sent to the guest service each names (`GuestSettingActions`) | Color filter changes before iOS 27; tvOS unverified |
 | Logs | `simctl spawn log show` and `log stream`, files from `simctl launch --stdout --stderr`, and `~/Library/Logs/DiagnosticReports` | — |
 
 Guest services are reached the way CoreDevice's simulator plugin reaches them: `SimDevice lookup:error:` returns a Mach send right, which `xpc_endpoint_create_mach_port_4sim` and `xpc_connection_enable_sim2host_4sim` turn into an XPC connection. No CoreDevice record is needed. CoreDevice capabilities need the simulator's CoreDevice record, found by UDID in `DeviceManager.devices`, whose keys are not the UDID.

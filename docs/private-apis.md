@@ -104,12 +104,15 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreDevice.framework`.
 - `PasteboardSnapshot(from: NSPasteboard, dataPolicy:)` and `write(to: NSPasteboard)` convert. `PasteboardDataInclusionPolicy.allResolved` includes every type's data, so neither side keeps promises the other must resolve.
 - Swift initializers called through ABIBridge consume their arguments, so each capture needs its own copy of the policy, as each `EventObserver(eventMask:)` needs its own mask.
 
-### Settings through `devicectl`
+### Setting actions
 
-- `xcrun devicectl device info appearance|voiceover --device <udid> --quiet --json-output -` reads, and `device settings appearance|voiceover` changes; the JSON's `result` holds the values. Each call starts CoreDevice in its own process and takes about 3 s.
-- `voiceover --enable|--disable`; `result.enabled`.
-- `appearance --color-filter on|off --color-filter-type grayscale|protanopia|deuteranopia|tritanopia [--color-filter-intensity <0…1>]`; `result.colorFilter` has `enabled`, `filterType.name` and `intensity`. An intensity is refused without a type, so simdrive passes the current one.
-- Checked on iOS 27.2 only, so simdrive offers these settings from iOS 27; older runtimes may answer too (unverified).
+CoreDevice declares guest actions that read and apply a setting as the Settings app does; `xcrun devicectl device info|settings appearance|voiceover` calls them. simdrive sends them straight to the guest service that performs them, as NeoSimulator does (`N:NeoSimulatorDeviceIO/CoreDevice/GuestSettingsActions.swift @c9710cf`), with no CoreDevice record. A warm read or change takes 30–370 ms, against about 3 s for `devicectl`, which starts CoreDevice in its own process.
+
+- Each action is `CoreDeviceUtilities.<Get|Set><Name>ActionDeclaration`, with nested `Input` and `Output` types. Its static `identifier` names the action, and its static `executionLocation` is `.remoteDevice(<feature>)`, the guest Mach service to connect to. CoreDeviceUtilities 699.2 (Xcode 27.3) moved `executionLocation` to the `ActionDeclaration` protocol, so simdrive falls back to `CoreDeviceUtilities.ActionDeclaration.executionLocation` (unverified: no Xcode 27.3 here).
+- The message is a dictionary of `CoreDevice.actionIdentifier`, `CoreDevice.deviceIdentifier` (the UDID), `CoreDevice.invocationIdentifier` (a new UUID), `CoreDevice.CoreDeviceDDIProtocolVersion` = 1, `CoreDevice.coreDeviceVersion` (CoreDevice's `CFBundleVersion` as `components`, `originalComponentsCount` and `stringValue`) and `CoreDevice.input`, the input encoded with `Mercury.XPCObjectEncoder`. The reply has `CoreDevice.output`, decoded with `Mercury.XPCObjectDecoder`, or `CoreDevice.error` with `domain`, `code` and `userInfo`.
+- simdrive builds inputs from JSON with `JSONDecoder` resolved for the input type, and turns outputs into JSON with `JSONEncoder`, since the types are `Codable`.
+- In use: `VoiceOver` (`voiceOverConfiguration.enabled`) and `ColorFilter` (`colorFilter` with `enabled`, `filterType` and `intensity`; `filterType` is a `DeviceColorFilter.FilterType` static member such as `deuteranopia`, which encodes as `{"name": "Deuteranopia", …}`). Also declared, unused: `ReduceMotion`, `ShowBorders`, `ReduceTransparency`, `LiquidGlassConfiguration` and `DeviceLookAndFeel` (I10).
+- Runtimes: VoiceOver reads and changes on iOS 17.0, 26.5 and 27.2. The color filter reads on all three but changes only on iOS 27: older guests answer error 21049, "Color filter customization is not supported on this device". The guest refuses an intensity for grayscale.
 
 ## AccessibilityPlatformTranslation
 

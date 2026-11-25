@@ -40,6 +40,7 @@ extension ErrorCode {
     static let guestLookup = ErrorCode(rawValue: "guest-lookup")
     static let guestEndpoint = ErrorCode(rawValue: "guest-endpoint")
     static let guestMessage = ErrorCode(rawValue: "guest-message")
+    static let guestSetting = ErrorCode(rawValue: "guest-setting")
     /// A guest service connection ended. Its services are gone, so its owner must open a new one.
     package static let guestConnection = ErrorCode(rawValue: "guest-connection", retryable: true)
     static let guestServiceTimeout = ErrorCode(rawValue: "guest-service-timeout", retryable: true)

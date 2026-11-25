@@ -48,7 +48,7 @@ $S <udid> tree --full                  # every node and field, nested: frames, h
 $S <udid> tree 0.5 0.25                # the element at a point
 $S <udid> setting                      # every setting's value
 $S <udid> setting appearance dark      # also text-size accessibility-large, reduce-motion on, bold-text on, glass-tint 0.8…
-$S <udid> setting color-filter protanopia   # also color-filter-intensity 0.5, voiceover on; about 3 s each, iOS 27+
+$S <udid> setting color-filter protanopia   # also color-filter-intensity 0.5 (iOS 27+); voiceover on: taps then select, double taps activate
 $S <udid> setting full-keyboard-access on   # then key tab, key tab --mods shift, key space move and use its focus ring
 $S <udid> launch com.example.app -someArgument   # captures its stdout and stderr, and resets the log cursors
 $S <udid> install build/MyApp.app       # or an .ipa; returns its bundleID. uninstall <bundle-id> removes it

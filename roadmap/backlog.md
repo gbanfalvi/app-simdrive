@@ -500,7 +500,14 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Seen (2026-11-24, architecture review):** about 25 of Native's codes, including `coredevice-not-ready`, `coredevice-timeout`, `guest-service-timeout` and `guest-connection`, appear in neither the README nor the skill. Document them alongside the retry categories. F20 limits the calls themselves.
 - **Seen (2026-11-24, F20):** `DaemonClient.exchange` still reads the reply with no limit. Every wait in the daemon is now bounded, and `stop` skips the queue, but a daemon blocked in a private call that bypasses those limits would still hang the agent's shell. Give the read a limit above the longest command limit, such as `install`'s 10 minutes, or derive it from the command.
 
-### - [ ] I10. Apply settings through the guest's own setting actions (L, unverified)
+### - [ ] I10. Apply settings through the guest's own setting actions (M, steps 1 and 3 done)
+
+**Result so far (2026-11-25):**
+- **Steps 1 and 3 are done:** `GuestSettingActions` (`S:SimDriveNative/DeviceControl/GuestSettingActions.swift`) sends the `VoiceOver` and `ColorFilter` actions straight to their guest services, with the Xcode 27.3 `executionLocation` fallback. The `coreDevice` rows now go through it, and the `devicectl` route, `DeveloperTools.devicectl` and the `devicectl` error code are gone. A refusal fails with the new `guest-setting` code.
+- **Speed on an iPhone 17, iOS 27.2, warm daemon:** a read takes 30–140 ms and a change 90–370 ms, against about 3 s through `devicectl`. Listing every setting fell from about 7 s to 0.6 s.
+- **Runtimes:** VoiceOver reads and changes on iOS 17.0, 26.5 and 27.2, so `voiceover` now has no minimum OS. The color filter reads on all three but changes only on iOS 27 (error 21049), so its rows keep iOS 27.
+- **Checks:** the matrix's `settings` section gained read-backs of both settings, and an intensity kept across a type change. It passes 45/45 on iOS 27.2, 41/41 on iOS 26.5 and 40/40 on iOS 17.0. A change on a device without the action's service fails with `setting-unsupported`. `CoreDeviceSettingsTests` cover the inputs and outputs.
+- **Not verified:** the Xcode 27.3 fallback (only Xcode 27.2 and older are installed), tvOS, the Duo, and iOS 18.
 
 - **Problem:** most settings are a `defaults write` plus Darwin notifications. They miss side effects that the Settings app applies, and need a probe check on each runtime. CoreDevice declares guest actions that apply a setting as Settings does, and read it back.
 - **Read:**
@@ -511,12 +518,8 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - Feature identifiers include `com.apple.coredevice.feature.voiceover`, `customizeappearancesettings`, `customizeliquidglass` and `customizeuistyle`.
   - The guest connection is the one simdrive's `GuestOrientation` uses (`S:SimDriveNative/DeviceControl/GuestOrientation.swift`), and its message encoding is in `S:SimDriveNative/Guest/GuestMessageCodec.swift`.
 - **Seen (2026-11-24, upstream review):** on Xcode 27.3 (CoreDeviceUtilities 699.2), `executionLocation` moved to `CoreDeviceUtilities.ActionDeclaration.executionLocation`, and NeoSimulator now falls back to it (861b9e0, `N:NeoSimulatorDeviceIO/CoreDevice/GuestSettingsActions.swift:122-136 @c9710cf`). This item needs the same fallback. N20 no longer depends on it: `devicectl device settings` covers those settings.
-- **Do:**
-  1. Add a `GuestSettingActions` driver in `SimDriveNative/DeviceControl/`, with `value(of:)` and `set(_:to:)` for each action.
-  2. Move the settings whose actions exist to it: `reduce-motion`, `show-borders` and `reduce-transparency`. Keep `defaults` for the rest.
-  3. Add a row kind to `SettingCatalog` for action-backed settings.
-- **Test:** the matrix's `settings` section on iOS 17, 18, 26 and 27, where the probe app logs each change. Document the actions in `docs/private-apis.md`.
-- **Unlocks:** N20.
+- **Do next (step 2):** move `reduce-motion`, `show-borders` and `reduce-transparency` to their actions (`GuestSetting` already names them), dropping their `defaults` rows rather than keeping both, once each action answers on every supported runtime; a runtime without the action keeps the whole row on `defaults`, which would mean two transports, so first check iOS 17.0 and 18. Also try `LiquidGlassConfiguration` against `glass-tint`.
+- **Test:** the matrix's `settings` section on iOS 17, 18, 26 and 27, where the probe app logs each change, and once on Xcode 27.3 for the fallback.
 
 ### - [x] I11. Confirm input delivery with a guest barrier, instead of a fixed drain (S)
 
@@ -704,10 +707,10 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 ### - [ ] I26. Check VoiceOver and color filters in the matrix, and say what VoiceOver changes about input (S)
 
-- **Problem:** left from N20 (2026-11-24). `voiceover`, `color-filter` and `color-filter-intensity` were checked only by reading back through `devicectl` and one screenshot, not by the probe, unlike every other setting row (AGENTS.md "Adding a capability"). With VoiceOver on, taps may select instead of activate and keys may go to VoiceOver; nothing says what still works.
+- **Problem:** left from N20 (2026-11-24). `voiceover`, `color-filter` and `color-filter-intensity` are checked only by reading back through their own actions (the matrix's `guest_action_checks`, from I10) and one screenshot, not by the probe, unlike every other setting row (AGENTS.md "Adding a capability"). With VoiceOver on, taps may select instead of activate and keys may go to VoiceOver; nothing says what still works.
 - **Read:** `Evaluation/Probe` (its `STATUS` line), `Evaluation/matrix.py` (`setting_checks`), `docs/design-decisions.md` ("Settings as a catalog").
 - **Do:** log `UIAccessibility.isVoiceOverRunning` and the color filter status in `STATUS`, and check the three rows in the `settings` section. With VoiceOver on, run a `tap`, a `tap --label`, a key and `type`, and record in `docs/device-behavior.md` what reaches the probe.
-- **Test:** the matrix on iOS 27.2, and on iOS 26 to see whether `devicectl` answers there, which would lower `coreDeviceSettingsOSVersion`.
+- **Test:** the matrix on iOS 17.0 and 27.2; VoiceOver changes on both, the color filter on 27 only.
 
 ## 3. New features
 
@@ -944,7 +947,7 @@ NeoSimulator has none of these; `simctl` covers them.
 - **Left out:**
   - `look-and-feel`: this iPhone lists only "Liquid Glass" as supported.
   - `glass-opacity`: `devicectl`'s Liquid Glass opacity read 0.5 where `glass-tint` did, so it looks like the same value (unverified beyond that).
-- **Cost:** each `devicectl` call starts CoreDevice afresh, about 3 s, and listing every setting went from under a second to about 7 s. The in-process CoreDevice capability that `pasteboard` uses would avoid that (unverified). The probe and the matrix do not check these settings yet.
+- **Cost:** each `devicectl` call started CoreDevice afresh, about 3 s, and listing every setting went from under a second to about 7 s. I10 replaced `devicectl` with the guest's actions, sent directly: tens of milliseconds, and 0.6 s for the list. The probe does not check these settings yet (I26).
 
 - **Seen (2026-11-24, upstream review):** I10 is no longer needed for this. AXe sets VoiceOver, the color filter with its intensity, Liquid Glass opacity, text size and contrast with `xcrun devicectl device settings appearance|voiceover`, and reads them back with `devicectl device info appearance|voiceover` (`A:Sources/AXe/Utilities/DeviceSettings.swift:92-96,242,340-341 @1ffbd35`). `devicectl device settings` exists in the installed Xcode 27. Prefer calling the CoreDevice capability behind it in process, as `pasteboard` does (unverified that it is reachable that way), and fall back to running `devicectl` through `DeveloperTools`.
 

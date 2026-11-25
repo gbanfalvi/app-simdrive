@@ -595,7 +595,27 @@ def setting_checks():
         check('setting glass-tint (expect setting-unsupported)', response.get('code') == 'setting-unsupported', brief(response))
     else:
         check('setting glass-tint 0.8 (read back)', response.get('ok') and response['result'].get('value') == 0.8, brief(response))
+    guest_action_checks()
     app_accessibility_checks()
+
+
+def guest_action_checks():
+    """Settings the guest applies through CoreDevice's actions, read back through the same actions; the probe does not see them yet (I26)."""
+    for name, value, expected in (('voiceover', 'on', True), ('voiceover', 'off', False)):
+        response = sd('setting', name, value)
+        check(f'setting {name} {value} (read back)', response.get('ok') and response['result'].get('value') == expected, brief(response))
+    if OS[0] < 27:
+        response = sd('setting', 'color-filter', 'deuteranopia')
+        check('setting color-filter (expect setting-unsupported)', response.get('code') == 'setting-unsupported', brief(response))
+        return
+    for name, value, expected in (('color-filter', 'deuteranopia', 'deuteranopia'), ('color-filter-intensity', '0.6', 0.6),
+                                  ('color-filter', 'protanopia', 'protanopia')):
+        response = sd('setting', name, value)
+        check(f'setting {name} {value} (read back)', response.get('ok') and response['result'].get('value') == expected, brief(response))
+    response = sd('setting', 'color-filter-intensity')
+    check('color-filter-intensity kept across types', response.get('ok') and response['result'].get('value') == 0.6, brief(response))
+    response = sd('setting', 'color-filter', 'off')
+    check('setting color-filter off (read back)', response.get('ok') and response['result'].get('value') == 'off', brief(response))
 
 
 def app_accessibility_checks():
