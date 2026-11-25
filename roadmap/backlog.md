@@ -454,7 +454,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - `--timing` against the old build (`SIMDRIVE=<old build>`), several rounds.
   - Record the cold-start numbers in `docs/device-behavior.md`.
 
-### - [ ] I6. Detect a sleeping display, and wake it (M, steps 1 and 2 done)
+### - [ ] I6. Detect a sleeping display, and wake it (M, steps 1 and 2 done; step 3 blocked on reproducing sleep)
+
+**Step 3 attempt (2026-11-25):** not built, since idle sleep did not reproduce. On a new iPhone 17, iOS 27.2, `doctor` read `backlight` `on` and unlocked throughout: 130 s idle after launching the probe, 180 s after one tap in it, 90 s on the Home screen, and once 75 s after a tap with no reads in between. So what dims the display is unknown: the single `dimmed` read below may have come from something else in that run. **Next:** find a reliable trigger first (a simulator left idle much longer, one shown in Simulator.app or DeviceHub, older runtimes, or an Auto-Lock preference such as `SBAutoLockTime` in `com.apple.springboard`), then wake before input as step 3 says, checked against it.
 
 **Result so far (2026-11-25):** steps 1 and 2 are done. `SimulatorDevice.backlights()` reads each screen's `backlight.state` and `darwinNotificationState(_:)` reads `com.apple.springboard.lockstate`; `doctor` reports them as `backlight` (per screen: `on`, `dimmed`, `off`, `unknown`) and `locked`. On an iPhone 17, iOS 27.2, the lock state matched `notifyutil -g` through a lock and an unlock; the display read `dimmed` after 20 s idle, stayed `dimmed` rather than `off` 5 s after `button lock`, and read `on` after a second press. Step 3, waking before input, is next; F29 showed a dropped tap is not always sleep, so the wake must not stand in for F29's fix.
 
