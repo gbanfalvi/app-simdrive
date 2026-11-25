@@ -8,6 +8,7 @@ struct AccessibilityLayout: Equatable, Sendable {
     private static let precision = 10_000.0
     /// In points, so a point on an element's edge still counts as inside it.
     private static let hitTolerance: CGFloat = 1
+    private static let presentationLayerClass = "UITransitionView"
     /// Elements that show their descendants only within their frame.
     private static let scrollingTypes: Set<ElementType> = [.scrollView, .table, .collectionView, .webView]
 
@@ -86,8 +87,17 @@ struct AccessibilityLayout: Equatable, Sendable {
     /// VoiceOver's elements in hierarchy order, placed on the screen.
     func placedElements(_ root: AccessibilityElement) -> [PlacedElement] {
         var elements: [PlacedElement] = []
-        collect(root, visibleFrame: screenFrame, into: &elements)
+        collect(root, visibleFrame: screenFrame, behindPresentation: false, into: &elements)
         return elements
+    }
+
+    /// UIKit puts each presentation, as an alert, a sheet or a popover, in its own `UITransitionView`, a later child of
+    /// the window than what it covers, and a tap outside the newest reaches nothing behind it. The indices of the
+    /// children that hold the older layers.
+    static func layersBehindNewestPresentation(of element: AccessibilityElement) -> Set<Int> {
+        let layers = element.children.indices.filter { element.children[$0].className == presentationLayerClass }
+        guard layers.count > 1 else { return [] }
+        return Set(layers.dropLast())
     }
 
     /// The fields that find and act on an element.
@@ -95,14 +105,18 @@ struct AccessibilityLayout: Equatable, Sendable {
         summary(placed(element, visibleFrame: screenFrame))
     }
 
-    private func collect(_ element: AccessibilityElement, visibleFrame: CGRect, into elements: inout [PlacedElement]) {
+    private func collect(_ element: AccessibilityElement, visibleFrame: CGRect, behindPresentation: Bool,
+                         into elements: inout [PlacedElement]) {
         guard !element.isVoiceOverElement else {
-            elements.append(placed(element, visibleFrame: visibleFrame))
+            var placed = placed(element, visibleFrame: visibleFrame)
+            placed.isBehindPresentation = behindPresentation
+            elements.append(placed)
             return
         }
         let childrenFrame = childrenFrame(of: element, in: visibleFrame)
-        for child in element.children {
-            collect(child, visibleFrame: childrenFrame, into: &elements)
+        let behind = Self.layersBehindNewestPresentation(of: element)
+        for (index, child) in element.children.enumerated() {
+            collect(child, visibleFrame: childrenFrame, behindPresentation: behindPresentation || behind.contains(index), into: &elements)
         }
     }
 

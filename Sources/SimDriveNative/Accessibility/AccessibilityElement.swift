@@ -177,6 +177,8 @@ enum SnapshotAttribute: Int, CaseIterable {
     private static let light: [SnapshotAttribute] = [
         .label, .frame, .traits, .value, .activationPoint, .isAccessibilityElement, .hasFocus, .expandedStatus, .identifier,
         .placeholder, .automationType,
+        // Names UIKit's presentation layers, which tell what an alert or a sheet covers.
+        .className,
     ]
 
     static func requested(for detail: TreeDetail) -> [SnapshotAttribute] {

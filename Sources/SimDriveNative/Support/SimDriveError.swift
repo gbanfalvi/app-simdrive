@@ -57,7 +57,7 @@ extension ErrorCode {
     static let hingeObservation = ErrorCode(rawValue: "hinge-observation")
     static let hingeSnapshot = ErrorCode(rawValue: "hinge-snapshot")
     static let hingePayload = ErrorCode(rawValue: "hinge-payload")
-    static let accessibilityTimeout = ErrorCode(rawValue: "accessibility-timeout", retryable: true)
+    package static let accessibilityTimeout = ErrorCode(rawValue: "accessibility-timeout", retryable: true)
     static let accessibilityUnavailable = ErrorCode(rawValue: "accessibility-unavailable")
     package static let noElement = ErrorCode(rawValue: "no-element")
     /// The translator gave no element, or the frontmost app had no frame.

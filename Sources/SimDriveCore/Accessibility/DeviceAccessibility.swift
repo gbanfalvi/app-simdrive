@@ -52,11 +52,19 @@ final class DeviceAccessibility {
         Task { [accessibility] in _ = try? await accessibility.value()?.application() }
     }
 
-    func tree(detail: TreeDetail) async throws -> JSONValue {
-        let (snapshot, screen, layout) = try await read(detail: detail)
+    /// The frontmost app's tree, or with `process` that app's. The tree lists what an alert or a sheet covers too;
+    /// `marksCovered` tells those elements apart, for the light tree.
+    func tree(detail: TreeDetail, marksCovered: Bool = false, process: Int32? = nil) async throws -> JSONValue {
+        let (snapshot, screen, layout) = try await read(detail: detail, process: process)
         let app = snapshot.application.json
         let display = JSONValue(screen.display?.index)
         switch detail {
+        case .light where marksCovered:
+            // A system alert puts SpringBoard in front of the app read with `--app`.
+            let isInFront = process == nil ? true : try await connected().application().pid == process
+            let elements = try await elementsMarkingCovered(layout.placedElements(snapshot.element), in: snapshot.application.pid,
+                                                            isInFront: isInFront, layout: layout)
+            return ["app": app, "display": display, "elements": elements]
         case .light: return ["app": app, "display": display, "elements": layout.elements(snapshot.element)]
         case .full: return ["app": app, "display": display, "root": layout.json(application: snapshot.element)]
         }
@@ -130,10 +138,22 @@ final class DeviceAccessibility {
         }
     }
 
-    private func read(detail: TreeDetail) async throws -> (AccessibilitySnapshot, Screen, AccessibilityLayout) {
+    private func read(detail: TreeDetail, process: Int32? = nil) async throws -> (AccessibilitySnapshot, Screen, AccessibilityLayout) {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)
-        let snapshot = try await explainingAccessibilityOff { try await accessibility.snapshot(detail: detail) }
+        let snapshot = try await explainingAccessibilityOff { () async throws -> AccessibilitySnapshot in
+            guard let process else { return try await accessibility.snapshot(detail: detail) }
+            do {
+                guard let snapshot = try await accessibility.snapshot(ofProcess: process, detail: detail) else {
+                    throw SimDriveError(.appNotRunning, "The guest names no app for pid \(process); launch it first.")
+                }
+                return snapshot
+            } catch let error as SimDriveError where error.code == .accessibilityTimeout {
+                // iOS suspends an app seconds after it leaves the screen, and a suspended app does not answer.
+                throw SimDriveError(error.code, "The app did not answer; an app in the background is suspended within seconds and "
+                                    + "answers again once something shows it, such as an alert over it or `launch`.")
+            }
+        }
         let fullLayout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen)
         let fillsHalf = fullLayout.spansUnder(Self.halfWidthLimit, windows: snapshot.element.children.map(\.frame))
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: device.screenScale, screen: screen,
@@ -145,6 +165,22 @@ final class DeviceAccessibility {
     /// a sheet, so a tap there would reach that instead. Nothing at the point counts as clear.
     func checkReachable(_ target: PlacedElement, in targetPID: Int32?, among screenElements: [PlacedElement],
                         as selector: ElementSelector) async throws {
+        // A hit test answers with the element under an alert's dimming, though a tap there reaches nothing (I8).
+        guard !target.isBehindPresentation else {
+            throw SimDriveError(.elementCovered, "\(selector.argument) is behind an alert, sheet or popover the app presents; "
+                                + "dismiss it first, as with key escape or one of its buttons.")
+        }
+        guard let hit = try await cover(of: target, in: targetPID, among: screenElements) else { return }
+        let cover = hit.element.label ?? hit.element.identifier ?? hit.element.type.map { "a \($0)" } ?? "another element"
+        let owner = hit.application.pid == targetPID ? "" : " of \(hit.application.name ?? "another app")"
+        throw SimDriveError(.elementCovered, "\(selector.argument) is covered by \(cover)\(owner) at its tap point; dismiss it "
+                            + "first, as with key escape or by tapping outside it.")
+    }
+
+    /// What a hit test finds at the element's tap point when it is something else, as an alert, a sheet's dimming or
+    /// another app; nil when a tap there would reach the element, or nothing is there.
+    private func cover(of target: PlacedElement, in targetPID: Int32?,
+                       among screenElements: [PlacedElement]) async throws -> AccessibilitySnapshot? {
         let accessibility = try await connected()
         let screen = try await screens.screen(.automatic, usesPixels: false)
         let scale = device.screenScale
@@ -154,11 +190,28 @@ final class DeviceAccessibility {
         }
         guard let hit = try await accessibility.snapshot(at: panelPoint, display: screen.display?.index ?? 0, detail: .light),
               !ElementSelector.hitReaches(target.element, in: targetPID, hit: hit.element, in: hit.application.pid,
-                                          among: screenElements) else { return }
-        let cover = hit.element.label ?? hit.element.identifier ?? hit.element.type.map { "a \($0)" } ?? "another element"
-        let owner = hit.application.pid == targetPID ? "" : " of \(hit.application.name ?? "another app")"
-        throw SimDriveError(.elementCovered, "\(selector.argument) is covered by \(cover)\(owner) at its tap point; dismiss it "
-                            + "first, as with key escape or by tapping outside it.")
+                                          among: screenElements) else { return nil }
+        return hit
+    }
+
+    /// The light tree's elements with `covered: true` on each onscreen one that a tap would not reach: all of an app
+    /// that is not in front, those behind a newer presentation, and those a hit test finds something else on, as the
+    /// keyboard or an alert's box. The hit tests cost one request per remaining element, so only `tree --covered` pays.
+    private func elementsMarkingCovered(_ elements: [PlacedElement], in pid: Int32?, isInFront: Bool,
+                                        layout: AccessibilityLayout) async throws -> JSONValue {
+        var marked: [JSONValue] = []
+        for element in elements {
+            var json = layout.summary(element)
+            let isCovered = if element.isOffscreen { false } else if !isInFront || element.isBehindPresentation { true } else {
+                try await cover(of: element, in: pid, among: elements) != nil
+            }
+            if isCovered, case .object(var fields) = json {
+                fields["covered"] = true
+                json = .object(fields)
+            }
+            marked.append(json)
+        }
+        return .array(marked)
     }
 
     /// The element VoiceOver finds at a point, with its descendants when full.

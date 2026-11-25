@@ -37,6 +37,7 @@ simdrive <udid|booted> <command>
 | `pasteboard [text]` | Reads the device's pasteboard items (types and text), or replaces it with text |
 | `screenshot <path.png> [--display D] [--max-dim N]` | Captures a screen, downscaled to 1024 px by default; the original is kept as `<path>.full.png`. The Dynamic Island shows as a black pill |
 | `tree [<x> <y>] [--full]` | Lists the frontmost app's VoiceOver elements, or reads the element at a point; `--full` returns every node and field |
+| `tree [--covered \| --full] [--app <bundle-id>]` | `--covered` adds `covered: true` to elements a tap would not reach, as behind an alert or a sheet; `--app` reads a running app that may not be in front |
 | `setting [<name> [<value>]]` | Lists every setting, or reads or changes one |
 | `launch <bundle-id> [args...]` | Relaunches an app, capturing its stdout and stderr, and waits until it is frontmost |
 | `install <path.app\|path.ipa>` | Installs or updates an app |
@@ -125,6 +126,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `app-accessibility-off` | The app launched while app accessibility was off; relaunch it with `launch` | no |
 | `launch-not-frontmost` | The launched app did not come to the front in time | yes |
 | `app-invalid`, `app-not-installed` | The app bundle is invalid, or not installed | no |
+| `app-not-running` | `tree --app` names an app that is not running; launch it first | no |
 | `no-log-scope` | `logs` needs an app launched with `launch`, or a scope | no |
 | `log-timeout` | `logs --until` saw no matching entry in time | no |
 | `log-read` | `log show` failed | no |
@@ -173,7 +175,9 @@ On a foldable, `D` is `cover`, `inner` or a `simctl` display index. Commands def
 
 `tree <x> <y>` returns the element VoiceOver finds at a point, with its descendants under `--full`, or fails with `no-element`. On a foldable, both refer to the panel in use.
 
-`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view; `swipe … --until-label` scrolls one into view. Before tapping, they hit-test the point and fail with `element-covered` when something else is there, such as a key of the software keyboard or an alert. Then they wait until the 44 points around it have not changed for 150 ms, since the guest ignores touches while a transition animates though the tree already shows where it ends: a system alert takes about 0.5 s. On a still screen that adds about 150 ms; content that keeps moving, such as a spinner, is tapped after 1.5 s with `"still": false`. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
+The tree lists everything the app has on screen, including what its own alert or sheet covers. `tree --covered` marks those elements `covered: true`: every element behind the newest presentation (UIKit's alert, sheet or popover), and others where a hit test at its point finds something else, such as the keyboard. It costs a hit test per element left, about 0.2 s for 20. `tree --app <bundle-id>` reads a running app whether or not it is in front, as behind a system alert, where SpringBoard is the frontmost app; with `--covered`, all of an app that is not in front is covered.
+
+`tap --label` and `tap --id` read the light tree until exactly one onscreen element has that label or identifier, then tap its `point`, so saved `run` steps survive layout changes. Matching is exact and case-sensitive. They fail with `no-element` when none appears in time, `ambiguous-element` when several are on screen (the message lists their points), and `element-offscreen` when the only matches are scrolled out of view; `swipe … --until-label` scrolls one into view. Before tapping, they fail with `element-covered` when the element is behind an alert, sheet or popover the app presents, or when a hit test at the point finds something else there, such as a key of the software keyboard. Then they wait until the 44 points around it have not changed for 150 ms, since the guest ignores touches while a transition animates though the tree already shows where it ends: a system alert takes about 0.5 s. On a still screen that adds about 150 ms; content that keeps moving, such as a spinner, is tapped after 1.5 s with `"still": false`. `wait --label` and `wait --id` wait the same way without tapping, or with `--absent` until no onscreen element matches, failing with `element-still-shown`.
 
 ### Settings
 

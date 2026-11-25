@@ -80,7 +80,7 @@ final class Hinge {
 
     /// Waits for the hinge animation to end, which settles near but not at the requested angle.
     private func waitUntilSettled() async throws {
-        let settled = try await withDeadline(Timing.limit) { [self] in
+        let settled: Void? = try await withDeadline(Timing.limit) { [self] in
             var settledSince = ContinuousClock.now
             var lastAngle = angle
             while ContinuousClock.now - settledSince < Timing.settle {

@@ -36,6 +36,27 @@ struct DeviceApps {
         return ["bundleID": .string(bundleID)]
     }
 
+    /// The pid of the app's running process, from the guest's launchd, which names an app's job
+    /// `UIKitApplication:<bundle-id>[…]`. Fails with `app-not-running` when it has none.
+    func runningProcess(of bundleID: String) async throws -> Int32 {
+        let jobs = try await tools.simctl(["spawn", udid, "launchctl", "list"]).standardOutput
+        guard let pid = Self.runningProcess(of: bundleID, inLaunchctlList: jobs) else {
+            throw SimDriveError(.appNotRunning, "\(bundleID) is not running; launch it first.")
+        }
+        return pid
+    }
+
+    /// `launchctl list` prints `PID<tab>Status<tab>Label`, with `-` for a job that is not running.
+    static func runningProcess(of bundleID: String, inLaunchctlList jobs: String) -> Int32? {
+        let label = "UIKitApplication:\(bundleID)["
+        for line in jobs.split(separator: "\n") {
+            let fields = line.split(separator: "\t")
+            guard fields.count == 3, fields[2].hasPrefix(label) else { continue }
+            return Int32(fields[0])
+        }
+        return nil
+    }
+
     /// `simctl push` checks the payload: a JSON object with an `aps` key, 4096 bytes at most.
     func push(_ payload: PushPayload, to bundleID: String, workingDirectory: String) async throws -> JSONValue {
         switch payload {

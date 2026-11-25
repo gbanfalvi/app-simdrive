@@ -64,20 +64,6 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - Run the matrix's `orientation` section after an idle period.
   - Add the observed timings to `docs/device-behavior.md`, and close the open question.
 
-### - [ ] I8. List elements an alert covers, and read apps other than the frontmost (M)
-
-- **Problem:** `tree` reads only the frontmost app, as the translator presents it. When an alert or sheet is up, the elements behind it are missing, and when SpringBoard shows system UI, the app's tree can't be read.
-- **Read:**
-  - NeoSimulator sets the request's client type to 2, which on iOS 27.2 also returns covered elements; types 0 and 1 return only what is on screen (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:446-449,471`).
-  - Request type 1, with `["pid": Int32]`, reads any process (`N:NeoSimulatorDeviceIO/Simulator/SimulatorAccessibility.swift:94-101,161-167`).
-  - simdrive's requests go through `AccessibilityBridge.requestSender` (`S:SimDriveNative/Accessibility/SimulatorAccessibility.swift`, around 205-215), where `request.setValue(2, forKey: "clientType")` would go.
-  - idb finds content drawn by other processes, such as web views and pickers, by hit-testing a grid of points over the frontmost app (`I:FBSimulatorAX/Translation/AXTranslationRequest.swift:254-307`); N31's helper would see it directly.
-- **Do:**
-  1. Add `tree --covered`, which sets client type 2. Covered elements get `covered: true` when their frame is under an alert; compare against the frontmost read.
-  2. Add `tree --app <bundle-id>`, which reads that app's process through the pid from `simctl spawn launchctl list` or the log store.
-  3. Test first whether client type 2 works with the snapshot attribute.
-- **Test:** the probe app needs an alert (add a button that presents one). Check `tree` and `tree --covered` with the alert up. Add unit tests for the parsing.
-
 ### - [ ] I10. Apply settings through the guest's own setting actions (M, steps 1 and 3 done)
 
 **Result so far (2026-11-25):**

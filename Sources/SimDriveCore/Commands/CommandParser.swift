@@ -113,11 +113,17 @@ enum CommandParser {
             return .screenshot(path: try list.single("an output path"), display: try display(list.option("display")),
                                maxDimension: maxDimension)
         case "tree":
-            let list = try ArgumentList(rest, flags: ["full"])
+            let list = try ArgumentList(rest, options: ["app"], flags: ["full", "covered"])
             let detail: TreeDetail = list.flag("full") ? .full : .light
             let values = list.positionals
-            guard !values.isEmpty else { return .tree(at: nil, detail: detail) }
+            guard !(list.flag("covered") && list.flag("full")) else {
+                throw SimDriveError.usage("--covered marks the light tree's elements; leave out --full")
+            }
+            guard !values.isEmpty else { return .tree(at: nil, detail: detail, covered: list.flag("covered"), app: list.option("app")) }
             guard values.count == 2 else { throw SimDriveError.usage("Expected x and y, or nothing") }
+            guard !list.flag("covered"), list.option("app") == nil else {
+                throw SimDriveError.usage("--covered and --app read a whole tree, not the element at a point")
+            }
             return .tree(at: try point(values[0], values[1]), detail: detail)
         case "setting":
             let values = try ArgumentList(rest).positionals
@@ -394,6 +400,8 @@ enum CommandParser {
           orientation [portrait|landscape-left|landscape-right|upside-down]
           pasteboard [text]                   reads the device's pasteboard, or replaces it with text
           screenshot <path.png> [--display D] [--max-dim N]   default 1024; 0 keeps full resolution
+          tree [--covered | --full] [--app <bundle-id>]   --covered marks elements a tap would not reach, as under an
+                                              alert; --app reads a running app that may not be in front
           tree [<x> <y>] [--full]             the frontmost app's VoiceOver elements, or the element at a point;
                                               --full adds every node and field, nested
           setting [<name> [<value>]]          lists every setting, or reads or changes one, such as appearance dark

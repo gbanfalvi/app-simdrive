@@ -603,6 +603,29 @@ Items from [backlog.md](backlog.md) that have landed, each with its **Result:**,
 - **Do:** one Core helper, `poll(every:within:)` with `withDeadline`, whose deadline also bounds the inner call and cancels what it started. Move the waits above onto it, and share `events(until:)`'s attach handling with `entry`.
 - **Test:** unit tests for the helper with an injected clock. The matrix's `basics`, `posture` and `logs` sections.
 
+### - [x] I8. List elements an alert covers, and read apps other than the frontmost (M)
+
+**Result (2026-11-25), on a new iPhone 17, iOS 27.2:**
+- **The premise was wrong:** the testing snapshot simdrive reads already lists everything behind an app's own alert, then the alert's elements, and the client type changes nothing (tried 2, as NeoSimulator sets it, by hand), so simdrive sets none. What was missing was telling covered elements apart.
+- **Hit tests cannot:** with the probe's alert up, a hit test at Play's point still answers with Play, though a tap there reaches nothing; only the element under the alert's box came out covered.
+- **The layers can:** the window holds one `UITransitionView` per presentation, the newest last. `AccessibilityLayout` marks each element in an older layer `isBehindPresentation` (light reads now ask for `className`), tested with trees shaped like the probe's.
+- **`tree --covered`** marks `covered: true` on elements behind a presentation, all of an app not in front, and others a hit test finds something else on, such as the keyboard; 0.18–0.23 s for 22 elements. It takes the light tree only.
+- **`tree --app <bundle-id>`** reads the pid from `simctl spawn launchctl list` (`DeviceApps.runningProcess`, tested) through `translationApplicationObjectForPid:`, and fails with the new `app-not-running`. Behind the photo-permission alert, where SpringBoard is in front, it read the probe with all 18 onscreen elements covered. An app sent home is suspended within seconds and stops answering, so its timeout now says so.
+- **`tap --label` too:** an element behind a presentation now fails with `element-covered` instead of a tap the guest drops.
+- **Checks:** the matrix's `tap` section gains `covered_checks` (`-probeAlert`, `-probePhotos`); `tree,tap,keys` 64/64. `swift test` 186 and 30. Not checked: iPad popovers and form sheets, a Duo, and older runtimes.
+
+- **Problem:** `tree` reads only the frontmost app, as the translator presents it. When an alert or sheet is up, the elements behind it are missing, and when SpringBoard shows system UI, the app's tree can't be read.
+- **Read:**
+  - NeoSimulator sets the request's client type to 2, which on iOS 27.2 also returns covered elements; types 0 and 1 return only what is on screen (`N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:446-449,471`).
+  - Request type 1, with `["pid": Int32]`, reads any process (`N:NeoSimulatorDeviceIO/Simulator/SimulatorAccessibility.swift:94-101,161-167`).
+  - simdrive's requests go through `AccessibilityBridge.requestSender` (`S:SimDriveNative/Accessibility/SimulatorAccessibility.swift`, around 205-215), where `request.setValue(2, forKey: "clientType")` would go.
+  - idb finds content drawn by other processes, such as web views and pickers, by hit-testing a grid of points over the frontmost app (`I:FBSimulatorAX/Translation/AXTranslationRequest.swift:254-307`); N31's helper would see it directly.
+- **Do:**
+  1. Add `tree --covered`, which sets client type 2. Covered elements get `covered: true` when their frame is under an alert; compare against the frontmost read.
+  2. Add `tree --app <bundle-id>`, which reads that app's process through the pid from `simctl spawn launchctl list` or the log store.
+  3. Test first whether client type 2 works with the snapshot attribute.
+- **Test:** the probe app needs an alert (add a button that presents one). Check `tree` and `tree --covered` with the alert up. Add unit tests for the parsing.
+
 ## 3. New features
 
 ### - [x] N1. `openurl <url>`: open a URL or deep link (S)

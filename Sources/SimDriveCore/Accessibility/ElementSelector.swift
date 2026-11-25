@@ -75,6 +75,8 @@ struct PlacedElement: Sendable {
     let element: AccessibilityElement
     let fraction: CGPoint
     let isOffscreen: Bool
+    /// Under a newer presentation, as an alert or a sheet, so a tap cannot reach it though it is on screen.
+    var isBehindPresentation = false
 
     /// What the screen shows, as each element's type, identifier, label and place. Two equal signatures mean nothing
     /// moved: content at rest, or a scroll that reached the end of its content.

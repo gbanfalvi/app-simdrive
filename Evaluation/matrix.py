@@ -288,6 +288,41 @@ def interface_turn_checks():
     sd('launch', BUNDLE)
 
 
+def covered_checks():
+    """tree --covered marks what a presentation keeps a tap from; tree --app reads an app not in front (I8)."""
+    def marks(response):
+        elements = response.get('result', {}).get('elements', [])
+        return {e.get('label'): bool(e.get('covered')) for e in elements if not e.get('offscreen')}
+
+    sd('launch', BUNDLE, '-probeAlert')
+    sd('wait', '--label', 'Confirm', '--timeout', '3000')
+    seen = marks(sd('tree', '--covered'))
+    check('tree --covered under an app alert', seen.get('Play') is True and seen.get('Confirm') is False,
+          f"Play {seen.get('Play')}, Confirm {seen.get('Confirm')}")
+    response = sd('tap', '--label', 'Play')
+    check('tap --label behind an app alert (expect element-covered)', response.get('code') == 'element-covered', brief(response))
+    mark = log.mark()
+    sd('tap', '--label', 'Confirm')
+    check('tap the alert by label', log.wait(mark, r'ALERT confirm$', 3))
+    seen = marks(sd('tree', '--covered'))
+    check('tree --covered without an alert', seen and not any(seen.values()), f'{sum(seen.values())} covered')
+    # A system alert puts SpringBoard in front of a probe that keeps running; one in the background is suspended.
+    sd('privacy', 'reset', 'photos', BUNDLE)
+    sd('launch', BUNDLE, '-probePhotos')
+    # The first permission alert after a boot waits for the guest's privacy service, tens of seconds.
+    if sd('wait', '--label', 'Don’t Allow', '--timeout', '60000').get('ok'):
+        response = sd('tree', '--app', BUNDLE, '--covered')
+        seen = marks(response)
+        check('tree --app reads the probe behind a system alert', response.get('result', {}).get('app', {}).get('name') == 'AXProbe'
+              and seen.get('Play') is True, brief(response)[:120])
+        sd('tap', '--label', 'Don’t Allow')
+    else:
+        check('tree --app reads the probe behind a system alert', False, 'the photos permission alert did not show within 60 s')
+    response = sd('tree', '--app', 'com.simdrive.missing')
+    check('tree --app (expect app-not-running)', response.get('code') == 'app-not-running', brief(response))
+    launch_probe()
+
+
 def transition_checks():
     """An element tap right after a transition starts must wait for it, though the tree shows the end place at once (I27)."""
     for name, argument in [('sheet', '-probeSheet'), ('push', '-probePush')]:
@@ -882,6 +917,7 @@ def main():
         if full and want('tap'):
             tap_checks(full)
             transition_checks()
+            covered_checks()
             if not is_foldable and 'iPhone' in (doctor['result'].get('deviceType') or ''):
                 interface_turn_checks()
         if full and want('keys'):

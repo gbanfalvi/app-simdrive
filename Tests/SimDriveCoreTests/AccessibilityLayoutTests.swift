@@ -71,6 +71,35 @@ struct AccessibilityLayoutTests {
         #expect(kept["frame"] == ["x": 0, "y": 0, "width": 0.6309, "height": 0.5979])
     }
 
+    private static func element(_ label: String? = nil, className: String? = nil, children: [AccessibilityElement] = []) -> AccessibilityElement {
+        var element = AccessibilityElement()
+        element.label = label
+        element.className = className
+        element.isVoiceOverElement = label != nil
+        element.frame = CGRect(x: 10, y: 10, width: 100, height: 40)
+        element.children = children
+        return element
+    }
+
+    /// As the probe's tree read with its alert up, on iOS 27.2: the screen and the alert in two transition views.
+    @Test func elementsBehindTheNewestPresentationAreMarked() {
+        let screen = Self.element(className: "UITransitionView", children: [Self.element("Play")])
+        let alert = Self.element(className: "UITransitionView", children: [Self.element(className: "UIView"), Self.element("Confirm")])
+        let window = Self.element(className: "UIWindow", children: [screen, alert])
+        let placed = phone.placedElements(Self.element(className: "UIApplication", children: [window]))
+        #expect(placed.map(\.element.label) == ["Play", "Confirm"])
+        #expect(placed.map(\.isBehindPresentation) == [true, false])
+    }
+
+    /// A navigation stack's own transition view, or a single layer, presents nothing over the screen.
+    @Test func oneLayerCoversNothing() {
+        let window = Self.element(className: "UIWindow", children: [
+            Self.element(className: "UITransitionView", children: [Self.element("Play")]),
+            Self.element(className: "UINavigationTransitionView", children: [Self.element("Back")]),
+        ])
+        #expect(phone.placedElements(window).allSatisfy { !$0.isBehindPresentation })
+    }
+
     @Test func hitElementsMustHoldThePoint() {
         var element = AccessibilityElement()
         element.frame = CGRect(x: 100.5, y: 437, width: 201, height: 87.4)

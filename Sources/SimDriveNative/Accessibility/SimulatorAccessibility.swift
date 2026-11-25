@@ -27,6 +27,7 @@ package struct AccessibilitySnapshot: Equatable, Sendable {
 package final class SimulatorAccessibility: @unchecked Sendable {
     private typealias FrontmostFunction = @convention(c) (NSObject, Selector, UInt32, NSString) -> NSObject?
     private typealias HitTestFunction = @convention(c) (NSObject, Selector, CGPoint, UInt32, NSString) -> NSObject?
+    private typealias ApplicationForPidFunction = @convention(c) (NSObject, Selector, Int32) -> NSObject?
 
     private enum Limit {
         /// For all of one read's requests and retries. A Duo's first read after boot took 13–15 s, mostly while its
@@ -54,6 +55,7 @@ package final class SimulatorAccessibility: @unchecked Sendable {
         static let sharedInstance = NSSelectorFromString("sharedInstance")
         static let frontmost = NSSelectorFromString("frontmostApplicationWithDisplayId:bridgeDelegateToken:")
         static let hitTest = NSSelectorFromString("objectAtPoint:displayId:bridgeDelegateToken:")
+        static let applicationForPid = NSSelectorFromString("translationApplicationObjectForPid:")
         static let platformElement = NSSelectorFromString("macPlatformElementFromTranslation:")
         static let processAttribute = NSSelectorFromString("_accessibilityProcessAttribute:parameter:")
         static let attributeValue = NSSelectorFromString("accessibilityAttributeValue:")
@@ -110,11 +112,26 @@ package final class SimulatorAccessibility: @unchecked Sendable {
         }
     }
 
-    /// The frontmost app's whole hierarchy.
+    /// The frontmost app's whole hierarchy. The testing snapshot lists what an alert or a sheet covers too, whatever
+    /// client type its requests name, so a covered element is told apart by hit-testing its point.
     package func snapshot(detail: TreeDetail) async throws -> AccessibilitySnapshot {
         try await perform {
             let (application, root) = try self.frontmost()
             return AccessibilitySnapshot(application: application, element: try self.hierarchy(of: root, detail: detail))
+        }
+    }
+
+    /// The hierarchy of the app process `pid` runs, in front or not; nil when the guest names no app for it.
+    package func snapshot(ofProcess pid: Int32, detail: TreeDetail) async throws -> AccessibilitySnapshot? {
+        try await perform {
+            let make = unsafeBitCast(self.translator.method(for: Call.applicationForPid), to: ApplicationForPidFunction.self)
+            guard let translation = make(self.translator, Call.applicationForPid, pid) else { return nil }
+            let element = try self.platformElement(translation)
+            guard let accessible = element as? NSAccessibilityElement else { return nil }
+            let name = accessible.accessibilityLabel()?.trimmingCharacters(in: .whitespaces)
+            let application = AccessibilityApplication(name: name?.isEmpty == false ? name : nil, pid: pid,
+                                                       screenSize: accessible.accessibilityFrame().size)
+            return AccessibilitySnapshot(application: application, element: try self.hierarchy(of: element, detail: detail))
         }
     }
 

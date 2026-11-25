@@ -49,7 +49,8 @@ enum Command: Equatable, Sendable {
     case pasteboard(text: String?)
     case screenshot(path: String, display: DisplaySelector, maxDimension: Int)
     /// Reads the frontmost app's accessibility hierarchy, or the element at a point.
-    case tree(at: ScreenPoint?, detail: TreeDetail)
+    /// `covered` marks elements a tap would not reach, as under an alert; `app` reads that app instead of the frontmost one.
+    case tree(at: ScreenPoint?, detail: TreeDetail, covered: Bool = false, app: String? = nil)
     /// Lists every setting without one, reads it without a value, or changes it.
     case setting(Setting?, value: JSONValue?)
     case launch(bundleID: String, arguments: [String])

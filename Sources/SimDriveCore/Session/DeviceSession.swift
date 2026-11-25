@@ -118,10 +118,12 @@ final class DeviceSession {
         case .screenshot(let path, let display, let maxDimension):
             return try await screens.screenshot(to: Self.absolutePath(path, in: workingDirectory), display: display,
                                                 maxDimension: maxDimension)
-        case .tree(let point?, let detail):
+        case .tree(let point?, let detail, _, _):
             return try await accessibility.element(at: point, detail: detail)
-        case .tree(nil, let detail):
-            return try await accessibility.tree(detail: detail)
+        case .tree(nil, let detail, let covered, let bundleID):
+            var pid: Int32?
+            if let bundleID { pid = try await apps.runningProcess(of: bundleID) }
+            return try await accessibility.tree(detail: detail, marksCovered: covered, process: pid)
         case .setting(let setting?, let value?):
             return try await settings.set(setting, to: value)
         case .setting(let setting?, nil):

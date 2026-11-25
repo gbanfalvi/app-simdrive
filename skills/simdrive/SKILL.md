@@ -46,6 +46,8 @@ $S <udid> split right                  # Duo inner screen, landscape: the app to
 $S <udid> screenshot /tmp/s.png --max-dim 1024 --display inner
 $S <udid> tree                         # frontmost app's VoiceOver elements, flat, with tap points
 $S <udid> tree --full                  # every node and field, nested: frames, hints, classes, custom content…
+$S <udid> tree --covered               # marks covered: true what an alert, sheet or the keyboard keeps a tap from
+$S <udid> tree --app com.example.app   # a running app not in front, as behind a system alert (SpringBoard is front)
 $S <udid> tree 0.5 0.25                # the element at a point
 $S <udid> setting                      # every setting's value
 $S <udid> setting appearance dark      # also text-size accessibility-large, reduce-motion on, bold-text on, glass-tint 0.8…

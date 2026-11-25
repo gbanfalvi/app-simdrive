@@ -400,7 +400,16 @@ final class SceneDelegate: UIResponder, UIWindowSceneDelegate {
         // Starts a transition as the app becomes active, so the next element tap can land mid-animation.
         if let root = window?.rootViewController, root.presentedViewController == nil {
             let arguments = ProcessInfo.processInfo.arguments
-            if arguments.contains("-probeSheet") {
+            if arguments.contains("-probeAlert") {
+                // An app's own alert, which covers its screen (I8, N29).
+                let alert = UIAlertController(title: "Probe alert", message: "Covers the probe", preferredStyle: .alert)
+                alert.addAction(UIAlertAction(title: "Dismiss", style: .cancel) { _ in Log.write("ALERT dismiss") })
+                alert.addAction(UIAlertAction(title: "Confirm", style: .default) { _ in Log.write("ALERT confirm") })
+                root.present(alert, animated: false)
+            } else if arguments.contains("-probePhotos") {
+                // The system's permission alert, which SpringBoard shows over the probe (N29).
+                PHPhotoLibrary.requestAuthorization(for: .readWrite) { status in Log.write("PHOTOS status=\(status.rawValue)") }
+            } else if arguments.contains("-probeSheet") {
                 root.present(TransitionViewController(name: "sheet"), animated: true)
             } else if arguments.contains("-probePush") {
                 let navigation = UINavigationController(rootViewController: UIViewController())

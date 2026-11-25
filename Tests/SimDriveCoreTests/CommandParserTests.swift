@@ -196,6 +196,15 @@ struct CommandParserTests {
         #expect(override.simctlArguments == ["--time", "9:41", "--batteryState", "charged", "--cellularBars", "4"])
     }
 
+    @Test func treeTakesCoveredAndAnAppForAWholeTree() throws {
+        #expect(try CommandParser.parse(["tree", "--covered"]) == .tree(at: nil, detail: .light, covered: true))
+        #expect(try CommandParser.parse(["tree", "--app", "com.example.app", "--full"])
+                == .tree(at: nil, detail: .full, app: "com.example.app"))
+        expectUsageError { try CommandParser.parse(["tree", "--covered", "--full"]) }
+        expectUsageError { try CommandParser.parse(["tree", "0.5", "0.5", "--covered"]) }
+        expectUsageError { try CommandParser.parse(["tree", "0.5", "0.5", "--app", "com.example.app"]) }
+    }
+
     @Test func shakeTakesNoArguments() throws {
         #expect(try CommandParser.parse(["shake"]) == .shake)
         expectUsageError { try CommandParser.parse(["shake", "twice"]) }
