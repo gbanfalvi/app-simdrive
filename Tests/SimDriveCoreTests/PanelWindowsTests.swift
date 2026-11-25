@@ -76,6 +76,26 @@ struct PanelWindowsTests {
         #expect(kept.children.first?.children.map(\.label) == ["Calendar", "Page"])
     }
 
+    /// Open, a hit test at the dock's Safari, drawn at (0.95, 0.52), answers with its native frame; it is turned to
+    /// the interface, an app's element that holds the point stays as read, and another display's element goes (F35).
+    @Test func hitElementsArePlacedOnThisPanel() throws {
+        var safari = AccessibilityElement()
+        safari.label = "Safari"
+        safari.frame = CGRect(x: 0.3656 * 951 - 20, y: 0.0715 * 669 - 20, width: 40, height: 40)
+        let drawn = CGPoint(x: 0.95 * 951, y: 0.52 * 669)
+        let holds = { (element: AccessibilityElement) in element.frame.insetBy(dx: -1, dy: -1).contains(drawn) }
+        let hit = try #require(PanelWindows.hitElement(safari, interfaceSize: Self.open, mapping: Self.openMapping, screenID: 3,
+                                                        holds: holds))
+        #expect(abs(hit.frame.midX / 951 - 0.95) < 0.005 && abs(hit.frame.midY / 669 - 0.52) < 0.005)
+        var button = AccessibilityElement()
+        button.frame = CGRect(x: drawn.x - 20, y: drawn.y - 20, width: 40, height: 40)
+        #expect(PanelWindows.hitElement(button, interfaceSize: Self.open, mapping: Self.openMapping, screenID: 3, holds: holds) == button)
+        button.displayID = 1
+        #expect(PanelWindows.hitElement(button, interfaceSize: Self.open, mapping: Self.openMapping, screenID: 3, holds: holds) == nil)
+        #expect(PanelWindows.hitElement(safari, interfaceSize: Self.cover, mapping: ScreenMapping(isRotated: false, orientation: .portrait),
+                                        screenID: 1, holds: holds) == nil)
+    }
+
     /// A single-panel device has nothing to drop.
     @Test func onePanelChangesNothing() {
         let tree = Self.root([Self.window(CGSize(width: 1206, height: 2622), [("Play", CGPoint(x: 10, y: 10))])])

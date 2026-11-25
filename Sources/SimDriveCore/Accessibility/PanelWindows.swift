@@ -22,9 +22,26 @@ enum PanelWindows {
             let size = window.frame.size
             if dropped.contains(where: { matches(size, $0) }) { return nil }
             guard mapping.isRotated, isSame(size, turned) else { return window }
-            return window.converting { nativePoint($0, interfaceSize: interfaceSize, mapping: mapping) }
+            return fromNative(window, interfaceSize: interfaceSize, mapping: mapping)
         }
         return root.with(children: windows)
+    }
+
+    /// An element of one of this panel's native-coordinate windows, and its descendants, in the interface's points.
+    static func fromNative(_ element: AccessibilityElement, interfaceSize: CGSize, mapping: ScreenMapping) -> AccessibilityElement {
+        element.converting { nativePoint($0, interfaceSize: interfaceSize, mapping: mapping) }
+    }
+
+    /// The element a hit test found, placed in the interface, or nil when it is not on this panel. A hit test has no
+    /// window to tell native coordinates by, so an element counts as native when only its turned frame holds the point
+    /// tested (F35). `holds` says whether a placed element's frame holds that point.
+    static func hitElement(_ element: AccessibilityElement, interfaceSize: CGSize, mapping: ScreenMapping, screenID: Int?,
+                           holds: (AccessibilityElement) -> Bool) -> AccessibilityElement? {
+        if let screenID, let display = element.displayID, display != screenID { return nil }
+        if holds(element) { return element }
+        guard mapping.isRotated else { return nil }
+        let turned = fromNative(element, interfaceSize: interfaceSize, mapping: mapping)
+        return holds(turned) ? turned : nil
     }
 
     /// The tree without the elements that report another display. Within this panel's own windows, SpringBoard lists

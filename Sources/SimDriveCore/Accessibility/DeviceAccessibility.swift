@@ -164,6 +164,18 @@ final class DeviceAccessibility {
                                                              scale: CGFloat(scale), mapping: screen.mapping, screenID: screen.display?.index))
     }
 
+    /// A hit test's element when its frame holds the point tested; on a device with two panels, SpringBoard's elements
+    /// come in the panel's native coordinates, and those of the other panel are dropped (`PanelWindows`, F35).
+    private func placedHit(_ snapshot: AccessibilitySnapshot, on screen: Screen,
+                           holds: (AccessibilityElement) -> Bool) async throws -> AccessibilityElement? {
+        guard !(try await screens.otherPanelSizes(than: screen)).isEmpty, let scale = device.screenScale else {
+            return holds(snapshot.element) ? snapshot.element : nil
+        }
+        let interface = AccessibilityLayout.screenSize(screenshot: screen.record.full, scale: scale, appSize: snapshot.application.screenSize)
+        return PanelWindows.hitElement(snapshot.element, interfaceSize: interface, mapping: screen.mapping,
+                                       screenID: screen.display?.index, holds: holds)
+    }
+
     /// An app launched while app accessibility was off answers with an empty frame until it relaunches; that read
     /// fails as `app-accessibility-off` rather than the translator's own error.
     private func explainingAccessibilityOff<Value>(_ read: () async throws -> Value) async throws -> Value {
@@ -272,10 +284,10 @@ final class DeviceAccessibility {
         let origin = split.layout(forApp: pid)?.isHalf == true ? appOrigin(fillsHalf: try await frontmostFill().fillsHalf, pid: pid) : 0
         let layout = AccessibilityLayout(appSize: snapshot.application.screenSize, scale: scale, screen: screen, appOrigin: origin)
         // Web content can answer with an element away from the point.
-        guard layout.contains(fraction, in: snapshot.element) else { throw noElement }
+        guard let hit = try await placedHit(snapshot, on: screen, holds: { layout.contains(fraction, in: $0) }) else { throw noElement }
         let element = switch detail {
-        case .light: layout.summary(snapshot.element)
-        case .full: layout.json(snapshot.element)
+        case .light: layout.summary(hit)
+        case .full: layout.json(hit)
         }
         return ["app": snapshot.application.json, "display": JSONValue(screen.display?.index), "point": screen.json(point),
                 "element": element]
