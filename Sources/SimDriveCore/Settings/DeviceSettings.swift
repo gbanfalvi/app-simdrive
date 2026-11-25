@@ -15,7 +15,8 @@ final class DeviceSettings {
         self.device = device
         self.tools = tools
         self.actions = actions
-        preferences = GuestPreferences(udid: udid, tools: tools)
+        preferences = GuestPreferences(udid: udid, tools: tools,
+                                       directory: device.dataDirectory?.appendingPathComponent("Library/Preferences", isDirectory: true))
     }
 
     func all() async throws -> JSONValue {

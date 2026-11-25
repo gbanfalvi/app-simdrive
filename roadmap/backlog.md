@@ -194,12 +194,6 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** a `GuestHinge` driver in `DeviceControl/` with `open(guest:)` returning nil without the services, and `Hinge` on it; drop `CoreDeviceHinge` once the matrix's `posture` passes on new Duos.
 - **Test:** `Evaluation/fresh.py --device 'iPhone Duo' --only posture` three times; time the first `posture` after `bootstatus` before and after.
 
-### - [ ] I30. Read guest preferences from the host's plist files (S, unverified)
-
-- **Why:** found in the source comparison (2026-11-25). Every `setting` read runs `simctl spawn defaults export` in the guest, and right after a boot that outlasted 60 s (F27, F31). The guest's preferences are files on the Mac, `<dataDirectory>/Library/Preferences/<domain>.plist`; fastlane edits them in place (`fastlane_core/lib/fastlane_core/device_manager.rb:235-246@d7df171`), and idb runs guest tools in process through `SimDevice spawnAsyncWithPath:` rather than `simctl` (`I:Management/SimulatorSubprocessLauncher.swift:28-56`, about 0.1 s less per call).
-- **Do:** read in `GuestPreferences.export` from the plist; keep writes through `defaults write`, which goes through cfprefsd. First check staleness: does the file show a write made a moment before, or does cfprefsd hold it? If it lags, read the file only for the snapshot of all settings and the matrix's restore.
-- **Test:** `setting` timings on a new simulator right after `bootstatus`; the matrix's `settings` section.
-
 ### - [ ] I31. Call CoreSimulator in process instead of `simctl` for status bar, location, privacy, push and URLs (S–M, unverified)
 
 - **Why:** found in the source comparison (2026-11-25). `SimDevice` has `overrideStatusBar*`, `clearStatusBarOverrides:error:` and the current overrides (for N11's missing `status-bar list`), `setLocationWithLatitude:andLongitude:error:` and `availableLocationScenarios` (for N10), `setPrivacyAccessForService:bundleID:granted:error:`, `sendPushNotificationForBundleID:jsonPayload:error:` and `openURL:` (`I:PrivateHeaders/CoreSimulator/SimDevice.h:235-315`; idb calls the status bar and location ones, `I:Commands/SimulatorStatusBarCommands.swift:24-90`, and retries `openURL` twice). Each saves about 0.1 s of `simctl` and gives typed errors; the 52 s first push and slow permission alerts are guest-side and stay.

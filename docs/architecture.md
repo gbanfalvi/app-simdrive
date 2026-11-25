@@ -130,7 +130,7 @@ The launched app's stdout and stderr go to `simdrive.stdout.txt` and `simdrive.s
 | Accessibility | `AXPTranslator` on the Mac, requests carried by `SimDevice` | — |
 | Launch | CoreSimulator's own `simctl` binary | — |
 | Appearance, text size, contrast | `SimDevice` interface options, in process | tvOS |
-| Preference settings | `simctl spawn defaults`, then `SimDevice postDarwinNotification:error:` | — |
+| Preference settings | Read from the guest's `Library/Preferences/<domain>.plist` on the Mac; written with `simctl spawn defaults`, then `SimDevice postDarwinNotification:error:` | — |
 | VoiceOver, color filter | CoreDevice setting actions sent to the guest service each names (`GuestSettingActions`) | Color filter changes before iOS 27; tvOS unverified |
 | Logs | `simctl spawn log show` and `log stream`, files from `simctl launch --stdout --stderr`, and `~/Library/Logs/DiagnosticReports` | — |
 

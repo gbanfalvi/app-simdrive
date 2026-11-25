@@ -640,6 +640,14 @@ Items from [backlog.md](backlog.md) that have landed, each with its **Result:**,
   3. Test first whether client type 2 works with the snapshot attribute.
 - **Test:** the probe app needs an alert (add a button that presents one). Check `tree` and `tree --covered` with the alert up. Add unit tests for the parsing.
 
+### - [x] I30. Read guest preferences from the host's plist files (S)
+
+**Result (2026-11-25):** `GuestPreferences.export` reads `<dataPath>/Library/Preferences/<domain>.plist` on the Mac, treats a missing file as an empty domain, as `defaults export` does, and falls back to `simctl spawn defaults export` only without a data path or a file that does not parse. Writes stay with `defaults write`. Staleness checked first on an iPhone 17, iOS 27.2: after `setting reduce-motion on`, `off` and `on`, the file held each new value at once, 0.2 s and 1 s later, since `defaults write` has flushed when it returns. Reading every setting went from about 0.6 s to 0.02 s warm, and the cold `settings` section on a new simulator passed 47/47, its restore check included. Not checked: a change made in the guest's own Settings app, which cfprefsd may write to the file a moment later.
+
+- **Why:** found in the source comparison (2026-11-25). Every `setting` read runs `simctl spawn defaults export` in the guest, and right after a boot that outlasted 60 s (F27, F31). The guest's preferences are files on the Mac, `<dataDirectory>/Library/Preferences/<domain>.plist`; fastlane edits them in place (`fastlane_core/lib/fastlane_core/device_manager.rb:235-246@d7df171`), and idb runs guest tools in process through `SimDevice spawnAsyncWithPath:` rather than `simctl` (`I:Management/SimulatorSubprocessLauncher.swift:28-56`, about 0.1 s less per call).
+- **Do:** read in `GuestPreferences.export` from the plist; keep writes through `defaults write`, which goes through cfprefsd. First check staleness: does the file show a write made a moment before, or does cfprefsd hold it? If it lags, read the file only for the snapshot of all settings and the matrix's restore.
+- **Test:** `setting` timings on a new simulator right after `bootstatus`; the matrix's `settings` section.
+
 ## 3. New features
 
 ### - [x] N1. `openurl <url>`: open a URL or deep link (S)

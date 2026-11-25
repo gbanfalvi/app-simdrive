@@ -141,7 +141,7 @@ Loaded from `/System/Library/PrivateFrameworks/AccessibilityPlatformTranslation.
 
 ## Guest preferences
 
-- `simctl spawn <udid> defaults export <domain> -` prints a property list; `defaults write <domain> <key> -int|-float|-string <value>` writes.
+- `simctl spawn <udid> defaults export <domain> -` prints a property list; `defaults write <domain> <key> -int|-float|-string <value>` writes. The same domain is a file on the Mac, `<dataPath>/Library/Preferences/<domain>.plist`, which shows a `defaults write` as soon as it returns (iOS 27.2, I30); simdrive reads it there, in milliseconds and with no guest round trip.
 - Accessibility keys live in `com.apple.Accessibility`; the Liquid Glass tint is `UIViewGlassTintAmount` in `com.apple.UIKit`, a 32-bit float that defaults to 0.5 while unset, announced by `UIViewGlassTintAmountUpdateNotification`.
 - Accessibility notifications are `com.apple.accessibility.<name>`; most have a `com.apple.accessibility.cache.<name>` counterpart. The pairs are in [`SettingCatalog.swift`](../Sources/SimDriveCore/Settings/SettingCatalog.swift); [AGENTS.md](../AGENTS.md) describes how to find new ones.
 
