@@ -85,9 +85,10 @@ final class DeviceSettings {
             case .coreDevice(let field): fieldsByAction[field.action, default: []].append((setting, field))
             }
         }
-        // One read per action; a device that cannot read one lacks its settings.
+        // One read per action. A device without the action's service, or whose guest refuses the read, lacks its settings;
+        // a read that may work again, such as a timeout under load, fails the command instead of reading as unsupported (F30).
         for (action, fields) in fieldsByAction {
-            let output = try? await actions().value(of: action)
+            let output = try await readIfSupported(action)
             for (setting, field) in fields { values[setting.name] = output.map(field.value) ?? .unsupported }
         }
         return try await withThrowingTaskGroup(of: [String: JSONValue].self) { [values] group in
@@ -102,6 +103,16 @@ final class DeviceSettings {
                 values.merge(part) { current, _ in current }
             }
             return values
+        }
+    }
+
+    private func readIfSupported(_ action: GuestSetting) async throws -> [String: Any]? {
+        do {
+            let actions = try await actions()
+            guard try await actions.supports(action) else { return nil }
+            return try await actions.value(of: action)
+        } catch let error as SimDriveError where !error.code.isRetryable {
+            return nil
         }
     }
 

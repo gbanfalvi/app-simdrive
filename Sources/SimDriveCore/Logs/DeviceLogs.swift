@@ -175,6 +175,7 @@ struct DeviceLogs {
         let stream = try tools.simctlLines(query.streamArguments(udid: udid, target: target, limit: query.timeout + Self.streamBackstop))
         defer { stream.stop() }
         var lines = stream.lines.makeAsyncIterator()
+        let attachStart = ContinuousClock.now
         let attachWatch = Task { try await Task.sleep(for: Self.streamAttachLimit); stream.stop() }
         // `log stream` prints a header once it is attached.
         var isAttached = false
@@ -186,7 +187,11 @@ struct DeviceLogs {
         }
         attachWatch.cancel()
         guard isAttached else {
-            throw SimDriveError(.logRead, "log stream did not start within \(Self.streamAttachLimit.components.seconds) s.")
+            // Under load, as with several simulators busy, attaching can outlast the limit and work when run again (F30).
+            guard ContinuousClock.now - attachStart < Self.streamAttachLimit else {
+                throw SimDriveError(.toolTimeout, "log stream did not start within \(Self.streamAttachLimit.components.seconds) s.")
+            }
+            throw SimDriveError(.logRead, "log stream ended before it started.")
         }
         var events = try await show(query, target: target, since: start)
         if let match = events.firstIndex(where: matches) { return Array(events[...match]) }
