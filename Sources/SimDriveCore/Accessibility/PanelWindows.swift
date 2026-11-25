@@ -12,8 +12,9 @@ enum PanelWindows {
     /// windows turned into the interface's. `interfaceSize` is the screen in points as the interface draws it,
     /// `otherPanels` the other panels' native sizes in points, `scale` pixels per point.
     static func normalize(_ root: AccessibilityElement, interfaceSize: CGSize, otherPanels: [CGSize], scale: CGFloat,
-                          mapping: ScreenMapping) -> AccessibilityElement {
+                          mapping: ScreenMapping, screenID: Int? = nil) -> AccessibilityElement {
         guard !otherPanels.isEmpty else { return root }
+        let root = screenID.map { onDisplay(root, $0) } ?? root
         let turned = CGSize(width: interfaceSize.height, height: interfaceSize.width)
         let dropped = otherPanels.flatMap { [$0, scaled($0, scale)] } + [scaled(interfaceSize, scale)]
         let windows = root.children.compactMap { window -> AccessibilityElement? in
@@ -24,6 +25,15 @@ enum PanelWindows {
             return window.converting { nativePoint($0, interfaceSize: interfaceSize, mapping: mapping) }
         }
         return root.with(children: windows)
+    }
+
+    /// The tree without the elements that report another display. Within this panel's own windows, SpringBoard lists
+    /// some icons with the other panel's frames, and each reports that panel's display (attribute 2123, I12).
+    static func onDisplay(_ element: AccessibilityElement, _ screenID: Int) -> AccessibilityElement {
+        element.with(children: element.children.compactMap { child in
+            if let display = child.displayID, display != screenID { return nil }
+            return onDisplay(child, screenID)
+        })
     }
 
     /// A point read in the panel's native coordinates, whose width is the interface's height, in the interface's.

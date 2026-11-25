@@ -102,6 +102,11 @@ final class Screens {
         store.removeRecords()
     }
 
+    /// Whether the device has more than one display, as an iPhone Duo.
+    func hasSeveralDisplays() async throws -> Bool {
+        try await displays().count > 1
+    }
+
     /// The native sizes, in points, of the panels other than `screen`'s; empty on a single-display device.
     func otherPanelSizes(than screen: Screen) async throws -> [CGSize] {
         guard let display = screen.display else { return [] }

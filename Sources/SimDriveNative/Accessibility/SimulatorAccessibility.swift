@@ -75,12 +75,14 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     private let bridge: AccessibilityBridge
     private let token: NSString
     private let read: AccessibilityRead
+    private let readsDisplays: Bool
     /// The translator blocks while the guest answers, so it never runs on the main actor.
     private let queue = DispatchQueue(label: "simdrive.accessibility")
 
-    /// The device's accessibility, or nil when CoreSimulator or macOS cannot read it.
+    /// The device's accessibility, or nil when CoreSimulator or macOS cannot read it. `readsDisplays` asks each element
+    /// for its display, on a device with several.
     @MainActor
-    package static func open(device: SimulatorDevice) async throws -> SimulatorAccessibility? {
+    package static func open(device: SimulatorDevice, readsDisplays: Bool) async throws -> SimulatorAccessibility? {
         guard let channel = device.accessibilityChannel() else { return nil }
         try await NativeFrameworks.load(NativeFrameworks.accessibilityTranslationPath)
         guard let translatorClass = NSClassFromString(Name.translator),
@@ -91,12 +93,13 @@ package final class SimulatorAccessibility: @unchecked Sendable {
         class_addProtocol(AccessibilityBridge.self, delegateProtocol)
         let read = AccessibilityRead()
         return SimulatorAccessibility(translator: translator, bridge: AccessibilityBridge(channel: channel, read: read),
-                                      token: device.udid as NSString, read: read)
+                                      token: device.udid as NSString, read: read, readsDisplays: readsDisplays)
     }
 
-    private init(translator: NSObject, bridge: AccessibilityBridge, token: NSString, read: AccessibilityRead) {
+    private init(translator: NSObject, bridge: AccessibilityBridge, token: NSString, read: AccessibilityRead, readsDisplays: Bool) {
         self.translator = translator
         self.bridge = bridge
+        self.readsDisplays = readsDisplays
         self.token = token
         self.read = read
         translator.setValue(true, forKey: "supportsDelegateTokens")
@@ -193,7 +196,7 @@ package final class SimulatorAccessibility: @unchecked Sendable {
     /// full trees read it.
     private func hierarchy(of element: NSObject, detail: TreeDetail) throws -> AccessibilityElement {
         let parameters: NSDictionary = [
-            "attributes": SnapshotAttribute.requested(for: detail).map(\.rawValue), "maxDepth": Limit.depth,
+            "attributes": SnapshotAttribute.requested(for: detail, readsDisplays: readsDisplays).map(\.rawValue), "maxDepth": Limit.depth,
             "maxChildren": Limit.children, "maxArrayCount": Limit.children, "traverseFromParentsToChildren": true,
         ]
         let readsCustomContent = detail == .full

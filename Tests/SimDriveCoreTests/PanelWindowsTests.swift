@@ -58,6 +58,24 @@ struct PanelWindowsTests {
         #expect(abs(safari.frame.midY / 669 - 0.52) < 0.005)
     }
 
+    /// Closed, the cover's own Home screen window lists Photos with the inner panel's frame, and Photos reports display 3.
+    @Test func elementsOfAnotherDisplayGo() {
+        var calendar = AccessibilityElement()
+        calendar.label = "Calendar"
+        calendar.displayID = 1
+        var photos = AccessibilityElement()
+        photos.label = "Photos"
+        photos.displayID = 3
+        var unknown = AccessibilityElement()
+        unknown.label = "Page"
+        var window = AccessibilityElement()
+        window.frame = CGRect(origin: .zero, size: Self.cover)
+        window.children = [calendar, photos, unknown]
+        let kept = PanelWindows.normalize(Self.root([window]), interfaceSize: Self.cover, otherPanels: [Self.inner], scale: 3,
+                                          mapping: ScreenMapping(isRotated: false, orientation: .portrait), screenID: 1)
+        #expect(kept.children.first?.children.map(\.label) == ["Calendar", "Page"])
+    }
+
     /// A single-panel device has nothing to drop.
     @Test func onePanelChangesNothing() {
         let tree = Self.root([Self.window(CGSize(width: 1206, height: 2622), [("Play", CGPoint(x: 10, y: 10))])])

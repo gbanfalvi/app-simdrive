@@ -107,6 +107,18 @@ struct AccessibilityElementTests {
         #expect(ElementType.statusItem.rawValue == 82)
     }
 
+    /// Only a device with several displays pays for each element's display in light reads (I12).
+    @Test func lightReadsAskForTheDisplayOnlyWhenTold() throws {
+        #expect(!SnapshotAttribute.requested(for: .light, readsDisplays: false).contains(.displayID))
+        #expect(SnapshotAttribute.requested(for: .light, readsDisplays: true).contains(.displayID))
+        let icon = try #require(AccessibilityElement(snapshot: Self.node([.label: "Photos", .displayID: NSNumber(value: 3)]),
+                                                     customContent: { _ in [] }))
+        #expect(icon.displayID == 3)
+        let unknown = try #require(AccessibilityElement(snapshot: Self.node([.label: "Page", .displayID: NSNumber(value: 0)]),
+                                                        customContent: { _ in [] }))
+        #expect(unknown.displayID == nil)
+    }
+
     @Test func traitBitsAreDistinct() {
         #expect(Set(AccessibilityTrait.allCases.map(\.rawValue)).count == AccessibilityTrait.allCases.count)
         #expect(AccessibilityTrait.allCases.allSatisfy { $0.rawValue.nonzeroBitCount == 1 })

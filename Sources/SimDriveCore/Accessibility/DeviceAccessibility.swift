@@ -30,7 +30,7 @@ final class DeviceAccessibility {
         self.isAppAccessibilityEnabled = isAppAccessibilityEnabled
         accessibility = LazyCapability {
             try await Self.waitForStartedScreen(of: device)
-            return try await SimulatorAccessibility.open(device: device)
+            return try await SimulatorAccessibility.open(device: device, readsDisplays: try await screens.hasSeveralDisplays())
         }
     }
 
@@ -161,7 +161,7 @@ final class DeviceAccessibility {
         guard !otherPanels.isEmpty, let scale = device.screenScale else { return snapshot }
         let interface = AccessibilityLayout.screenSize(screenshot: screen.record.full, scale: scale, appSize: snapshot.application.screenSize)
         return snapshot.with(element: PanelWindows.normalize(snapshot.element, interfaceSize: interface, otherPanels: otherPanels,
-                                                             scale: CGFloat(scale), mapping: screen.mapping))
+                                                             scale: CGFloat(scale), mapping: screen.mapping, screenID: screen.display?.index))
     }
 
     /// An app launched while app accessibility was off answers with an empty frame until it relaunches; that read

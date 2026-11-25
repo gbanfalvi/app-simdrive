@@ -28,6 +28,8 @@ package struct AccessibilityElement: Equatable, Sendable {
     package internal(set) var url: String?
     package internal(set) var range: AdjustableRange?
     package internal(set) var className: String?
+    /// The screen ID of the display the element draws on, where the guest reports one, as on an iPhone Duo (I12).
+    package internal(set) var displayID: Int?
     package internal(set) var viewController: String?
     package internal(set) var children: [AccessibilityElement] = []
 
@@ -76,6 +78,7 @@ package struct AccessibilityElement: Equatable, Sendable {
         traits = AccessibilityTrait.traits(in: attributes.number(.traits)?.uint64Value ?? 0)
         isVoiceOverElement = !insideElement && attributes.bool(.isAccessibilityElement)
         isFocused = attributes.bool(.hasFocus)
+        displayID = attributes.number(.displayID).map(\.intValue).flatMap { $0 > 0 ? $0 : nil }
         isExpanded = ExpandedStatus(rawValue: attributes.number(.expandedStatus)?.intValue ?? 0).flatMap(\.isExpanded)
         headingLevel = attributes.number(.headingLevel).map(\.intValue).flatMap { $0 > 0 ? $0 : nil }
         containerType = attributes.number(.containerType).flatMap { AccessibilityContainerType(rawValue: $0.intValue) }
@@ -192,6 +195,9 @@ enum SnapshotAttribute: Int, CaseIterable {
     case viewControllerClass = 5042
     case placeholder = 5043
     case automationType = 5058
+    /// The display an element draws on, as AXe asks for it one element at a time; light reads ask for it only on devices
+    /// with several displays (I12).
+    case displayID = 2123
 
     /// A light tree places VoiceOver's elements and names them; the guest computes nothing else for it.
     private static let light: [SnapshotAttribute] = [
@@ -201,8 +207,10 @@ enum SnapshotAttribute: Int, CaseIterable {
         .className,
     ]
 
-    static func requested(for detail: TreeDetail) -> [SnapshotAttribute] {
-        detail == .full ? allCases : light
+    /// `readsDisplays` adds each element's display to light reads, for a device with several displays, where SpringBoard
+    /// lists some icons with another panel's frames (I12); others leave it out to keep the read lean.
+    static func requested(for detail: TreeDetail, readsDisplays: Bool) -> [SnapshotAttribute] {
+        detail == .full ? allCases : light + (readsDisplays ? [.displayID] : [])
     }
 }
 

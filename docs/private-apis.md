@@ -135,6 +135,7 @@ Loaded from `/System/Library/PrivateFrameworks/AccessibilityPlatformTranslation.
 
 - `_accessibilityProcessAttribute:parameter:` with `AXTestingSnapshotParameterizedAttribute` returns an element's subtree. Parameters: `attributes` (XCUITest's attribute numbers), `maxDepth`, `maxChildren`, `maxArrayCount`, `traverseFromParentsToChildren`.
 - Numbers in use: label 2001, hint 2002, frame 2003, traits 2004, value 2006, activation point 2007, language 2008, is-accessibility-element 2016, URL 2020, custom actions 2036, has-focus 2094, expanded status 2114, heading level 2180, input labels 2186, container type 2187, class name 5003, minimum 5005, maximum 5006, numeric value 5011, identifier 5019, view controller class 5042, placeholder 5043, automation type 5058.
+- Display 2123 returns the screen ID an element draws on (1 for the Duo's cover, 3 for its inner panel; 0 or missing when unknown). AXe asks each button for it in a separate request; the snapshot returns it for every node, and light reads ask for it only on devices with several displays.
 - Others can crash the app or return whole subtrees. Visibility (2025) hit-tests every node and times out on large screens.
 - Traits are `UIAccessibilityTraits` bits plus private ones, such as bit 33 on static text inside cells; simdrive keeps the public bits.
 - Custom content is not in snapshots. Each element's `AXCustomContent` attribute returns it archived, unarchived as `[AXCustomContent]`.
