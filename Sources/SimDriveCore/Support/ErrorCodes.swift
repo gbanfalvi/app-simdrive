@@ -20,6 +20,7 @@ extension ErrorCode {
     static let unknownKey = ErrorCode(rawValue: "unknown-key")
     static let unsupportedCharacter = ErrorCode(rawValue: "unsupported-character")
     static let noTouchscreen = ErrorCode(rawValue: "no-touchscreen")
+    static let displayAsleep = ErrorCode(rawValue: "display-asleep")
     static let noScreenshot = ErrorCode(rawValue: "no-screenshot")
     static let staleScreenshot = ErrorCode(rawValue: "stale-screenshot")
     static let screenshot = ErrorCode(rawValue: "screenshot")

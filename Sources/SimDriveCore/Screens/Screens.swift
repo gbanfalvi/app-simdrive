@@ -8,7 +8,7 @@ final class Screens {
     /// A calibration screenshot keeps its full resolution.
     private static let fullResolution = 0
     /// The screen ID CoreSimulator gives a single-display device's screen.
-    private static let mainScreenID = 1
+    static let mainScreenID = 1
     /// Bounds the orientation a screenshot records, which the guest takes seconds to report after boot.
     private static let screenshotOrientationLimit: Duration = .seconds(1)
     /// A system alert draws nothing for ~120 ms after the tree can show it, so stillness must outlast that (F29).

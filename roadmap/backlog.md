@@ -70,29 +70,6 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 ## 2. Improvements to existing commands
 
-### - [ ] I6. Detect a sleeping display, and wake it (M, steps 1 and 2 done; step 3 blocked on reproducing sleep)
-
-**Step 3 attempt (2026-11-25):** not built, since idle sleep did not reproduce. On a new iPhone 17, iOS 27.2, `doctor` read `backlight` `on` and unlocked throughout: 130 s idle after launching the probe, 180 s after one tap in it, 90 s on the Home screen, and once 75 s after a tap with no reads in between. So what dims the display is unknown: the single `dimmed` read below may have come from something else in that run. **Next:** find a reliable trigger first (a simulator left idle much longer, one shown in Simulator.app or DeviceHub, older runtimes, or an Auto-Lock preference such as `SBAutoLockTime` in `com.apple.springboard`), then wake before input as step 3 says, checked against it.
-**Lead (2026-11-25, while doing N8):** after `Evaluation/fresh.py --only tree,keys,buttons` on a new iPhone 17, iOS 27.2, `doctor` read `dimmed` and unlocked a minute or so later, and screenshots stayed on the dimmed frame through `launch`, a tap and `button keyboard`, while `tree` answered. The buttons section ends with `lock`, `lock`, an edge swipe, `siri` and `home`, so one of those presses likely starts the idle timer that a fresh boot does not: try them one at a time, then idle.
-**Reproduced (2026-11-25, whole-matrix run at 0d2c5fa):** a new iPhone 17, iOS 27.2, left idle about 5 minutes after `Evaluation/fresh.py` finished its whole matrix (its last sections `services`, then `shake` and `memory-warning`), read `backlight` `dimmed`; `status-bar override` then drew nothing new, since screenshots froze on the dimmed frame, until `lock`, `lock` and the edge swipe woke it. So a long idle after a full run is a trigger to test step 3 against.
-**Found upstream (2026-11-25, source comparison):** agent-device reads the Darwin state `com.apple.springboard.hasBlankedScreen` beside `lockstate`, wakes with Lock, polls every 50 ms for up to 5 s until the screen is no longer blanked, and edge-swipes only if still locked; a swipe on a blanked screen unlocks SpringBoard but leaves the screen off (`D:RunnerTests+LockScreen.swift:36-40,195-256@24f8181`). AXe reads `backlightState` (`activeOn`, `activeDimmed`, …) from CoreDevice's `com.apple.coredevice.action.displayinfo` and rechecks before each event (`A:FBSimulatorDisplayInfoReader.swift:46-52`). `SimDevice setDisplayBacklightActive:error:` exists (`I:PrivateHeaders/CoreSimulator/SimDevice.h:315`), unused upstream: a candidate wake without a Lock press. So: add `hasBlankedScreen` to `doctor`, and try the backlight call as step 3's wake. No tool prevents sleep; XCTest's user-presence assertion needs a testmanagerd session (I16's cost).
-
-**Result so far (2026-11-25):** steps 1 and 2 are done. `SimulatorDevice.backlights()` reads each screen's `backlight.state` and `darwinNotificationState(_:)` reads `com.apple.springboard.lockstate`; `doctor` reports them as `backlight` (per screen: `on`, `dimmed`, `off`, `unknown`) and `locked`. On an iPhone 17, iOS 27.2, the lock state matched `notifyutil -g` through a lock and an unlock; the display read `dimmed` after 20 s idle, stayed `dimmed` rather than `off` 5 s after `button lock`, and read `on` after a second press. Step 3, waking before input, is next; F29 showed a dropped tap is not always sleep, so the wake must not stand in for F29's fix.
-
-- **Problem:** an idle iPhone simulator's display dims and sleeps. Rotations and the first touch are then dropped, and screenshots show the dimmed frame. The workaround is `lock`, `lock`, edge swipe (`docs/device-behavior.md`, "Idle display sleep"; `docs/open-questions.md`, "Display sleep"). NeoSimulator does not prevent sleep, but it detects it:
-  - **Backlight:** each screen's `screenProperties.backlight.state` is 2 when on, 1 when dimmed and 0 when off (`N:NeoSimulatorPresentationAdapters/Simulator/SimulatorConnection.swift:236-247`, `N:NeoSimulatorKit/Simulator/Session/DeviceSessionDisplay.swift:26`).
-  - **Lock:** `SimDevice darwinNotificationGetState:name:error:` on `com.apple.springboard.lockstate` reads 1 when locked (`N:NeoSimulatorKit/Simulator/Session/DeviceSession.swift:1006,1048-1050`, `N:NeoSimulatorDeviceIO/Simulator/CoreSimulator.swift:326`).
-  - Its `lock()` presses Lock until that state reads 1, for up to 5 s (`DeviceSession.swift:1015-1046`).
-- **Do:**
-  1. Read `backlight.state` in `S:SimDriveNative/Simulator/ScreenAdapter.swift`, next to `uiOrientation`, and the lock state through a new `SimulatorDevice.darwinNotificationState(_:)`.
-  2. Report both in `doctor`.
-  3. Before `tap`, `swipe` and `orientation` on an iPhone or iPad whose backlight is below 2, wake it: press `lock`, wait until the backlight reads 2, and add the edge swipe only if the lock state reads 1. Report `"woke": true` in the result.
-  4. Make the wake opt-out with a `--no-wake` flag, if waking surprises someone.
-- **Test:**
-  - Leave a simulator you created idle until it dims (SpringBoard's idle timer), then `tap` the probe's Play button. The probe logs `TAP play`, and the result says it woke.
-  - Run the matrix's `orientation` section after an idle period.
-  - Add the observed timings to `docs/device-behavior.md`, and close the open question.
-
 ### - [ ] I10. Apply settings through the guest's own setting actions (M, steps 1 and 3 done)
 
 **Result so far (2026-11-25):**
@@ -454,6 +431,11 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
   - idb's `axbridge` backend runs a helper inside the guest, reached over a Unix socket. It returns the whole tree in one round trip, sees content drawn by other processes, asserts automation mode, and reports modals (`I:FBSimulatorAX/README.md:15-100`, `I:SimulatorFrameworkBridge/`).
   - agent-device compiles a helper with `xcrun --sdk iphonesimulator clang`, starts it with `simctl spawn <udid> … serve <socket>`, and snapshots through `XCTAccessibilityFramework`'s `userTestingSnapshotForElement:`: warm snapshots take 8.6–118 ms (`D:apple/snapshot-bridge/README.md:10-24`, `D:docs/evidence/ios-snapshot-adr-0004-measurements-2026-11-06.md:25-27`).
 - **Do:** prototype the helper as a separate target built for the simulator SDK, spawned by the session; compare speed, coverage and failure modes with the translator before switching `tree` to it.
+
+### - [ ] N34. `--no-wake` for touch input and rotation (S)
+
+- **Why:** left from I6 (2026-11-25). Input now wakes a dimmed display first, pressing Lock. An agent that tests what a dimmed or sleeping display does with a touch cannot send one.
+- **Do:** a `--no-wake` flag on `tap`, `swipe`, `pinch`, `rotate`, `alert` and `orientation`, passed to `DisplayWake`; parser tests, README and skill. Only if someone asks for it.
 
 ## Not planned
 

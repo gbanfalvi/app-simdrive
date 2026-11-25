@@ -5,8 +5,6 @@ import SimDriveNative
 /// One booted simulator's services, opened on first use. Each command runs here and returns its JSON result.
 @MainActor
 final class DeviceSession {
-    /// SpringBoard's lock state, 1 while the device is locked.
-    private static let lockStateNotification = "com.apple.springboard.lockstate"
     /// UIKit in the guest turns it into a shake motion event, as Simulator's Device > Shake posts it.
     private static let shakeNotification = "com.apple.UIKit.SimulatorShake"
     private let udid: String
@@ -15,6 +13,7 @@ final class DeviceSession {
     private let tools: DeveloperTools
     private let inputs: DeviceInputs
     private let screens: Screens
+    private let wake: DisplayWake
     private let accessibility: DeviceAccessibility
     private let splitView: SplitView
     private let split: SplitState
@@ -43,6 +42,7 @@ final class DeviceSession {
         self.hinge = hinge
         inputs = DeviceInputs(guest: guest)
         screens = Screens(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
+        wake = DisplayWake(device: device, inputs: inputs)
         let split = SplitState()
         self.split = split
         let settingActions = LazyCapability { GuestSettingActions.open(guest: guest, udid: udid) }
@@ -108,7 +108,9 @@ final class DeviceSession {
         case .split(let layout, let current):
             return try await splitView.move(to: layout, from: current)
         case .orientation(let orientation?):
-            return try await connectedOrientation().set(orientation).json
+            let control = try await connectedOrientation()
+            let woke = device.hasTouchscreen ? try await wake.wake(screens.touchscreen(.automatic, usesPixels: false)) : false
+            return Self.noting(woke: woke, in: try await control.set(orientation).json)
         case .orientation(nil):
             return try await connectedOrientation().read().json
         case .pasteboard(let text?):
@@ -212,8 +214,9 @@ final class DeviceSession {
 
     private func tap(_ point: ScreenPoint, display: DisplaySelector) async throws -> JSONValue {
         let screen = try await screens.touchscreen(display, usesPixels: point.usesPixels)
+        let woke = try await wake.wake(screen)
         try await inputs.tap(at: screen.digitizerPoint(point), on: screen.digitizerTarget)
-        return ["display": JSONValue(screen.display?.index), "point": screen.json(point)]
+        return Self.noting(woke: woke, in: ["display": JSONValue(screen.display?.index), "point": screen.json(point)])
     }
 
     /// Taps the element's tap point once the pixels there hold still, and reports the element, whose `point` says where,
@@ -228,12 +231,13 @@ final class DeviceSession {
     private func tapOnceStill(_ element: PlacedElement, _ result: [String: JSONValue]) async throws -> JSONValue {
         let screen = try await screens.touchscreen(.automatic, usesPixels: false)
         let point = ScreenPoint.normalized(element.fraction)
+        let woke = try await wake.wake(screen)
         let settle = try await screens.settle(around: point, on: screen)
         try await inputs.tap(at: screen.digitizerPoint(point), on: screen.digitizerTarget)
-        return .object(result.merging([
+        return Self.noting(woke: woke, in: .object(result.merging([
             "display": JSONValue(screen.display?.index),
             "settle": settle.map { ["waited": JSONValue(Int(($0.waited / .milliseconds(1)).rounded())), "still": .bool($0.still)] } ?? .null,
-        ]) { $1 })
+        ]) { $1 }))
     }
 
     /// Reads the newest alert, waiting up to `limit` for one; with an answer, taps the button that gives it.
@@ -256,15 +260,18 @@ final class DeviceSession {
         let screen = try await screens.touchscreen(display, usesPixels: center.usesPixels)
         let size = CGSize(width: screen.record.image.width, height: screen.record.image.height)
         let gesture = layout(screen.normalizedPoint(center), size)
+        let woke = try await wake.wake(screen)
         try await inputs.drag(through: gesture.first.map { screen.digitizerPoint(.normalized($0)) },
                               and: gesture.second.map { screen.digitizerPoint(.normalized($0)) }, duration: duration,
                               on: screen.digitizerTarget)
-        return .object(result.merging(["display": JSONValue(screen.display?.index), "center": screen.json(center)]) { $1 })
+        return Self.noting(woke: woke, in: .object(result.merging(["display": JSONValue(screen.display?.index),
+                                                                   "center": screen.json(center)]) { $1 }))
     }
 
     private func swipe(through path: [ScreenPoint], duration: Duration, edge: ScreenEdge?,
                        display: DisplaySelector) async throws -> JSONValue {
         let screen = try await screens.touchscreen(display, usesPixels: path.contains { $0.usesPixels })
+        let woke = try await wake.wake(screen)
         try await inputs.drag(through: path.map(screen.digitizerPoint), duration: duration,
                               edge: edge.map(screen.mapping.digitizerEdge), on: screen.digitizerTarget)
         var result: [String: JSONValue] = ["display": JSONValue(screen.display?.index), "from": screen.json(path[0]),
@@ -272,7 +279,7 @@ final class DeviceSession {
         if path.count > 2 {
             result["via"] = .array(path.dropFirst().dropLast().map(screen.json))
         }
-        return .object(result)
+        return Self.noting(woke: woke, in: .object(result))
     }
 
     /// Swipes until the element is on screen, reading the tree first so a shown element costs no swipe. Each swipe holds
@@ -286,10 +293,11 @@ final class DeviceSession {
         let restingDuration = duration * (segments + 1) / segments
         var swipes = 0
         var before: String?
+        var woke = false
         while true {
             let seen = try await accessibility.shownElementAtRest(selector)
             if let found = seen.found {
-                return ["element": found.json, "swipes": JSONValue(swipes)]
+                return Self.noting(woke: woke, in: ["element": found.json, "swipes": JSONValue(swipes)])
             }
             if seen.signature == before {
                 throw SimDriveError(.noElement, "No onscreen element matches \(selector.argument): swipe \(swipes) moved nothing, "
@@ -300,7 +308,8 @@ final class DeviceSession {
                                     + "swipe the other way, or raise --max-swipes.")
             }
             before = seen.signature
-            _ = try await swipe(through: restingPath, duration: restingDuration, edge: nil, display: .automatic)
+            let swiped = try await swipe(through: restingPath, duration: restingDuration, edge: nil, display: .automatic)
+            if case .object(let fields) = swiped, fields["woke"] == true { woke = true }
             swipes += 1
         }
     }
@@ -395,7 +404,7 @@ final class DeviceSession {
             return .object(Dictionary(uniqueKeysWithValues: backlights.map { (String($0.key), JSONValue.string($0.value.rawValue)) }))
         }
         report["locked"] = await Self.check {
-            .bool(try self.device.darwinNotificationState(Self.lockStateNotification) != 0)
+            .bool(try self.device.darwinNotificationState(DisplayWake.lockStateNotification) != 0)
         }
         report["accessibility"] = await Self.check { try await self.accessibility.doctorJSON() }
         report["appearance"] = await Self.check { try await self.settings.value(of: SettingCatalog.appearance) }
@@ -404,6 +413,13 @@ final class DeviceSession {
             return try await self.readPosture()
         }
         return .object(report)
+    }
+
+    /// A result with `"woke": true` when the display had to be woken before the input; unchanged otherwise.
+    static func noting(woke: Bool, in result: JSONValue) -> JSONValue {
+        guard woke, case .object(var fields) = result else { return result }
+        fields["woke"] = true
+        return .object(fields)
     }
 
     private static func check(_ probe: () async throws -> JSONValue) async -> JSONValue {

@@ -92,6 +92,8 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `doctor` | `{"developerDirectory", "device", "state", "deviceType", "displays", "backlight", "locked", "orientation", "pasteboard", "keyboard", "posture", "accessibility", "appearance"}`; `backlight` maps each screen ID to `on`, `dimmed`, `off` or `unknown` (not started), or is `unsupported` on Apple TV; `accessibility` is the frontmost app's `{"name", "pid"}`, and a failed check is `{"error"}` |
 | `stop` | `{"stopped": whether a daemon ran}` |
 
+`tap`, `swipe`, `pinch`, `rotate`, `alert accept|dismiss` and setting `orientation` first wake a display that dimmed or slept, where the guest would drop them, by pressing Lock until it lights. A device that was unlocked is unlocked again with an edge swipe; one that was locked stays on its lock screen. Their results then carry `"woke": true`.
+
 ### Errors
 
 A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`. `retry` is true when running the same command again, unchanged, may succeed, because the simulator was busy or slow rather than the command or the device being wrong. A `step-failed` from `run` takes `retry` from the failed step's error. An error without a `code` is unexpected, and has no `retry`. The message names the cause and what to do.
@@ -109,6 +111,7 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `tool-timeout` | A `simctl` call ran past its limit and was stopped | yes |
 | `unknown-key`, `unsupported-character` | A key or character the keyboard layout cannot type; paste it instead | no |
 | `no-touchscreen` | The device has no touchscreen, as an Apple TV | no |
+| `display-asleep` | The display stayed dimmed after three Lock presses, or lit but stayed locked; the input was not sent | no |
 | `no-screenshot`, `stale-screenshot` | Pixel coordinates need a screenshot taken since the device or the interface last rotated; take one | no |
 | `screenshot`, `screenshot-read`, `screenshot-scale`, `screenshot-write` | A screenshot could not be captured, read, scaled or written | no |
 | `single-display`, `unknown-display` | `--display` names a display the device lacks | no |
