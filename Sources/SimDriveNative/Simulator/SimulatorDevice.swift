@@ -8,6 +8,8 @@ package final class SimulatorDevice {
     private typealias DeviceSetFunction = @convention(c) (NSObject, Selector, AutoreleasingUnsafeMutablePointer<NSError?>) -> NSObject?
     private typealias LookUpFunction = @convention(c) (NSObject, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> UInt32
     private typealias PostFunction = @convention(c) (NSObject, Selector, NSString, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
+    private typealias NotificationStateFunction = @convention(c) (NSObject, Selector, UnsafeMutablePointer<UInt64>, NSString,
+                                                                  AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
     private typealias ReadIntFunction = @convention(c) (NSObject, Selector) -> Int
     private typealias SetIntFunction = @convention(c) (NSObject, Selector, Int, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
     private typealias SetBoolFunction = @convention(c) (NSObject, Selector, Bool, AutoreleasingUnsafeMutablePointer<NSError?>) -> Bool
@@ -177,13 +179,33 @@ package final class SimulatorDevice {
         }
     }
 
-    /// Each connected screen's interface orientation by screen ID, as `simctl io enumerate` lists them; screens without
-    /// one are left out.
     /// Whether the guest has started a screen, before which an accessibility read can leave the server unanswering.
     package func hasStartedScreen() async throws -> Bool {
         try await ScreenAdapter(device: device).hasStartedScreen()
     }
 
+    /// Each screen's backlight by screen ID; screens that report none, as on Apple TV, are left out.
+    package func backlights() async throws -> [Int: Backlight] {
+        try await ScreenAdapter(device: device).backlightStates().mapValues(Backlight.init(state:))
+    }
+
+    /// The state of a Darwin notification in the guest, as `notifyutil -g` there would read it.
+    package func darwinNotificationState(_ name: String) throws -> UInt64 {
+        let selector = NSSelectorFromString("darwinNotificationGetState:name:error:")
+        guard device.responds(to: selector) else {
+            throw SimDriveError(.guestNotification, "CoreSimulator cannot read notification states on \(self.name).")
+        }
+        var state: UInt64 = 0
+        var error: NSError?
+        let read = unsafeBitCast(device.method(for: selector), to: NotificationStateFunction.self)
+        guard read(device, selector, &state, name as NSString, &error) else {
+            throw SimDriveError(.guestNotification, "Could not read \(name): \(error?.localizedDescription ?? "no reason given")")
+        }
+        return state
+    }
+
+    /// Each connected screen's interface orientation by screen ID, as `simctl io enumerate` lists them; screens without
+    /// one are left out.
     package func interfaceOrientations() async throws -> [Int: InterfaceOrientation] {
         try await ScreenAdapter(device: device).interfaceOrientations()
     }

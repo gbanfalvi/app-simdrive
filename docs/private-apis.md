@@ -20,7 +20,8 @@ Loaded from `/Library/Developer/PrivateFrameworks/CoreSimulator.framework`.
 - `uiOrientation`, as `simctl io enumerate` labels it: 0 Ambiguous, 1 Portrait, 2 Portrait Upside Down, 3 Landscape Left, 4 Landscape Right. The names are UIKit's interface orientations, but the numbers are not `UIInterfaceOrientation`'s, which swaps 3 and 4.
 - Observed: device `landscape-left` gives 4, `landscape-right` gives 3, since the interface counter-rotates the device. 2 was never observed.
 - `screenID` equals the `simctl` display index. A single-display device's screen is 1.
-- `screenProperties.backlight.state` (`UInt32`, read as `Int32`) is -101, unknown, on every screen early in a boot, and 2 once a panel has started. simdrive waits for any screen other than -101 before its first accessibility read (F15). Settled devices: an iPhone (iOS 17.0 and 27.2) reports 2; a Duo 2 on its cover panel and -101 on its inner one; an Apple TV (tvOS 18) -101 always, so simdrive skips the wait there.
+- `screenProperties.backlight.state` (`UInt32`, read as `Int32`) is -101, unknown, on every screen early in a boot, and 2 once a panel has started; 1 is dimmed and 0 off. `doctor` reports it per screen as `backlight`.
+- `SimDevice -darwinNotificationGetState:name:error:` (a `uint64_t *`, an `NSString`, an `NSError **`; returns `BOOL`) reads a Darwin notification's state in the guest, as `notifyutil -g` does there. `com.apple.springboard.lockstate` is 1 while locked; `doctor` reports it as `locked`, and it matched `notifyutil` through a lock and an unlock. simdrive waits for any screen other than -101 before its first accessibility read (F15). Settled devices: an iPhone (iOS 17.0 and 27.2) reports 2; a Duo 2 on its cover panel and -101 on its inner one; an Apple TV (tvOS 18) -101 always, so simdrive skips the wait there.
 
 ### Screenshots
 

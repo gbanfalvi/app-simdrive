@@ -13,6 +13,11 @@ struct ScreenAdapterTests {
         #expect(ScreenAdapter.hasStartedScreen(backlightStates: [2, -101, -101, -101, -101]))
     }
 
+    /// CoreSimulator's states, as NeoSimulator documents them and an iPhone on iOS 27.2 reported 2 and -101.
+    @Test func backlightStatesNameTheirLevel() {
+        #expect([2, 1, 0, -101, 7].map(Backlight.init(state:)) == [.on, .dimmed, .off, .unknown, .unknown])
+    }
+
     @Test func aRuntimeThatReportsNoBacklightCountsAsStarted() {
         #expect(ScreenAdapter.hasStartedScreen(backlightStates: [nil, nil]))
         #expect(ScreenAdapter.hasStartedScreen(backlightStates: []))

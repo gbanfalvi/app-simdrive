@@ -52,14 +52,23 @@ struct ScreenAdapter {
     /// panel reports a state about 85 s into a cold iPhone boot, 25 s after its interface orientation. A runtime that
     /// reports no backlight counts as started. Apple TV never reports one, so callers skip it.
     func hasStartedScreen() async throws -> Bool {
+        Self.hasStartedScreen(backlightStates: try await backlightStates().values.map { $0 })
+    }
+
+    /// Each screen's raw backlight state by screen ID, leaving out screens that report none: 2 on, 1 dimmed, 0 off,
+    /// -101 unknown.
+    func backlightStates() async throws -> [Int: Int32] {
         let enumerate = unsafeBitCast(adapter.method(for: Self.enumerateSelector), to: EnumerateFunction.self)
         return try await waitForCompletion(within: Self.enumerationLimit,
                                            timeout: SimDriveError(.screenAdapterTimeout, "CoreSimulator did not list the screens.")) { done in
             enumerate(adapter, Self.enumerateSelector, Self.replies) { screens in
-                done(Self.hasStartedScreen(backlightStates: (screens as? [NSObject] ?? []).map { screen in
-                    Self.object(screen, "screenProperties").flatMap { Self.object($0, "backlight") }.flatMap { Self.uint32($0, "state") }
-                        .map { Int32(bitPattern: $0) }
-                }))
+                var states: [Int: Int32] = [:]
+                for screen in screens as? [NSObject] ?? [] {
+                    guard let properties = Self.object(screen, "screenProperties"), let id = Self.uint32(properties, "screenID"),
+                          let state = Self.object(properties, "backlight").flatMap({ Self.uint32($0, "state") }) else { continue }
+                    states[Int(id)] = Int32(bitPattern: state)
+                }
+                done(states)
             }
         }
     }

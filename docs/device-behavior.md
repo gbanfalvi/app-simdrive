@@ -15,7 +15,7 @@ Observed on Xcode 26.6 to 27.2 with iPhone iOS 17.0 to 27.2, iPhone Air iOS 26.0
 
 ## iPhone and iPad
 
-- **Idle display sleep.** The iPhone simulator's display dims and sleeps when idle, as SpringBoard's idle timer allows. While asleep, rotations and the first touch are dropped, and screenshots freeze on the dimmed frame. Wake it with `button lock`, `button lock`, then `swipe 0.5 0.999 0.5 0.3 --edge bottom`.
+- **Idle display sleep.** The iPhone simulator's display dims and sleeps when idle, as SpringBoard's idle timer allows. On an iPhone 17, iOS 27.2, `doctor`'s `backlight` read `dimmed` after 20 s idle; `button lock` then locked it and the backlight stayed `dimmed` (not `off`) 5 s later, and a second press woke it to `on`, still locked until the edge swipe. While asleep, rotations and the first touch are dropped, and screenshots freeze on the dimmed frame. Wake it with `button lock`, `button lock`, then `swipe 0.5 0.999 0.5 0.3 --edge bottom`.
 - **Unlocking.** Without a passcode, the same `lock`, `lock`, edge swipe sequence returns to the app.
 - **Going home.** A swipe up from the bottom goes home only with `--edge bottom`; the guest recognizes system gestures only for touches that start on an edge.
 - **Volume.** `volume-up` and `volume-down` show the volume HUD, and DeviceHub's volume changes, but apps' `AVAudioSession.outputVolume` stays put. Check volume presses by screenshot.

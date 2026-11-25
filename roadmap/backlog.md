@@ -364,11 +364,14 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - **The idle input release:** after 35 s idle, `tap --label Play` and `tap 0.5 0.17` each reached the probe, twice each.
   - **`tap --label` alone:** `--only misc` on a new simulator, with no sleep, passed 11/11 with v0.1.0 and with the I25 build. Only the full run reproduced it.
 - **Seen on the kept simulator:** minutes later the alert was still up, fully drawn; `tap --label Open` returned `ok` and left it up, and `tap 0.6841 0.5423`, the same point, right after dismissed it. So a first tap on it is dropped, not one at a particular moment of the animation.
-- **Reproducing:** iOS asks only for a scheme's first URL on a simulator; reinstalling the app does not ask again, so each try needs a new simulator: remove the sleep in `accept_url_prompt` and run `Evaluation/fresh.py`. The failing simulator `25EA3652` (`simdrive fresh iPhone 17 27.2`) is kept, shut down, with the alert dismissed.
-- **Next:**
-  1. Check whether the display was dimmed or asleep (I6's `backlight.state`, 1 or 0) when the first tap went: the full matrix runs long sections before `misc`, and `docs/device-behavior.md` says a sleeping display drops the first touch.
-  2. Log the guest's digitizer events (`simctl spawn <udid> log stream --predicate 'subsystem == "com.apple.backboard"'`) for the dropped tap and the one that worked.
-  3. If it is display sleep, this is I6; fix it there rather than with a retry.
+- **Reproducing:** iOS asks only for a scheme's first URL on a simulator; reinstalling the app does not ask again, so each try needs a new simulator: remove the sleep in `accept_url_prompt` and run `Evaluation/fresh.py --only tree,keys,misc` (about 3 minutes).
+- **Narrowed (2026-11-25), each on a new iPhone 17, iOS 27.2, with no sleep:**
+  - **Not display sleep or lock:** `doctor` right before each dropped tap read `backlight` `on` and `locked` false.
+  - **Every tap on the alert fails within the run:** `openurl in-front` taps the alert left up by `from-home`, and that tap is dropped too. On a kept simulator, after a new daemon, the first `tap --label Open` was dropped and the second dismissed it.
+  - **Sections:** `tree,tap,misc` and `tree,keys,misc` reproduce it (2 of 2 taps dropped each); `misc`, `tree,logs,misc` and `settings,misc` do not.
+  - **Single steps do not:** a script on new simulators that launches the probe and, before `openurl` and `tap --label Open`, presses Home (2 runs), focuses the text field (2), focuses it then presses Home (1), types into it (1) or presses `key down` (1), delivered the URL on the first tap every time, against none pressed (2).
+  - Kept, shut down: `DC718C97` (from `tree,tap,misc`) and `E4FD2121` (from `tree,keys,misc`), both `simdrive fresh iPhone 17 27.2`, the alert dismissed.
+- **Next:** bisect inside the `keys` section, which is shorter: run its steps one by one before the URL in the script above (`key x --repeat 3`, `key tab`, the arrows, `type` with long text and `clear_field`). Then log the guest's touch handling for a dropped tap and a delivered one: `simctl spawn <udid> log stream --level debug --predicate 'process == "SpringBoard" OR process == "backboardd"'`.
 
 ## 2. Improvements to existing commands
 
@@ -441,7 +444,9 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - `--timing` against the old build (`SIMDRIVE=<old build>`), several rounds.
   - Record the cold-start numbers in `docs/device-behavior.md`.
 
-### - [ ] I6. Detect a sleeping display, and wake it (M)
+### - [ ] I6. Detect a sleeping display, and wake it (M, steps 1 and 2 done)
+
+**Result so far (2026-11-25):** steps 1 and 2 are done. `SimulatorDevice.backlights()` reads each screen's `backlight.state` and `darwinNotificationState(_:)` reads `com.apple.springboard.lockstate`; `doctor` reports them as `backlight` (per screen: `on`, `dimmed`, `off`, `unknown`) and `locked`. On an iPhone 17, iOS 27.2, the lock state matched `notifyutil -g` through a lock and an unlock; the display read `dimmed` after 20 s idle, stayed `dimmed` rather than `off` 5 s after `button lock`, and read `on` after a second press. Step 3, waking before input, is next; F29 showed a dropped tap is not always sleep, so the wake must not stand in for F29's fix.
 
 - **Problem:** an idle iPhone simulator's display dims and sleeps. Rotations and the first touch are then dropped, and screenshots show the dimmed frame. The workaround is `lock`, `lock`, edge swipe (`docs/device-behavior.md`, "Idle display sleep"; `docs/open-questions.md`, "Display sleep"). NeoSimulator does not prevent sleep, but it detects it:
   - **Backlight:** each screen's `screenProperties.backlight.state` is 2 when on, 1 when dimmed and 0 when off (`N:NeoSimulatorPresentationAdapters/Simulator/SimulatorConnection.swift:236-247`, `N:NeoSimulatorKit/Simulator/Session/DeviceSessionDisplay.swift:26`).

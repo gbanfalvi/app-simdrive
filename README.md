@@ -46,7 +46,7 @@ simdrive <udid|booted> <command>
 | `wait <ms>` | Pauses, for `run` |
 | `wait --label <text> \| --id <identifier> [--absent] [--timeout ms]` | Waits until the element is on screen, or with `--absent` until it is not; 5000 ms by default |
 | `run <steps.json\|-> [--logs]` | Runs a JSON array of commands, such as `["tap 0.5 0.5", ["key", "tab"]]`, stopping at the first failure; `--logs` adds each step's log entries |
-| `doctor` | Reports the developer directory, displays, orientation, pasteboard, hinge, keyboard, frontmost app and appearance |
+| `doctor` | Reports the developer directory, displays, each screen's backlight, whether the device is locked, orientation, pasteboard, hinge, keyboard, frontmost app and appearance |
 | `stop` | Ends the device's daemon and releases its input services |
 
 Output is `{"ok":true,"result":…}`, or `{"ok":false,"error":…,"code":…}` with exit status 1.
@@ -77,7 +77,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 | `logs` | `{"since", "entries": [entry], "stdout": [lines], "stderr": [lines], "crashes": [crash], "dropped"}`, each source's key only when read. An entry is `{"ms", "message", "level", "process", "subsystem", "category", "repeats"}`, described under [Logs](#logs); a crash is `{"process", "pid", "time", "exception", "reason", "frames", "path"}` |
 | `wait` | `{"waited": milliseconds}`; with `--label` or `--id`, `{"element"}`, or `{"absent": true}` with `--absent` |
 | `run` | `{"steps": [each step's result]}`; with `--logs`, each step also has `"logs": [entry]`, and a failed read adds `"logsError"` |
-| `doctor` | `{"developerDirectory", "device", "state", "deviceType", "displays", "orientation", "pasteboard", "keyboard", "posture", "accessibility", "appearance"}`; `accessibility` is the frontmost app's `{"name", "pid"}`, and a failed check is `{"error"}` |
+| `doctor` | `{"developerDirectory", "device", "state", "deviceType", "displays", "backlight", "locked", "orientation", "pasteboard", "keyboard", "posture", "accessibility", "appearance"}`; `backlight` maps each screen ID to `on`, `dimmed`, `off` or `unknown` (not started), or is `unsupported` on Apple TV; `accessibility` is the frontmost app's `{"name", "pid"}`, and a failed check is `{"error"}` |
 | `stop` | `{"stopped": whether a daemon ran}` |
 
 ### Errors

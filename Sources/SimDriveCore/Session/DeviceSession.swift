@@ -8,6 +8,8 @@ final class DeviceSession {
     /// How long an app may take to come to the front after `simctl launch`, which returns seconds before it does. A
     /// freshly booted, busy simulator takes tens of seconds.
     private static let launchLimit: Duration = .seconds(30)
+    /// SpringBoard's lock state, 1 while the device is locked.
+    private static let lockStateNotification = "com.apple.springboard.lockstate"
     private let udid: String
     private let device: SimulatorDevice
     private let bootedAt: Date?
@@ -367,6 +369,14 @@ final class DeviceSession {
             return "ready"
         }
         report["displays"] = await Self.check { try await self.screens.displaysJSON() }
+        report["backlight"] = await Self.check {
+            let backlights = try await self.device.backlights()
+            guard !backlights.isEmpty else { return .unsupported }
+            return .object(Dictionary(uniqueKeysWithValues: backlights.map { (String($0.key), JSONValue.string($0.value.rawValue)) }))
+        }
+        report["locked"] = await Self.check {
+            .bool(try self.device.darwinNotificationState(Self.lockStateNotification) != 0)
+        }
         report["accessibility"] = await Self.check { try await self.accessibility.doctorJSON() }
         report["appearance"] = await Self.check { try await self.settings.value(of: SettingCatalog.appearance) }
         report["posture"] = await Self.check {
