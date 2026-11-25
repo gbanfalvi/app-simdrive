@@ -29,6 +29,8 @@ Results at v0.0.2: iPhone iOS 27 94/94, iOS 26 94/94, iOS 18 94/94, iOS 17 93/93
 
 Results at v0.1.0: a new iPhone 17, iOS 27.2, 125/125 for the whole matrix (before I10). After I10, the `settings` section: iOS 27.2 45/45, iOS 26.5 41/41, iOS 17.0 40/40. After release, on new simulators: Duo iOS 27.2 124/124, Apple TV tvOS 18.0 15/15, iPhone 16 iOS 18.0 128/128.
 
+Results at v0.1.1, by section on new simulators as each change landed, not one whole run: iPhone 17, iOS 27.2: the whole matrix 132/132 after F29, `tap` 44/44, `tree,keys` 39/39, `services` 12/12, `settings` 47/47; iPhone 15, iOS 17.0: `tree,tap,misc` 49/49, `buttons` 12/12, `settings` 42/42; iPhone Duo, iOS 27.2: the whole matrix 121/124 after F29, failures under parallel load (F30), then `logs,settings` 76/76.
+
 ## The probe app
 
 `Evaluation/build-probe.sh [udid]` builds `AXProbe.app` with `swiftc` against the iOS simulator SDK, with no Xcode project, signs it ad hoc and optionally installs it. Its minimum OS, iOS 17, comes from `Evaluation/Probe/Info.plist`. Bundle ID `com.simdrive.axprobe`.
