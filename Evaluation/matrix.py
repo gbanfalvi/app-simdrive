@@ -18,7 +18,11 @@ COMMAND_TIMEOUT = 180
 TREE_ATTEMPTS = 5
 # The status bar's share of a portrait iPhone screenshot's height, above the probe's title.
 STATUS_BAR_FRACTION = 0.07
+# Its left third, where the time is drawn: the charging battery on the right animates between equal frames.
+STATUS_BAR_TIME_FRACTION = 0.33
 PIXEL_TOLERANCE = 4
+ACTING_COMMANDS = {'tap', 'swipe', 'pinch', 'rotate', 'key', 'type', 'button', 'push', 'shake', 'memory-warning', 'run',
+                   'pasteboard', 'split'}
 
 parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
 parser.add_argument('udid')
@@ -43,12 +47,30 @@ results = []
 
 
 def sd(*arguments, daemon=True, stdin=None):
+    """Runs a command, and once more when it fails with `retry` true, as right after a first boot (F31). Commands whose
+    second run would act twice, such as a tap whose first went through before its reply timed out, are not run again;
+    neither are timed ones. A retried response keeps its first error in `retried`, and the retry prints a line."""
+    response = _sd(arguments, daemon, stdin)
+    if response.get('retry') and not args.timing and not acts(arguments):
+        print(f"RETRY {' '.join(arguments)}  [{response.get('code')}: {response.get('error', '')[:120]}]", flush=True)
+        response = dict(_sd(arguments, daemon, stdin), retried=response.get('code'))
+    return response
+
+
+def _sd(arguments, daemon, stdin):
     command = [SIMDRIVE, udid, *arguments] + ([] if daemon else ['--no-daemon'])
     process = subprocess.run(command, capture_output=True, text=True, timeout=COMMAND_TIMEOUT, input=stdin)
     try:
         return json.loads(process.stdout.strip().splitlines()[-1])
     except (IndexError, json.JSONDecodeError):
         return {'ok': False, 'code': 'unparsed', 'error': (process.stdout + process.stderr)[-400:]}
+
+
+def acts(arguments):
+    """Whether running the command a second time could repeat its effect: input, notifications, steps, and answering
+    an alert; reads, settings, launches and postures are safe to repeat."""
+    name = arguments[0] if arguments else ''
+    return name in ACTING_COMMANDS or (name == 'alert' and len(arguments) > 1 and arguments[1] in ('accept', 'dismiss'))
 
 
 def simctl(*arguments):
@@ -68,8 +90,9 @@ def output_path(name):
     return os.path.join(OUTPUT, f'{name}-{udid[:8]}.png')
 
 
-def top_pixels(png, fraction):
-    """The raw pixels of an image's top `fraction` of rows, through sips' BMP, which stores rows bottom-up."""
+def corner_pixels(png, rows_fraction, columns_fraction):
+    """The raw pixels of an image's top-left corner, its top `rows_fraction` of rows and left `columns_fraction` of
+    columns, through sips' BMP, which stores rows bottom-up."""
     bmp = png + '.bmp'
     if subprocess.run(['sips', '-s', 'format', 'bmp', png, '--out', bmp], capture_output=True).returncode != 0:
         return None
@@ -79,9 +102,10 @@ def top_pixels(png, fraction):
     width, height = struct.unpack_from('<ii', data, 18)
     bits, = struct.unpack_from('<H', data, 28)
     row = (width * bits // 8 + 3) // 4 * 4
-    rows = max(1, int(abs(height) * fraction))
+    rows = max(1, int(abs(height) * rows_fraction))
     start = offset + (abs(height) - rows) * row if height > 0 else offset
-    return data[start:start + rows * row]
+    width_bytes = max(1, int(width * columns_fraction)) * (bits // 8)
+    return b''.join(data[line:line + width_bytes] for line in range(start, start + rows * row, row))
 
 
 def look_alike(one, other):
@@ -187,11 +211,7 @@ def basics(doctor):
 
 
 def setting_snapshot():
-    response = sd('setting')
-    # Right after a first boot, simctl spawn can outlast its limit; the error says whether running it again may help.
-    if response.get('retry'):
-        response = sd('setting')
-    return response.get('result', {}).get('settings', {})
+    return sd('setting').get('result', {}).get('settings', {})
 
 
 def setting_argument(value):
@@ -656,15 +676,16 @@ def service_checks():
         check(f'privacy {action} photos', response.get('ok') and log.wait(mark, rf'PRIVACY photos={status}$', 5), brief(response))
     response = sd('privacy', 'grant', 'nonsense', BUNDLE)
     check('privacy grant nonsense (expect simctl)', response.get('code') == 'simctl', brief(response)[:120])
-    # Accessibility reads the real time, so compare the status bar's pixels: equal overrides draw alike ones. The rest of
-    # the screen can change between shots, as the home indicator does while it adapts to the content behind it.
+    # Accessibility reads the real time, so compare the pixels of the status bar's time: equal overrides draw alike ones.
+    # Elsewhere the screen changes between shots, as the home indicator and the charging battery do.
     shots = []
     for time_text in ['9:41', '10:10', '9:41']:
         response = sd('status-bar', 'override', '--time', time_text, '--battery', '100', '--battery-state', 'charged')
         time.sleep(1)
         shot = output_path(f'status-bar-{len(shots)}')
         sd('screenshot', shot)
-        shots.append(top_pixels(shot, STATUS_BAR_FRACTION) if response.get('ok') and os.path.exists(shot) else None)
+        shots.append(corner_pixels(shot, STATUS_BAR_FRACTION, STATUS_BAR_TIME_FRACTION)
+                     if response.get('ok') and os.path.exists(shot) else None)
     check('status-bar override', None not in shots and look_alike(shots[0], shots[2]) and not look_alike(shots[0], shots[1]),
           'equal overrides drew equal screens, and a different time a different one')
     response = sd('status-bar', 'clear')

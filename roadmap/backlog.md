@@ -23,17 +23,6 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 ## 1. Fixes
 
-### - [ ] F31. The matrix fails a check on a retryable error right after a first boot (S)
-
-- **Problem:** found with N6 (2026-11-25). On a new iPhone 17, iOS 27.2, booted while another new simulator booted, `setting bold-text on` failed with `tool-timeout` ("simctl spawn did not finish within 60 s") and the section went 46/47; rerun on the same simulator, 47/47. The first `simctl push` after a boot also takes ~52 s (N11). `setting_snapshot` already runs a read again when it says `retry`, but other checks do not, so a slow first boot fails checks that would pass.
-- **Causes found upstream (2026-11-25, source comparison), which make some of these fixable in simdrive rather than retried by the matrix:**
-  - **The digitizer's daemon is not up yet.** `dtuhidd` starts on demand; early in a boot it asks CoreAnimation for displays, aborts when none is up, and launchd throttles its respawn for 10 s, while the service lookup still returns a port and every send is dropped. idb probes a fresh connection with a barrier, 4 s per attempt, 4 s backoff, 5 attempts, a new lookup each time, and measured a daemon answering about 19 s after boot, past simdrive's 10 s `guestServiceLimit` (`I:FBSimulatorControl/HID/SimulatorDTUHIDConnection.swift:14-37,72-121`). AXe waits until `launchd_sim` has been up 10 s and `dtuhidd` is its child, and found that reconnecting on a long-running simulator made input worse, so it retries once at most (`A:Sources/AXe/Utilities/HIDBrokerReadiness.swift:51-60`, `A:docs/release-readiness.md:100`). For simdrive: in `GuestTouchscreen.open`, retry an opening barrier that times out only while the boot is young (or no `dtuhidd` runs), with a short timeout, a backoff and a fresh lookup; keep the single 10 s wait otherwise. idb also pays a ~200 ms "device-open tail" after the first barrier before handing out the connection (`:174-182`), likely F17's 215 ms.
-  - **launchd_sim refuses work around a boot.** It answers error 124 ("Domain is tearing down") for a few seconds; NeoSimulator retries after 1, 2, 4 and 8 s (`N:NeoSimulatorKit/Devices/BackgroundServices.swift:354-355,556-562`). Recognize it in `DeveloperTools.simctl` as a fast retryable error. Its notes that disabling `nanoregistryd` "hangs every simctl operation" (`:303-311`) are a candidate for the 60 s `simctl spawn` hangs (unverified).
-  - **Preferences can be read without the guest.** I30 reads them from the host's plist, which would end the `setting` read timeouts.
-- **Seen (2026-11-25, I18):** on a new iPhone 17, iOS 27.2, the first `tap` and `tap --no-daemon` failed with `guest-service-timeout` on the digitizer, and on a new Duo `posture half` with `posture-timeout` reading 0.0. Both sections passed on the same simulators rerun, and `posture` on a second new Duo.
-- **Do:** in `sd()` (`Evaluation/matrix.py`), run a command once more when its response has `"retry": true`, and mark the check's detail with the first error so a retry stays visible rather than hidden. Leave commands whose retry changes the outcome, such as taps, to the check itself.
-- **Test:** `Evaluation/fresh.py --only settings` on two new simulators booted at once.
-
 ### - [ ] F34. Edge swipes on iOS 17.0 through UniversalHID's digitizer edge bits (S, spike)
 
 - **Why:** left from F16 (2026-11-25). idb and AXe send edges the way simdrive does, `IndigoDigitizerEvent.edge` on the digitizer service, and none claims iOS 17 works (`I:FBSimulatorControl/HID/SimulatorHIDEvent.swift:185-193`); SimulatorKit's legacy Indigo edge path is suppressed by CoreSimulator 1155.4 and later (`I:SimulatorHIDTransportSelection.swift:36-45`). NeoSimulator sends real HID digitizer reports instead: `UniversalHID.DigitizerReport` contacts with `setContactSwipeUp/Down/Left/Right(true, atIndex:)` to `HIDServiceID.mainTouchscreen` after creating a `touchscreenGesture` service (`N:NeoSimulatorPresentationAdapters/Native/CoreDeviceHIDReports.swift:53-73`, `GuestScreenInput.swift:77-121`). iOS 17's backboardd may honor those.
@@ -49,6 +38,16 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
   - **Closed, the inner panel's Search** stays at (2.29, 0.12) with no display, outside the cover.
 - **Do next:** decide with the user whether `tree` should fill in icons the snapshot lacks from hit tests (a grid over the Home screen, as idb does for other processes' content: slower, and a change to what `tree` returns), or keep documenting that `tree x y` finds them. Drop the Search element if a rule other than its frame tells it apart (its window, or a display read for it alone); an element outside the screen is otherwise legitimate, as in a scrolled app.
 - **Test:** `tree` on the Home screen, open and closed, against the screenshot; the matrix's `tree,tap,posture`.
+
+### - [ ] F40. Remove the first-boot causes of retryable errors in simdrive (S–M)
+
+- **Why:** left from F31 (2026-11-25), which made the matrix retry them. The causes are in F31's notes in `roadmap/completed.md`: the digitizer's `dtuhidd` not up yet (idb retries a fresh connection with a barrier, up to five times, and AXe waits until it is a child of `launchd_sim`), and `launchd_sim` answering error 124 for a few seconds around a boot (NeoSimulator retries after 1, 2, 4 and 8 s).
+- **Do:** in `GuestTouchscreen.open`, retry an opening barrier that times out only while the boot is young, with a fresh lookup and a backoff; retry `simctl spawn` on error 124 with NeoSimulator's backoff. **Test:** `Evaluation/fresh.py --only tap,settings` on two new simulators booted at once, without `RETRY` lines.
+
+### - [ ] F39. `setting grayscale on` was once not seen by the probe (S, unverified)
+
+- **Seen (2026-11-25):** on an iPhone 17, iOS 27.2, the matrix's `setting grayscale on` failed once with "app did not see it" in four `settings` runs on the same simulator; the other three passed. That run went through a wrapper that delayed the section's first read by one failed call, so timing may matter.
+- **Do:** run the `settings` section ten times on a new simulator; if it recurs, check whether the probe's `STATUS` line lags the notification or the guest drops it, and wait for it in the check or fix the setting row.
 
 ### - [ ] F38. After closing an open Duo, the cover can stay black (S, unverified)
 
