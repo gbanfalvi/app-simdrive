@@ -67,6 +67,12 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Do:** I33's accessibility idle signal would answer this directly; short of it, require that the tree's element and the pixels agree (the patch at its point changed at least once, or matches what the element draws) before calling the screen still. Measure on iOS 17.0 and 27.2 that a still screen keeps its ~160 ms.
 - **Test:** the matrix's `tap` section, three runs on a new iPhone 15, iOS 17.0.
 
+
+### - [ ] F41. `tap --label` finds two identical elements for one SwiftUI menu item (S, unverified)
+
+- **Why:** reported from app_mono (2026-11-26, iPad Pro 13-inch (M5), iOS 26.5, HarnessCross in Release). With a SwiftUI `Picker` menu open (the editor's Antialiasing picker), `tap --label TAA` failed with `ambiguous-element`, naming two elements at the same point, (0.8605, 0.6254); `tree` likewise listed each option twice. Tapping the point worked. Either the app exposes the item twice (a container and its child with the same label), or `tree` flattens both levels of one element.
+- **Do:** reproduce with any SwiftUI menu picker, compare with `tree --full` and Accessibility Inspector; if both entries are the same element seen twice, deduplicate in the flattening; if it's a parent and its child, prefer the actionable one for `tap` instead of failing as ambiguous. **Test:** `tap --label <option>` on an open menu picker.
+
 ## 2. Improvements to existing commands
 
 ### - [ ] I10. Apply settings through the guest's own setting actions (M, steps 1 and 3 done)
