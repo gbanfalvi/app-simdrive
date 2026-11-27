@@ -125,6 +125,8 @@ final class ProbeViewController: UIViewController {
     private var observers: [NSObjectProtocol] = []
     private var volume: NSKeyValueObservation?
     private var lastStatus = ""
+    /// Controls whose centers `LAYOUT` logs, for devices where `tree` cannot find them.
+    private var layoutTargets: [(name: String, view: UIView)] = []
 
     override var canBecomeFirstResponder: Bool { true }
 
@@ -244,6 +246,7 @@ final class ProbeViewController: UIViewController {
             stack.bottomAnchor.constraint(equalTo: scroll.contentLayoutGuide.bottomAnchor, constant: -16),
         ])
         swiftUI.didMove(toParent: self)
+        layoutTargets = [("play", play), ("field", field)]
         view.layoutIfNeeded()
         content.accessibilityActivationPoint = content.convert(CGPoint(x: 10, y: 10), to: nil)
 
@@ -296,6 +299,17 @@ final class ProbeViewController: UIViewController {
         super.viewDidAppear(animated)
         becomeFirstResponder()
         logOrientation()
+        logLayout()
+    }
+
+    /// `LAYOUT play=x,y field=x,y`: each control's center as fractions of the window.
+    private func logLayout() {
+        guard let window = view.window, window.bounds.width > 0, window.bounds.height > 0 else { return }
+        let centers = layoutTargets.map { target in
+            let center = target.view.convert(CGPoint(x: target.view.bounds.midX, y: target.view.bounds.midY), to: window)
+            return "\(target.name)=\(Log.fraction(center.x / window.bounds.width)),\(Log.fraction(center.y / window.bounds.height))"
+        }
+        Log.write("LAYOUT \(centers.joined(separator: " "))")
     }
 
     override func viewWillTransition(to size: CGSize, with coordinator: UIViewControllerTransitionCoordinator) {

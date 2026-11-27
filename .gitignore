@@ -1,6 +1,8 @@
 .build/
 .swiftpm/
 *.xcodeproj
+# The probe's project, which builds it signed for physical devices.
+!Evaluation/Probe/AXProbe.xcodeproj
 DerivedData/
 .DS_Store
 __pycache__/

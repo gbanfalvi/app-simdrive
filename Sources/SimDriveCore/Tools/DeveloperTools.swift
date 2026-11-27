@@ -91,6 +91,25 @@ struct DeveloperTools: Sendable {
         return result
     }
 
+    /// Runs `devicectl` with `--json-output` and returns its `result`, or throws its error's description with `devicectl`.
+    /// It takes about a second per call, which starting CoreDevice in its own process costs.
+    @discardableResult
+    func devicectl(_ arguments: [String], limit: Duration = defaultLimit) async throws -> [String: Any] {
+        let output = FileManager.default.temporaryDirectory.appendingPathComponent("simdrive-devicectl-\(UUID().uuidString).json")
+        defer { try? FileManager.default.removeItem(at: output) }
+        var environment = ProcessInfo.processInfo.environment
+        environment[Self.developerDirectoryVariable] = developerDirectory
+        let command = [Self.xcrun, "devicectl", "--quiet", "--json-output", output.path] + arguments
+        let result = try await Self.run(command, environment: environment, limit: limit, name: "devicectl \(arguments.prefix(2).joined(separator: " "))")
+        let report = (try? Data(contentsOf: output)).flatMap { try? JSONSerialization.jsonObject(with: $0) as? [String: Any] }
+        guard result.succeeded else {
+            let userInfo = (report?["error"] as? [String: Any])?["userInfo"] as? [String: Any]
+            let description = (userInfo?["NSLocalizedDescription"] as? [String: Any])?["string"] as? String
+            throw SimDriveError(.devicectl, "devicectl \(arguments.prefix(2).joined(separator: " ")) failed: \(description ?? result.diagnostics)")
+        }
+        return report?["result"] as? [String: Any] ?? [:]
+    }
+
     /// Extracts the members of a zip archive that match `pattern` into `directory`.
     func unzip(_ archive: String, members pattern: String, into directory: String) async throws -> ToolResult {
         try await Self.run([Self.unzip, "-qq", "-o", archive, pattern, "-d", directory], environment: ProcessInfo.processInfo.environment,

@@ -36,10 +36,26 @@ udid = args.udid
 only = set(args.only.split(',')) if args.only else None
 
 _devices = json.loads(subprocess.run(['xcrun', 'simctl', 'list', 'devices', '-j'], capture_output=True, text=True).stdout)['devices']
-_runtime = next(runtime for runtime, devices in _devices.items() for device in devices if device['udid'] == udid)
+_runtime = next((runtime for runtime, devices in _devices.items() for device in devices if device['udid'] == udid), None)
+# A physical device, which `simdrive list` names by CoreDevice's identifier or hardware UDID: device mode.
+_physical = None
+if _runtime is None:
+    _listing = json.loads(subprocess.run([SIMDRIVE, 'list'], capture_output=True, text=True).stdout.strip().splitlines()[-1])
+    _physical = next((device for device in _listing.get('result', []) if device.get('kind') == 'physical'
+                      and udid.lower() in (device['udid'].lower(), (device.get('hardwareUDID') or '').lower())), None)
+    if _physical is None:
+        sys.exit(f'{udid} is neither a simulator nor a connected device')
+    _runtime = _physical['runtime']
 _platform, _major, _minor = re.search(r'(iOS|tvOS)-(\d+)-(\d+)', _runtime).groups()
 OS = (int(_major), int(_minor))
 IS_TV = _platform == 'tvOS'
+IS_DEVICE = _physical is not None
+# The probe for a device is built by xcodebuild and signed with this team's development profile.
+DEVICE_TEAM = os.environ.get('SIMDRIVE_TEAM')
+DEVICE_PROBE_APP = os.path.join(REPO, '.build', 'probe-device', 'Release-iphoneos', 'AXProbe.app')
+# A device's probe log is copied over the cable or network, so reads are slower and waits longer.
+LOG_POLL = 1.0 if IS_DEVICE else 0.2
+WAIT_FACTOR = 3 if IS_DEVICE else 1
 # iOS 17.0's guest ignores a touch's edge, so system edge gestures need iOS 18 (F16); 17.1–17.5 are untested.
 EDGE_GESTURE_OS = (18, 0)
 os.makedirs(OUTPUT, exist_ok=True)
@@ -94,7 +110,7 @@ def corner_pixels(png, rows_fraction, columns_fraction):
     """The raw pixels of an image's top-left corner, its top `rows_fraction` of rows and left `columns_fraction` of
     columns, through sips' BMP, which stores rows bottom-up."""
     bmp = png + '.bmp'
-    if subprocess.run(['sips', '-s', 'format', 'bmp', png, '--out', bmp], capture_output=True).returncode != 0:
+    if not os.path.exists(png) or subprocess.run(['sips', '-s', 'format', 'bmp', png, '--out', bmp], capture_output=True).returncode != 0:
         return None
     data = open(bmp, 'rb').read()
     os.remove(bmp)
@@ -118,9 +134,19 @@ class ProbeLog:
     path = None
 
     def locate(self):
-        self.path = simctl('get_app_container', udid, BUNDLE, 'data').stdout.strip() + '/Documents/probe.log'
+        if IS_DEVICE:
+            self.path = os.path.join(OUTPUT, f'probe-{udid[:8]}.log')
+        else:
+            self.path = simctl('get_app_container', udid, BUNDLE, 'data').stdout.strip() + '/Documents/probe.log'
 
     def lines(self):
+        if IS_DEVICE:
+            # devicectl copies the app container's file over the cable or network.
+            copied = subprocess.run(['xcrun', 'devicectl', '--quiet', 'device', 'copy', 'from', '--device', udid,
+                                     '--domain-type', 'appDataContainer', '--domain-identifier', BUNDLE,
+                                     '--source', 'Documents/probe.log', '--destination', self.path], capture_output=True, text=True)
+            if copied.returncode != 0:
+                return []
         try:
             return open(self.path).read().splitlines()
         except FileNotFoundError:
@@ -130,12 +156,12 @@ class ProbeLog:
         return len(self.lines())
 
     def wait(self, mark, pattern, timeout=3.0, count=1):
-        deadline = time.time() + timeout
+        deadline = time.time() + timeout * WAIT_FACTOR
         while True:
             found = [line for line in self.lines()[mark:] if re.search(pattern, line)]
             if len(found) >= count or time.time() > deadline:
                 return found
-            time.sleep(0.2)
+            time.sleep(LOG_POLL)
 
 
 log = ProbeLog()
@@ -182,11 +208,21 @@ def launch_probe():
 
 
 def install_probe():
-    if not os.path.exists(PROBE_APP):
-        subprocess.run([BUILD_PROBE], check=True, capture_output=True)
-    response = sd('install', PROBE_APP)
+    if IS_DEVICE:
+        if not DEVICE_TEAM:
+            sys.exit('A device needs the probe signed by your team: set SIMDRIVE_TEAM to its 10-character team ID')
+        built = subprocess.run([BUILD_PROBE, '--device', _physical.get('hardwareUDID') or udid, DEVICE_TEAM], capture_output=True, text=True)
+        if built.returncode != 0:
+            sys.exit(f'The probe did not build for the device:\n{built.stdout[-1500:]}{built.stderr[-1500:]}')
+        app = DEVICE_PROBE_APP
+    else:
+        if not os.path.exists(PROBE_APP):
+            subprocess.run([BUILD_PROBE], check=True, capture_output=True)
+        app = PROBE_APP
+    response = sd('install', app)
     check('install', response.get('result', {}).get('bundleID') == BUNDLE, brief(response))
-    simctl('terminate', udid, BUNDLE)
+    if not IS_DEVICE:
+        simctl('terminate', udid, BUNDLE)
     log.locate()
     mark = log.mark()
     response = sd('launch', BUNDLE, '-probeArg', 'matrix')
@@ -199,7 +235,8 @@ def basics(doctor):
     process = subprocess.run([SIMDRIVE, 'list'], capture_output=True, text=True)
     check('list', udid in process.stdout and '"ok":true' in process.stdout)
     result = doctor.get('result', {})
-    appearances = ('unsupported',) if IS_TV else ('light', 'dark')
+    # A physical Apple TV reports its appearance through CoreDevice; a tvOS simulator has none.
+    appearances = ('unsupported',) if IS_TV and not IS_DEVICE else ('light', 'dark')
     check('doctor', doctor.get('ok') and isinstance(result.get('accessibility'), dict) and result.get('appearance') in appearances,
           json.dumps({key: result.get(key) for key in ('orientation', 'pasteboard', 'keyboard', 'displays', 'accessibility', 'appearance', 'posture')})[:400])
     response = sd('screenshot', output_path('shot'), '--max-dim', '600')
@@ -207,7 +244,7 @@ def basics(doctor):
     width, height = result.get('fullWidth', 0), result.get('fullHeight', 0)
     expected = width > height if IS_TV else height > width if not result.get('display') else width > 0
     check('screenshot', response.get('ok') and os.path.exists(result.get('path', '')) and expected,
-          f"{width}x{height} -> {result.get('width')}x{result.get('height')}")
+          f"{width}x{height} -> {result.get('width')}x{result.get('height')}" if response.get('ok') else brief(response))
 
 
 def setting_snapshot():
@@ -907,6 +944,204 @@ def tv_checks():
     sd('button', 'home')
 
 
+# MARK: Physical devices
+
+# The settings a device reaches through CoreDevice's actions, with what the probe logs for each value. Text sizes stay
+# below the accessibility sizes, which need Larger Accessibility Sizes turned on on the device (N38).
+DEVICE_SETTINGS = [
+    ('appearance', 'dark', 'light', r'style=2', r'style=1'),
+    ('text-size', 'extra-large', 'large', r'size=UICTContentSizeCategoryXL ', r'size=UICTContentSizeCategoryL '),
+    ('increase-contrast', 'on', 'off', r'darkerColors=1', r'darkerColors=0'),
+    ('reduce-motion', 'on', 'off', r'reduceMotion=1', r'reduceMotion=0'),
+    ('reduce-transparency', 'on', 'off', r'reduceTransparency=1', r'reduceTransparency=0'),
+]
+DEVICE_UNSUPPORTED = [
+    (('tree',), 'accessibility-unsupported'),
+    (('tap', '--label', 'Play', '--timeout', '100'), 'accessibility-unsupported'),
+    (('alert',), 'accessibility-unsupported'),
+    (('logs',), 'logs-unsupported'),
+    (('shake',), 'shake-unsupported'),
+    (('memory-warning',), 'memory-warning-unsupported'),
+    (('status-bar', 'clear'), 'status-bar-unsupported'),
+    (('privacy', 'reset', 'all'), 'privacy-unsupported'),
+    (('posture',), 'posture-unsupported'),
+]
+
+
+def probe_layout():
+    """The probe's controls, from its latest `LAYOUT` line, as screen fractions: a device's tree cannot find them."""
+    lines = [line for line in log.lines() if ' LAYOUT ' in line]
+    if not lines:
+        return {}
+    return {name: tuple(value.split(',')) for name, value in re.findall(r'(\w+)=([0-9.]+,[0-9.]+)', lines[-1])}
+
+
+def device_unsupported_checks():
+    for arguments, code in DEVICE_UNSUPPORTED:
+        response = sd(*arguments)
+        check(f"{' '.join(arguments)} (expect {code})", response.get('code') == code, brief(response))
+    if not IS_TV:
+        response = sd('push', BUNDLE, '-', stdin=json.dumps({'aps': {'alert': 'simdrive'}}))
+        check('push (expect push-unsupported)', response.get('code') == 'push-unsupported', brief(response))
+
+
+def device_tap_checks(points):
+    x, y = points['play']
+    mark = log.mark()
+    response = sd('tap', x, y)
+    lines = log.wait(mark, r'TAP play')
+    check('tap', response.get('ok') and lines and touch_near(log.lines()[mark:], 'began', float(x), float(y)),
+          brief(response) if not response.get('ok') else f'at {x},{y}')
+    mark = log.mark()
+    response = sd('swipe', '0.15', '0.8', '0.15', '0.3', '--duration', '300')
+    log.wait(mark, r'TOUCH ended')
+    lines = log.lines()[mark:]
+    check('swipe', response.get('ok') and touch_near(lines, 'began', 0.15, 0.8) and touch_near(lines, 'ended', 0.15, 0.3, 0.05),
+          '; '.join(line.split(' ', 1)[1] for line in lines if 'TOUCH' in line)[:200])
+    sd('swipe', '0.15', '0.3', '0.15', '0.9', '--duration', '200')
+    time.sleep(1)
+    for command, amount, pattern, tolerance in [('pinch', 2, r'PINCH scale=([0-9.-]+)', 0.3), ('rotate', 90, r'ROTATE angle=([0-9.-]+)', 12)]:
+        mark = log.mark()
+        response = sd(command, '0.5', '0.5', str(amount))
+        seen = [float(re.search(pattern, line).group(1)) for line in log.wait(mark, pattern)]
+        check(f'{command} {amount}', response.get('ok') and seen and abs(seen[-1] - amount) <= tolerance,
+              f'probe saw {seen[-1]}' if seen else brief(response))
+
+
+def device_key_checks(points):
+    for arguments, pattern, count in KEYS[:3]:
+        mark = log.mark()
+        response = sd(*arguments)
+        lines = log.wait(mark, pattern, count=count)
+        check(' '.join(arguments), response.get('ok') and len(lines) >= count,
+              brief(response) if not response.get('ok') else f'{len(lines)} matching presses')
+    sd('tap', *points['field'])
+    time.sleep(1)
+    clear_field()
+    for text in ('hello, world', 'xXxXAAbbCCd'):
+        clear_field()
+        mark = log.mark()
+        response = sd('type', text)
+        lines = log.wait(mark, rf'TEXT {re.escape(text)}$', 4)
+        check(f'type {text!r}', response.get('ok') and lines, brief(response) if not response.get('ok') else '')
+    clear_field()
+
+
+def device_orientation_checks():
+    for name, interface in (('landscape-left', 3), ('landscape-right', 4), ('portrait', 1)):
+        mark = log.mark()
+        response = sd('orientation', name)
+        lines = log.wait(mark, rf'ORIENT interface={interface}', 4)
+        check(f'orientation {name}', response.get('ok') and lines, brief(response) if not response.get('ok') else '')
+    shot = sd('screenshot', output_path('device-portrait'), '--max-dim', '400')
+    result = shot.get('result', {})
+    check('screenshot portrait after rotating back', shot.get('ok') and result.get('fullHeight', 0) > result.get('fullWidth', 0), brief(shot)[:160])
+
+
+def device_button_checks():
+    up = sd('button', 'volume-up')
+    down = sd('button', 'volume-down')
+    check('button volume-up/down', up.get('ok') and down.get('ok'), brief(down) if not down.get('ok') else '')
+    mark = log.mark()
+    response = sd('swipe', '0.5', '0.999', '0.5', '0.5', '--edge', 'bottom')
+    check('swipe --edge bottom (go home)', response.get('ok') and log.wait(mark, r'SCENE background', 4), brief(response))
+    mark = log.mark()
+    launch_probe()
+    check('launch from home', log.wait(mark, r'SCENE active', 4))
+    mark = log.mark()
+    response = sd('button', 'home')
+    check('button home', response.get('ok') and log.wait(mark, r'SCENE background', 4), brief(response))
+    mark = log.mark()
+    launch_probe()
+    log.wait(mark, r'SCENE active', 4)
+
+
+def device_misc_checks():
+    shot = output_path('device-run')
+    mark = log.mark()
+    response = sd('run', '-', stdin=json.dumps(['key b', f'screenshot {shot}']))
+    check('run', response.get('ok') and log.wait(mark, r'KEY code=5 ') and os.path.exists(shot), brief(response)[:200])
+    response = sd('uninstall', 'com.simdrive.missing')
+    check('uninstall (expect app-not-installed)', response.get('code') == 'app-not-installed', brief(response))
+    mark = log.mark()
+    url = 'simdriveprobe://item/device?x=1'
+    response = sd('openurl', url)
+    check('openurl', response.get('ok') and log.wait(mark, rf'URL {re.escape(url)}$', 4), brief(response))
+    launch_probe()
+
+
+def device_setting_checks():
+    """Each setting changes from its current value and back, since a device's owner may already have it either way."""
+    for name, value, default, on, off in DEVICE_SETTINGS:
+        steps = [(value, on), (default, off)]
+        if setting_argument(sd('setting', name).get('result', {}).get('value')) == value:
+            steps.reverse()
+        for target, pattern in steps:
+            mark = log.mark()
+            response = sd('setting', name, target)
+            seen = status_wait(mark, pattern)
+            check(f'setting {name} {target}', response.get('ok') and seen,
+                  brief(response) if not response.get('ok') else ('app saw it' if seen else 'app did not see it'))
+
+
+def device_tv_checks():
+    """A physical Apple TV: focus moves on the Home screen, checked by screenshots, and its unsupported commands."""
+    before = output_path('tv-before')
+    after = output_path('tv-after')
+    shots = [sd('screenshot', before, '--max-dim', '640')]
+    response = sd('button', 'left')
+    time.sleep(1)
+    shots.append(sd('screenshot', after, '--max-dim', '640'))
+    pixels = [corner_pixels(before, 1, 1), corner_pixels(after, 1, 1)]
+    moved = None not in pixels and pixels[0] != pixels[1]
+    check('button left moves focus (screenshots differ)', response.get('ok') and moved,
+          brief(response) if not response.get('ok') else '; '.join(brief(shot)[:100] for shot in shots if not shot.get('ok')))
+    sd('button', 'right')
+    response = sd('tap', '0.5', '0.5')
+    check('tap (expect no-touchscreen)', response.get('code') == 'no-touchscreen', brief(response))
+    response = sd('orientation', 'landscape-left')
+    check('orientation (expect orientation-unsupported)', response.get('code') == 'orientation-unsupported', brief(response))
+    response = sd('pasteboard')
+    check('pasteboard (expect pasteboard-unsupported)', response.get('code') == 'pasteboard-unsupported', brief(response))
+    initial = sd('setting', 'appearance').get('result', {}).get('value')
+    if initial in ('light', 'dark'):
+        other = 'dark' if initial == 'light' else 'light'
+        for value in (other, initial):
+            response = sd('setting', 'appearance', value)
+            check(f'setting appearance {value} (read back)', response.get('ok') and response['result'].get('value') == value, brief(response))
+
+
+def device_main(doctor):
+    """Checks a physical device. A device is someone's own, so every change is put back, and the pasteboard is written
+    only with --pasteboard; there is no tree, so the probe logs where its controls are."""
+    initial = setting_snapshot()
+    if want('basics'):
+        basics(doctor)
+        device_unsupported_checks()
+    if IS_TV:
+        if want('tv'):
+            device_tv_checks()
+    else:
+        install_probe()
+        sd('orientation', 'portrait')
+        points = probe_layout()
+        check('probe layout', 'play' in points and 'field' in points, str(points))
+        if points and want('tap'):
+            device_tap_checks(points)
+        if points and want('keys'):
+            device_key_checks(points)
+        if want('orientation'):
+            device_orientation_checks()
+        if want('buttons'):
+            device_button_checks()
+        if want('misc'):
+            device_misc_checks()
+        if want('settings'):
+            device_setting_checks()
+    restore_settings(initial)
+    stop()
+
+
 # MARK: Timing
 
 def timed(name, command, runs, before=None):
@@ -966,6 +1201,11 @@ def main():
     if not doctor.get('ok'):
         sys.exit(f'doctor failed: {brief(doctor)}')
     is_foldable = doctor['result'].get('posture') not in ('unsupported', None)
+    if IS_DEVICE:
+        device_main(doctor)
+        failed = [result for result in results if not result[1]]
+        print(f'\n{len(results) - len(failed)}/{len(results)} passed')
+        sys.exit(1 if failed else 0)
     if not IS_TV:
         install_probe()
         sd('orientation', 'portrait')

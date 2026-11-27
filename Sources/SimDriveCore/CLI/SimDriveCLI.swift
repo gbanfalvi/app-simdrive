@@ -1,4 +1,5 @@
 import Foundation
+import SimDriveNative
 
 /// The command line: runs a command through the device's daemon, or in this process, and prints one JSON line.
 @MainActor
@@ -33,18 +34,22 @@ package enum SimDriveCLI {
 
     private static func respond(to target: String, _ arguments: [String], runsInProcess: Bool) async throws -> CommandResponse {
         let tools = DeveloperTools(developerDirectory: try await DeveloperTools.resolveDeveloperDirectory())
-        if target == listCommand { return .success(try await BootedSimulators.list(tools: tools)) }
-        let udid = try await BootedSimulators.resolve(target, tools: tools)
+        if target == listCommand { return .success(try await Devices.list(tools: tools)) }
         let commandArguments = try inlineSteps(arguments)
         let command = try CommandParser.parse(commandArguments)
+        let device = try await Devices.resolve(target, tools: tools)
+        let udid = device.id
         let workingDirectory = FileManager.default.currentDirectoryPath
         switch command {
         case .serve:
-            try await DaemonServer(udid: udid, tools: tools).run()
+            try await DaemonServer(target: device, tools: tools).run()
             exit(EXIT_SUCCESS)
         case .stop:
             return try await DaemonClient.stop(udid: udid, tools: tools)
         case .logs(let query):
+            guard device.kind == .simulator else {
+                throw SimDriveError(.logsUnsupported, "\(target) is a physical device, which simdrive cannot read the logs of yet.")
+            }
             // Needs only simctl, so it neither waits behind the daemon's queue nor holds it while it waits.
             try StatePaths.prepare()
             return .success(try await DeviceLogs(udid: udid, tools: tools).read(query))
@@ -53,7 +58,7 @@ package enum SimDriveCLI {
                 return try await DaemonClient.send(udid: udid, arguments: commandArguments, workingDirectory: workingDirectory,
                                                    tools: tools)
             }
-            let session = try await DeviceSession.open(udid: udid, tools: tools)
+            let session = try await DeviceSession.open(device, tools: tools)
             let response: CommandResponse
             do { response = .success(try await session.execute(command, workingDirectory: workingDirectory)) } catch {
                 response = .failure(error)

@@ -5,6 +5,8 @@ import SimDriveNative
 /// between a catalog value and its action's input and output, as JSON objects.
 enum CoreDeviceSetting: String, Equatable, Sendable {
     case voiceOver, colorFilter, colorFilterIntensity
+    /// Kept by CoreSimulator on a simulator, so reached through these actions on physical devices only.
+    case appearance, textSize, increaseContrast, reduceMotion, reduceTransparency
 
     static let colorFilterTypes = ["grayscale", "protanopia", "deuteranopia", "tritanopia"]
     static let colorFilterOff = "off"
@@ -16,12 +18,47 @@ enum CoreDeviceSetting: String, Equatable, Sendable {
         switch self {
         case .voiceOver: .voiceOver
         case .colorFilter, .colorFilterIntensity: .colorFilter
+        case .appearance: .userInterfaceStyle
+        case .textSize: .textSize
+        case .increaseContrast: .increaseContrast
+        case .reduceMotion: .reduceMotion
+        case .reduceTransparency: .reduceTransparency
         }
+    }
+
+    /// The key of a toggle action's `{"enabled": Bool}` object, in its input and output.
+    private var toggleKey: String? {
+        switch self {
+        case .increaseContrast: "increaseContrast"
+        case .reduceMotion: "reduceMotion"
+        case .reduceTransparency: "reduceTransparency"
+        default: nil
+        }
+    }
+
+    /// A text size as the catalog names it, `accessibility-extra-large`, from CoreDevice's case name, `accessibilityExtraLarge`.
+    static func textSizeName(ofCase name: String) -> String {
+        name.reduce(into: "") { result, character in
+            if character.isUppercase { result += "-" + character.lowercased() } else { result.append(character) }
+        }
+    }
+
+    /// The inverse of `textSizeName(ofCase:)`.
+    static func textSizeCase(ofName name: String) -> String {
+        name.split(separator: "-").enumerated().map { $0.offset == 0 ? String($0.element) : $0.element.capitalized }.joined()
     }
 
     /// The setting's value in its action's output.
     func value(in output: [String: Any]) -> JSONValue {
+        if let toggleKey {
+            return ((output[toggleKey] as? [String: Any])?["enabled"] as? Bool).map(JSONValue.bool) ?? .unsupported
+        }
         switch self {
+        case .appearance:
+            return (output["style"] as? String).map(JSONValue.string) ?? .unsupported
+        case .textSize:
+            let size = (output["textSize"] as? [String: Any])?["size"] as? [String: Any]
+            return size?.keys.first.map { .string(Self.textSizeName(ofCase: $0)) } ?? .unsupported
         case .voiceOver:
             let configuration = output["voiceOverConfiguration"] as? [String: Any]
             return (configuration?["enabled"] as? Bool).map(JSONValue.bool) ?? .unsupported
@@ -33,6 +70,8 @@ enum CoreDeviceSetting: String, Equatable, Sendable {
         case .colorFilterIntensity:
             guard let filter = output["colorFilter"] as? [String: Any] else { return .unsupported }
             return (filter["intensity"] as? Double).map(JSONValue.number) ?? .null
+        case .increaseContrast, .reduceMotion, .reduceTransparency:
+            return .unsupported
         }
     }
 
@@ -50,7 +89,15 @@ enum CoreDeviceSetting: String, Equatable, Sendable {
     /// current state.
     @MainActor
     func input(for value: JSONValue, in context: Context = Context()) async throws -> [String: Any]? {
+        if let toggleKey {
+            guard case .bool(let isOn) = value else { return nil }
+            return [toggleKey: ["enabled": isOn]]
+        }
         switch (self, value) {
+        case (.appearance, .string(let style)):
+            return ["style": style]
+        case (.textSize, .string(let size)):
+            return ["textSize": ["size": [Self.textSizeCase(ofName: size): [String: Any]()]]]
         case (.voiceOver, .bool(let isOn)):
             return ["voiceOverConfiguration": ["enabled": isOn]]
         case (.colorFilter, .string(Self.colorFilterOff)):

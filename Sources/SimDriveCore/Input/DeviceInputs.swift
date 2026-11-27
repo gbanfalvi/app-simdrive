@@ -19,7 +19,7 @@ final class DeviceInputs {
     private let legacyButtons: LazyCapability<LegacyGuestButtons>
     private lazy var idle = IdleRelease(after: Timing.idleRelease) { [weak self] in await self?.release() }
 
-    init(guest: SimulatorGuest) {
+    init(guest: Guest) {
         let keyboardBindings = LazyCapability<KeyboardBindings> { try await KeyboardBindings() }
         self.keyboardBindings = keyboardBindings
         keyboard = LazyCapability(isUsable: { !$0.hasFailed }, close: { try? await $0.close() }) {

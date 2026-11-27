@@ -65,6 +65,8 @@ package final class CoreDeviceRemote {
     /// How long one capability call may take; they answer in milliseconds when CoreDevice works.
     private static let callLimit: Duration = .seconds(15)
 
+    /// CoreDevice's identifier, which `DeviceManager.devices` is keyed by.
+    package let identifier: UUID
     let runtime: ABIRuntime
     private let type: NativeSwiftType
     private let object: NativeSwiftValue
@@ -93,6 +95,36 @@ package final class CoreDeviceRemote {
         }
     }
 
+    /// A physical device's CoreDevice record, connected: CoreDevice opens its tunnel and enables its developer disk
+    /// image's services on the way, which takes about a second the first time.
+    package static func open(physical record: PhysicalDeviceRecord) async throws -> CoreDeviceRemote {
+        let remote = try await CoreDeviceRemote(identifier: record.identifier)
+        let connect = try await remote.type.resolve(.swift(.method("connect()", as: (() async throws -> Void).self)))
+        do {
+            try await remote.call("connect") { [object = remote.object] in try await unsafe connect.unsafeInvoke(on: object) }
+        } catch let error as SimDriveError {
+            throw error
+        } catch {
+            throw SimDriveError(.deviceNotConnected, "CoreDevice could not connect to \(record.name): \(error.localizedDescription) "
+                                + "Check that it is unlocked, trusts this Mac and has Developer Mode on.")
+        }
+        return remote
+    }
+
+    /// A RemoteXPC connection to the device service of `feature`, an `OS_xpc_remote_connection` that handles its
+    /// events on the main queue.
+    func remoteConnection(to feature: String) async throws -> AnyObject {
+        let open = try await type.resolve(.swift(.method(
+            "remoteXPCConnection(toFeatureIdentifiedBy:connectionMode:handlingEventsOn:)",
+            as: ((String, UInt64, DispatchQueue) async throws -> AnyObject).self)))
+        return try await call("remoteXPCConnection") { [object] in
+            try await unsafe open.unsafeInvoke(on: object, feature, Self.defaultConnectionMode, DispatchQueue.main)
+        }
+    }
+
+    /// The mode CoreDevice's own callers pass; others are undocumented.
+    private static let defaultConnectionMode: UInt64 = 0
+
     private init(identifier: UUID) async throws {
         let manager = try await CoreDeviceManager.shared()
         let runtime = ABIRuntime.shared
@@ -106,6 +138,7 @@ package final class CoreDeviceRemote {
             let supportsFeature = try await type.resolve(.swift(.method("supportsFeature(identifiedBy:)", as: ((String) -> Bool).self)))
             return (object, type, supportsFeature)
         }
+        self.identifier = identifier
         self.runtime = runtime
         self.object = object
         self.type = type

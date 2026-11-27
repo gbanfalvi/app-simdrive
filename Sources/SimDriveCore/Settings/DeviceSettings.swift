@@ -1,22 +1,31 @@
 import Foundation
 import SimDriveNative
 
-/// Reads and changes the settings of `SettingCatalog`.
+/// Reads and changes the settings of `SettingCatalog`. A simulator keeps each setting in its row's first storage; a
+/// physical device reaches only CoreDevice's setting actions, so it uses the first of those and lacks the rest.
 @MainActor
 final class DeviceSettings {
-    private let udid: String
-    private let device: SimulatorDevice
+    private let id: String
+    private let name: String
+    private let majorOSVersion: Int?
+    /// Nil on a physical device.
+    private let simulator: SimulatorDevice?
     private let tools: DeveloperTools
-    private let preferences: GuestPreferences
+    private let preferences: GuestPreferences?
     private let actions: @MainActor () async throws -> GuestSettingActions
 
-    init(udid: String, device: SimulatorDevice, tools: DeveloperTools, actions: @escaping @MainActor () async throws -> GuestSettingActions) {
-        self.udid = udid
-        self.device = device
+    init(id: String, name: String, majorOSVersion: Int?, simulator: SimulatorDevice?, tools: DeveloperTools,
+         actions: @escaping @MainActor () async throws -> GuestSettingActions) {
+        self.id = id
+        self.name = name
+        self.majorOSVersion = majorOSVersion
+        self.simulator = simulator
         self.tools = tools
         self.actions = actions
-        preferences = GuestPreferences(udid: udid, tools: tools,
-                                       directory: device.dataDirectory?.appendingPathComponent("Library/Preferences", isDirectory: true))
+        preferences = simulator.map { simulator in
+            GuestPreferences(udid: id, tools: tools,
+                             directory: simulator.dataDirectory?.appendingPathComponent("Library/Preferences", isDirectory: true))
+        }
     }
 
     func all() async throws -> JSONValue {
@@ -29,20 +38,20 @@ final class DeviceSettings {
 
     /// Writes the value, tells running apps, and reads it back.
     func set(_ setting: Setting, to value: JSONValue) async throws -> JSONValue {
-        guard isAvailable(setting) else { throw unsupported(setting) }
-        switch setting.storage {
-        case .interface(let option):
-            guard device.interfaceChoice(option) != nil, let choice = setting.interfaceChoice(for: value) else {
+        guard isAvailable(setting), let storage = storage(of: setting) else { throw unsupported(setting) }
+        switch (storage, simulator) {
+        case (.interface(let option), let simulator?):
+            guard simulator.interfaceChoice(option) != nil, let choice = setting.interfaceChoice(for: value) else {
                 throw unsupported(setting)
             }
-            try device.setInterfaceChoice(option, to: choice)
-        case .preference:
-            try await writePreference(value, of: setting)
+            try simulator.setInterfaceChoice(option, to: choice)
+        case (.preference, let simulator?):
+            try await writePreference(value, of: setting, on: simulator)
             if let service = setting.service, value == true {
                 try await enableApplicationAccessibility()
                 try await start(service)
             }
-        case .coreDevice(let field):
+        case (.coreDevice(let field), _):
             let actions = try await actions()
             guard try await actions.supports(field.action) else { throw unsupported(setting) }
             let current = field.needsCurrentValue ? try await actions.value(of: field.action) : [:]
@@ -50,12 +59,14 @@ final class DeviceSettings {
             guard let input = try await field.input(for: value, in: context) else {
                 throw SimDriveError(.settingUnsupported, field == .colorFilterIntensity
                     ? "Turn on a color filter other than grayscale with color-filter before setting its intensity."
-                    : "\(device.name) has no \(setting.name) setting.")
+                    : "\(name) has no \(setting.name) setting.")
             }
             try await actions.set(field.action, input: input)
-        case .notificationState(let name, _):
-            try device.setDarwinNotificationState(value == true ? 1 : 0, of: name)
-            try device.postDarwinNotification(name)
+        case (.notificationState(let notification, _), let simulator?):
+            try simulator.setDarwinNotificationState(value == true ? 1 : 0, of: notification)
+            try simulator.postDarwinNotification(notification)
+        case (.interface, nil), (.preference, nil), (.notificationState, nil):
+            throw unsupported(setting)
         }
         return try await read(setting)
     }
@@ -64,30 +75,41 @@ final class DeviceSettings {
         try await values(of: [setting])[setting.name] ?? .null
     }
 
-    /// Apps launched while it is off answer no accessibility reads until they relaunch.
+    /// Apps launched while it is off answer no accessibility reads until they relaunch. Simulators only.
     func enableApplicationAccessibility() async throws {
-        try await writePreference(true, of: SettingCatalog.applicationAccessibility)
+        guard let simulator else { return }
+        try await writePreference(true, of: SettingCatalog.applicationAccessibility, on: simulator)
     }
 
     func isApplicationAccessibilityEnabled() async throws -> Bool {
         try await value(of: SettingCatalog.applicationAccessibility) == true
     }
 
+    /// The storage this device keeps the setting in: a simulator's first, or a physical device's first setting action.
+    private func storage(of setting: Setting) -> Setting.Storage? {
+        guard simulator == nil else { return setting.storage }
+        return setting.storages.first { if case .coreDevice = $0 { true } else { false } }
+    }
+
     /// Each preference domain is exported once, and every read runs concurrently.
     private func values(of settings: [Setting]) async throws -> [String: JSONValue] {
-        let preferences = preferences
-        let available = settings.filter(isAvailable)
         var keysByDomain: [String: [(setting: Setting, key: String)]] = [:]
         var fieldsByAction: [GuestSetting: [(setting: Setting, field: CoreDeviceSetting)]] = [:]
-        var values = Dictionary(uniqueKeysWithValues: settings.filter { !available.contains($0) }.map {
-            ($0.name, JSONValue.unsupported)
-        })
-        for setting in available {
-            switch setting.storage {
-            case .interface(let option): values[setting.name] = setting.value(fromInterfaceChoice: device.interfaceChoice(option))
-            case .preference(let domain, let key, _, _): keysByDomain[domain, default: []].append((setting, key))
-            case .coreDevice(let field): fieldsByAction[field.action, default: []].append((setting, field))
-            case .notificationState(let name, _): values[setting.name] = .bool(try device.darwinNotificationState(name) != 0)
+        var values: [String: JSONValue] = [:]
+        for setting in settings {
+            guard isAvailable(setting), let storage = storage(of: setting) else {
+                values[setting.name] = .unsupported
+                continue
+            }
+            switch (storage, simulator) {
+            case (.interface(let option), let simulator?):
+                values[setting.name] = setting.value(fromInterfaceChoice: simulator.interfaceChoice(option))
+            case (.preference(let domain, let key, _, _), _): keysByDomain[domain, default: []].append((setting, key))
+            case (.coreDevice(let field), _): fieldsByAction[field.action, default: []].append((setting, field))
+            case (.notificationState(let notification, _), let simulator?):
+                values[setting.name] = .bool(try simulator.darwinNotificationState(notification) != 0)
+            case (.interface, nil), (.notificationState, nil):
+                values[setting.name] = .unsupported
             }
         }
         // One read per action. A device without the action's service, or whose guest refuses the read, lacks its settings;
@@ -96,6 +118,7 @@ final class DeviceSettings {
             let output = try await readIfSupported(action)
             for (setting, field) in fields { values[setting.name] = output.map(field.value) ?? .unsupported }
         }
+        guard let preferences, !keysByDomain.isEmpty else { return values }
         return try await withThrowingTaskGroup(of: [String: JSONValue].self) { [values] group in
             for (domain, keys) in keysByDomain {
                 group.addTask {
@@ -121,28 +144,28 @@ final class DeviceSettings {
         }
     }
 
-    private func writePreference(_ value: JSONValue, of setting: Setting) async throws {
-        guard case .preference(let domain, let key, _, let notifications) = setting.storage else { return }
+    private func writePreference(_ value: JSONValue, of setting: Setting, on simulator: SimulatorDevice) async throws {
+        guard case .preference(let domain, let key, _, let notifications) = setting.storage, let preferences else { return }
         try await preferences.write(setting.preferenceValue(for: value), forKey: key, in: domain)
         for notification in notifications {
-            try device.postDarwinNotification(notification)
+            try simulator.postDarwinNotification(notification)
         }
     }
 
     private func isAvailable(_ setting: Setting) -> Bool {
-        guard setting.isAvailable(onOSVersion: device.majorOSVersion), setting.service.map(device.hasLaunchDaemon) ?? true else {
-            return false
-        }
-        if case .notificationState(_, let feature) = setting.storage { return device.supportsFeature(feature) }
+        guard setting.isAvailable(onOSVersion: majorOSVersion) else { return false }
+        guard let simulator else { return true }
+        guard setting.service.map(simulator.hasLaunchDaemon) ?? true else { return false }
+        if case .notificationState(_, let feature) = setting.storage { return simulator.supportsFeature(feature) }
         return true
     }
 
     /// The guest's launchd domain belongs to the host user, who runs the simulator.
     private func start(_ service: String) async throws {
-        try await tools.simctl(["spawn", udid, "launchctl", "kickstart", "user/\(getuid())/\(service)"])
+        try await tools.simctl(["spawn", id, "launchctl", "kickstart", "user/\(getuid())/\(service)"])
     }
 
     private func unsupported(_ setting: Setting) -> SimDriveError {
-        SimDriveError(.settingUnsupported, "\(device.name) has no \(setting.name) setting.")
+        SimDriveError(.settingUnsupported, "\(name) has no \(setting.name) setting.")
     }
 }

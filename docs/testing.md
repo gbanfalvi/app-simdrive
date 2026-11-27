@@ -24,6 +24,18 @@ Evaluation/fresh.py [--device 'iPhone Duo'] [--runtime 27.2] [--only …]   # on
 - **Foldables** replace the orientation and button sections with every posture, checking that screenshots and trees follow the expected panel.
 - **Apple TV** has no probe; it drives Settings and checks focus movement, hit tests and the expected `no-touchscreen`, `orientation-unsupported` and `setting-unsupported` errors.
 - Settings are read at the start and restored when the run completes, and the run's daemon is stopped. An interrupted run restores nothing.
+- **Physical devices** (device mode) start when the UDID is a device's from `simdrive list`, or its hardware UDID.
+  - **Every device:** the run checks `list`, `doctor` and `screenshot`, and that each command without a device route fails with its `-unsupported` code.
+  - **iPhones and iPads** install the probe and check what it logs, with no tree:
+    - taps and swipes, `pinch` and `rotate`, keys and typing, at the controls the probe's `LAYOUT` line places
+    - orientation, then back to portrait
+    - volume, Home and the bottom-edge swipe
+    - `run`, a missing app's `uninstall` and `openurl`
+    - the settings CoreDevice's actions reach, each set and put back
+  - **Building the probe** needs `SIMDRIVE_TEAM`, the team whose development profile signs it. `build-probe.sh --device <hardware-udid> <team>` builds it with `xcodebuild` from `Evaluation/Probe/AXProbe.xcodeproj`, creating the profile and registering the device through the Mac's Xcode account.
+  - **The probe's log** is copied off the device with `devicectl` on each read, so waits are three times longer.
+  - **Apple TVs** check that `button left` moves focus, by comparing screenshots, and set appearance and put it back.
+  - **A device is its owner's:** the run puts back every setting and the orientation, never writes the pasteboard unless given `--pasteboard`, and presses neither Lock nor Siri.
 
 Results at v0.0.2: iPhone iOS 27 94/94, iOS 26 94/94, iOS 18 94/94, iOS 17 93/93, Duo 87/87, Apple TV 15/15.
 
@@ -32,6 +44,8 @@ Results at v0.1.0: a new iPhone 17, iOS 27.2, 125/125 for the whole matrix (befo
 Results at v0.1.1, by section on new simulators as each change landed, not one whole run: iPhone 17, iOS 27.2: the whole matrix 132/132 after F29, `tap` 44/44, `tree,keys` 39/39, `services` 12/12, `settings` 47/47; iPhone 15, iOS 17.0: `tree,tap,misc` 49/49, `buttons` 12/12, `settings` 42/42; iPhone Duo, iOS 27.2: the whole matrix 121/124 after F29, failures under parallel load (F30), then `logs,settings` 76/76.
 
 Results at v0.1.2, on new simulators: iPhone 17, iOS 27.2: the whole matrix 156/157 before F31's status-bar fix and F24's tokenless request, then `tree,tap` 56/56, `services` 12/12 twice, `settings` 49/49 and 47/47; iPhone Duo, iOS 27.2: `tree,tap,posture,buttons` 64/65, the failure `tree --app` before F24's fix, then `tree,tap` 55/55; iPhone 15, iOS 17.0 at 0d2c5fa: 150/152, failing `privacy grant photos` (F36) and a sheet-transition tap (F37).
+
+Device mode at N35 (2026-11-27): iPhone 15 Pro, iOS 27.2.1 over USB, 48/48 in about 100 s; Apple TV 4K, tvOS 27.2.1 over Wi-Fi, 20/20.
 
 ## The probe app
 
@@ -51,6 +65,7 @@ It appends lines to `Documents/probe.log` in its data container:
 | `ARGS …` | At launch, with its arguments |
 | `TAP play` | The Play button fires; it also logs `TAP play` and `TAP play error` to the unified log (subsystem `simdrive.probe`) and prints `TAP play stdout` |
 | `VOLUME …` | The output volume changes, which the simulator never reports |
+| `LAYOUT play=x,y field=x,y` | The screen appears, with the centers of Play and the text field as window fractions, which device mode taps |
 
 The log outlives runs. The matrix notes its line count before each action and matches only later lines.
 

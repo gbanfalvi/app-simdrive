@@ -17,6 +17,19 @@ Input goes to the guest's own HID services, as DeviceHub and NeoSimulator send i
 - **XCUITest**: needs a test runner per app, and could not tap the Duo's inner panel.
 - **Shipping inside NeoSimulator**: would tie simdrive to a GUI app and its releases.
 
+## One core, two transports for physical devices
+
+From iOS and tvOS 27, a device's developer disk image runs the same CoreDevice daemons a simulator's guest runs, and simdrive's own messages worked unchanged over CoreDevice's RemoteXPC connection to them (N35). So physical devices share the drivers, and the kinds split only in how a `Guest` connects, with whatever needs CoreSimulator kept in one place in the session. Rejected:
+
+- **CoreDevice's typed capabilities** (`HIDDigitizer.send`), as NeoSimulator drives devices: a second set of drivers, though the raw messages already work.
+- **An XCTest runner** for input: 0.7–3.7 s a touch, and signing. It remains the only route to a device's accessibility tree (N37).
+- **iOS 17–26:** their disk images lack these daemons, so no input reaches them without a runner.
+
+Choices made with the user:
+- Commands without a device route fail with the capability's own `-unsupported` code.
+- Because a set orientation holds on a device, the session puts back the reading it found when it closes.
+- A device is named by CoreDevice's identifier or its hardware UDID, while `booted` keeps meaning simulators.
+
 ## Port NeoSimulator onto ABIBridge
 
 The guest HID, keyboard translation, posture and pasteboard code came from NeoSimulator at `1dfc4af` (MIT; see [THIRD_PARTY.md](../THIRD_PARTY.md)), trimmed to the main keyboard (no per-Mac keyboard mirroring), the digitizer, buttons, orientation, pasteboard and posture. ABIBridge is pinned `exact: "0.20.4"`, the version NeoSimulator uses, because a different ABIBridge can change how the same symbols bind. When an Xcode update breaks a binding, diff NeoSimulator upstream for the ported files first: it tracks Xcode closely.

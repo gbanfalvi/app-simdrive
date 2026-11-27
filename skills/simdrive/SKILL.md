@@ -1,6 +1,6 @@
 ---
 name: simdrive
-description: Drives a booted iOS or tvOS simulator headlessly with the simdrive CLI, sending hardware keys, typing, taps, swipes, pinches, rotations and edge gestures, Home/lock/volume and Apple TV Remote buttons, rotation, pasteboard reads and writes, and a foldable's (iPhone Duo) open, half-open or closed hinge and split view, taking screenshots, reading the frontmost app's accessibility tree (labels, traits, VoiceOver elements, frames), reading the app's logs, stdout, stderr and crash reports or waiting for a log entry, and changing dark mode, text size, Liquid Glass tint and accessibility settings such as Reduce Motion or Bold Text. Use when an agent must interact with an app running in a simulator or Apple TV simulator, reproduce a UI bug, check what an action logged or why an app crashed, test keyboard navigation, Full Keyboard Access, tvOS focus, VoiceOver labels or Dynamic Type, or fold and unfold a Duo simulator.
+description: Drives a booted iOS or tvOS simulator headlessly with the simdrive CLI, sending hardware keys, typing, taps, swipes, pinches, rotations and edge gestures, Home/lock/volume and Apple TV Remote buttons, rotation, pasteboard reads and writes, and a foldable's (iPhone Duo) open, half-open or closed hinge and split view, taking screenshots, reading the frontmost app's accessibility tree (labels, traits, VoiceOver elements, frames), reading the app's logs, stdout, stderr and crash reports or waiting for a log entry, and changing dark mode, text size, Liquid Glass tint and accessibility settings such as Reduce Motion or Bold Text. Use when an agent must interact with an app running in a simulator or Apple TV simulator, reproduce a UI bug, check what an action logged or why an app crashed, test keyboard navigation, Full Keyboard Access, tvOS focus, VoiceOver labels or Dynamic Type, or fold and unfold a Duo simulator. Also drives a paired physical iPhone, iPad or Apple TV on iOS or tvOS 27 (input, screenshots, orientation, pasteboard, settings, install and launch; no accessibility tree or logs).
 ---
 
 # simdrive
@@ -11,7 +11,7 @@ Each call prints one JSON line: `{"ok":true,"result":…}`, or `{"ok":false,"err
 
 ## Workflow
 
-1. Pick the device: `simdrive list`. Use its UDID; `booted` works only when one simulator is booted.
+1. Pick the device: `simdrive list`. Use its `udid`; `booted` works only when one simulator is booted. Entries with `"kind": "physical"` are real devices: see Physical devices below.
 2. Check it: `simdrive <udid> doctor` reports the displays, orientation, pasteboard, hinge and frontmost app.
 3. Look: `simdrive <udid> screenshot /tmp/s.png`, then read the image. `simdrive <udid> tree` lists what VoiceOver stops on, with labels, types and tap points, which finds controls faster and cheaper than reading pixels.
 4. Act: tap an element by its label or identifier from `tree` (`tap --label View`, `tap --id play-button`), its `point`, pixels of the screenshot (`tap 120 340`) or fractions (`tap 0.5 0.25`). Prefer the label or identifier in `run` steps you keep, since points move with the layout. On an Apple TV, move focus with `button up|down|left|right` and activate with `button select`; `tree` marks the focused element `focused`.
@@ -86,6 +86,17 @@ echo '["tap 0.5 0.3", "logs --until loaded", "screenshot /tmp/b.png"]' | $S <udi
 - Errors carry a `code`, such as `no-screenshot`, `stale-screenshot`, `unsupported-character`, `no-touchscreen`, `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `split-unsupported`, `split-side-unknown`, `split-dropped`, `no-element`, `ambiguous-element`, `element-offscreen`, `element-still-shown`, `accessibility-timeout`, `accessibility-unavailable`, `app-accessibility-off`, `setting-unsupported`, `launch-not-frontmost`, `app-invalid`, `no-log-scope`, `app-not-installed`, `log-timeout`, `log-read`, `ambiguous-device` or `step-failed`. Fix the cause the message names. `"retry": true` means the same command may succeed if run again unchanged, as after `tool-timeout`, `coredevice-timeout` or `accessibility-timeout`; retry once, then take a screenshot to check that the simulator still responds. With `"retry": false`, change the command first. The README's error table lists every code.
 - Start apps with `launch`, not `simctl launch`: on iOS 27, an app started otherwise after Full Keyboard Access is turned off has no tree, and `tree` fails with `app-accessibility-off`.
 - If `tree` keeps failing with `accessibility-timeout` well after boot while a screenshot shows the app in front, the simulator's accessibility server is stuck: reboot the simulator if it is yours to reboot, otherwise ask.
+
+## Physical devices
+
+A paired iPhone, iPad or Apple TV on iOS or tvOS 27 with Developer Mode on appears in `list` as `"kind": "physical"`. It is someone's real device: act only as the task asks, and put back what you change.
+
+- **Works:** `key`, `type` (US layout), `tap`, `swipe` with `--edge`, `pinch`, `rotate`, `button`, `orientation`, `pasteboard`, `screenshot`, `setting` (appearance, text size, contrast, reduce motion and transparency, VoiceOver, color filter), `install`, `uninstall`, `launch`, `openurl`, `run` and `doctor`.
+- **Calls are slower:** a screenshot takes a second or more, many on an Apple TV over Wi-Fi.
+- **Missing:** `tree`, `tap --label`, `wait --label`, `alert`, `logs`, `push`, `privacy`, `shake`, `status-bar` and `memory-warning` fail with `accessibility-unsupported`, `logs-unsupported` or their own `-unsupported` code. Find things from screenshots and tap by pixels or fractions.
+- **Prepare the display:** input does not wake a sleeping display, and a screenshot of one fails with `display-asleep`; press a button first. A device with a passcode must be unlocked by its owner.
+- **Orientation:** `orientation` holds on a device until simdrive's daemon stops. `stop` puts it back as it lay.
+- **Reaching it:** `device-not-connected` means it is unplugged, off the network or without Developer Mode; ask its owner.
 
 ## Missing capabilities
 

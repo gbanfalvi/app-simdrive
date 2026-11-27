@@ -1,6 +1,6 @@
 # simdrive
 
-Drives a booted iOS or tvOS simulator's hardware keyboard, touchscreen, buttons, Apple TV Remote, orientation, pasteboard and foldable hinge from the command line, without Simulator.app or DeviceHub. It also reads the frontmost app's accessibility hierarchy and the launched app's logs, output and crashes, and changes appearance, text size, Liquid Glass and accessibility settings. Every call prints one JSON line, so LLM agents can use it directly.
+Drives a booted iOS or tvOS simulator's hardware keyboard, touchscreen, buttons, Apple TV Remote, orientation, pasteboard and foldable hinge from the command line, without Simulator.app or DeviceHub. It also reads the frontmost app's accessibility hierarchy and the launched app's logs, output and crashes, and changes appearance, text size, Liquid Glass and accessibility settings. Every call prints one JSON line, so LLM agents can use it directly. Paired iPhones, iPads and Apple TVs on iOS and tvOS 27 take the same input, screenshots, settings and app commands; see [Physical devices](#physical-devices).
 
 ## Build
 
@@ -16,8 +16,8 @@ swift build -c release   # Xcode 27, macOS 26
 ## Use
 
 ```sh
-simdrive list                                   # booted simulators
-simdrive <udid|booted> <command>
+simdrive list                                   # booted simulators and connected devices
+simdrive <udid|booted> <command>                # a simulator's UDID, a device's udid from list or hardware UDID
 ```
 
 | Command | Effect |
@@ -64,7 +64,7 @@ Values use the command line's spellings, such as `landscape-left` and `half`.
 
 | Command | `result` |
 | --- | --- |
-| `list` | `[{"udid", "name", "runtime", "deviceType"}]` |
+| `list` | `[{"kind", "udid", "name", "runtime", "deviceType"}]`; `kind` is `simulator` or `physical`. A device's `udid` is CoreDevice's identifier, which names it to simdrive; it adds `hardwareUDID`, which also does, and its `deviceType` is a product type such as `iPhone16,1` |
 | `key` | `{"key", "modifiers": [names], "count"}` |
 | `type` | `{"characters", "layout"}`; `layout` is the hardware keyboard layout typed on, such as `US` or `German` |
 | `tap` | `{"display": index or null, "point": {"x", "y"}}`, the point as fractions of the screen. With `--label` or `--id`: `{"display", "element", "settle"}`, the element as the light tree describes it, whose `point` is where it was tapped, and `settle`, `{"waited": milliseconds, "still": bool}`, the wait for the pixels there to hold still, or null when the screen's pixels cannot be read |
@@ -111,12 +111,16 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `tool-timeout` | A `simctl` call ran past its limit and was stopped | yes |
 | `unknown-key`, `unsupported-character` | A key or character the keyboard layout cannot type; paste it instead | no |
 | `no-touchscreen` | The device has no touchscreen, as an Apple TV | no |
-| `display-asleep` | The display stayed dimmed after three Lock presses, or lit but stayed locked; the input was not sent | no |
+| `display-asleep` | The display stayed dimmed after three Lock presses, or lit but stayed locked; the input was not sent. On a physical device, its display slept during a screenshot; press a button to wake it | no |
 | `no-screenshot`, `stale-screenshot` | Pixel coordinates need a screenshot taken since the device or the interface last rotated; take one | no |
 | `screenshot`, `screenshot-read`, `screenshot-scale`, `screenshot-write` | A screenshot could not be captured, read, scaled or written | no |
 | `single-display`, `unknown-display` | `--display` names a display the device lacks | no |
 | `legacy-buttons-unavailable` | `button --legacy` needs `IndigoButtonEvent`, which Xcode 27.3 removed; press without `--legacy` | no |
 | `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `setting-unsupported`, `accessibility-unsupported`, `memory-warning-unsupported` | The device lacks the capability | no |
+| `logs-unsupported`, `push-unsupported`, `privacy-unsupported`, `shake-unsupported`, `status-bar-unsupported` | A physical device, which has no route for the command yet; `accessibility-unsupported` and `split-unsupported` also answer there | no |
+| `device-not-connected` | CoreDevice cannot reach the physical device: it is unplugged, off the network, locked since it started, or without Developer Mode | no |
+| `devicectl` | A `devicectl` call failed; the message has CoreDevice's error | no |
+| `screen-capture` | A physical device refused or garbled a screenshot | no |
 | `posture-timeout` | The hinge did not reach or settle at the posture | yes |
 | `split-unsupported` | Split view needs a Duo's inner screen, unfolded and in landscape | no |
 | `split-side-unknown` | The app fills a half simdrive did not set; pass `--from` | no |
@@ -234,6 +238,20 @@ The first three are changed by CoreSimulator in process, as `simctl ui` does; tv
 
 The log reads go through `simctl spawn log`, and stdout and stderr through `simctl launch --stdout --stderr` into files in the device's `tmp` directory. Apps unbuffer their output through `NSUnbufferedIO`. A top-level `logs` runs in its own process, so it can wait while other calls drive the device; inside `run`, the steps after it wait for it. The unified log redacts dynamic values as `<private>` unless the app marks them public.
 
+### Physical devices
+
+An iPhone, iPad or Apple TV on iOS or tvOS 27, paired with this Mac and with Developer Mode on, takes most commands. Its developer disk image runs the same CoreDevice services a simulator's guest runs, and simdrive reaches them through CoreDevice, over USB or the network. `list` shows connected devices; name one by the `udid` `list` gives or by its hardware UDID.
+
+- **Same as a simulator:** `key`, `type`, `tap`, `swipe` with `--edge`, `pinch`, `rotate`, `button`, `orientation`, `pasteboard`, `screenshot`, `run` and `wait <ms>`.
+- **Different on a device:**
+  - `setting` reaches appearance, `text-size`, `increase-contrast`, `reduce-motion`, `reduce-transparency`, `voiceover` and the color filter, as the device allows. The rest read `unsupported`. An accessibility text size needs Larger Accessibility Sizes turned on on the device first.
+  - `install`, `uninstall`, `launch` and `openurl` go through `devicectl`, about a second each. `launch` neither captures the app's output nor waits for it to come to the front.
+  - `screenshot` captures over the cable or network, about 1 s for an iPhone; a sleeping display fails with `display-asleep`.
+  - `type` assumes a US keyboard layout.
+  - Element taps do not wait for pixels to settle, and input does not wake a sleeping display first.
+- **Not on a device:** `tree`, `tap --label`, `wait --label`, `alert` and `swipe --until-*` fail with `accessibility-unsupported`. `logs` fails with `logs-unsupported`, and `push`, `privacy`, `shake`, `status-bar` and `memory-warning` fail with their own `-unsupported` codes. A device has no hinge, so `posture` and `split` fail too.
+- **Orientation holds:** setting `orientation` on a device sets a simulated orientation that holds, since CoreDevice cannot give it back to the device's sensor. The daemon puts the device back as it lay, flat included, when it stops: after `stop`, 10 idle minutes, or a replaced build.
+
 ### Daemon
 
 The first command for a device starts a daemon that keeps the private-framework bindings loaded: the first call takes about 2 s, later ones tens of milliseconds. The daemon releases its keyboard, touch and button services 30 s after the last input and exits after 10 idle minutes. A rebuilt binary or a different developer directory replaces it. It runs one command at a time per device, so every wait on the simulator has a limit: a `simctl` call that runs too long is stopped with `tool-timeout`, and an unanswered CoreDevice call fails with `coredevice-timeout`. `stop` is answered at once, even while another command waits. Sockets, daemon logs and log cursors live in `/tmp/simdrive-<uid>/`. `--no-daemon` runs a command in-process.
@@ -242,7 +260,7 @@ The developer directory comes from `SIMDRIVE_DEVELOPER_DIR`, then `DEVELOPER_DIR
 
 ## Limitations
 
-- Simulators only; no physical devices.
+- Physical devices need iOS or tvOS 27 and lack several commands; see [Physical devices](#physical-devices).
 - `type` types what the simulator's hardware keyboard layout has keys for, with Shift, Option and dead keys; other text, such as `日`, goes through the pasteboard, which a syncing host copies to the Mac. An app keeps the layout it was launched with, so relaunch it after changing keyboards. On a layout without Latin letters, such as Russian, text only US can type goes as US keys, as iOS reads them in ASCII fields. `key` names US key positions.
 - No swipes on the Apple TV Remote's touch surface; the directional buttons move focus instead.
 - The iPhone Duo's cover panel accepts orientation changes, but its apps stay portrait.

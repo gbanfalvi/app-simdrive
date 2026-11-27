@@ -24,7 +24,7 @@ package final class CoreDevicePasteboard {
     package var hasFailed: Bool { remote.hasFailed }
 
     /// The simulator's pasteboard, or nil when it has none, as on tvOS. `remote` is only asked for when the guest has one.
-    package static func open(guest: SimulatorGuest,
+    package static func open(guest: Guest,
                              remote openRemote: @MainActor () async throws -> CoreDeviceRemote?) async throws -> CoreDevicePasteboard? {
         guard guest.hasService(feature), let remote = try await openRemote(), try remote.supports(feature) else { return nil }
         let implementation = try await remote.implementation(capability: capability, feature: feature)

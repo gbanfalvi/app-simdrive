@@ -863,3 +863,124 @@ NeoSimulator has none of these; `simctl` covers them.
 - **Read:** agent-device's `alert get|wait|accept|dismiss` ranks localized button labels (`D:website/docs/docs/commands.md:473-484`). idb detects modals from `SBAlertItemWindow` and `_UIAlertController*` windows (`I:SimulatorFrameworkBridge/Swift/AccessibilityService.swift:162-165,785-820`).
 - **Do:** after I8 reads SpringBoard, find an alert's buttons in its tree and tap them by label; `alert` returns the title, message and buttons, or null.
 - **Test:** the probe requests a permission at launch; accept and deny it in the matrix.
+
+### - [x] N35. Physical devices on iOS and tvOS 27 (L)
+
+- **Result (2026-11-27):** physical iPhones, iPads and Apple TVs on iOS and tvOS 27 take input, screenshots, orientation, the pasteboard, setting actions and app commands through shared drivers; the rest fails with named `-unsupported` codes. Device mode in the matrix passed 48/48 on an iPhone 15 Pro (iOS 27.2.1, USB) and 20/20 on an Apple TV 4K (tvOS 27.2.1, Wi-Fi), with each device left as found. The simulator matrix passed 157/157 on an iPhone 17, iOS 27.2. Left: N36, N37, N38, I35, F42.
+- **Steps 1–5 and step 7:**
+  - **Decisions taken with the user:**
+    - Error codes per capability: `logs-unsupported`, `push-unsupported`, `privacy-unsupported`, `shake-unsupported` and `status-bar-unsupported`, besides the existing `accessibility-unsupported`.
+    - Orientation is restored on `stop` and daemon exit.
+    - A device is named by CoreDevice's identifier or its hardware UDID; `booted` still means simulators only.
+  - **Code:**
+    - `GuestLink` with `SimulatorLink` and `RemoteDeviceLink`, and `Guest(simulator:)` and `Guest(physical:)`.
+    - `GuestActions` is shared by the setting actions and `GuestScreenCapture`.
+    - `PhysicalDevices` lists devices and `Devices` resolves them.
+    - `ScreenSource`, with `SimulatorScreens` and `DeviceScreens`.
+    - `AppControl`, with `SimulatorApps` and `DeviceAppControl` over `devicectl`.
+    - Settings rows have ordered storages, and five rows gained action storages.
+    - `DeviceSession` keeps simulator-only parts apart.
+  - **Verified with the release build:**
+    - On the Apple TV (tvOS 27.2.1, Wi-Fi): `list`, `doctor`, `screenshot` (4K in 8.2 s), `button left|right` as screenshots showed, `setting`, and the expected `accessibility-unsupported`, `logs-unsupported`, `orientation-unsupported` and `pasteboard-unsupported`.
+    - On the iPhone 15 Pro (iOS 27.2.1, USB): `screenshot` (1.3–2.3 s), `swipe` both ways, `launch` (1.1 s), `swipe --edge bottom` going home, `setting`, and `orientation` set, with `stop` restoring `faceUp`. The device was named by its hardware UDID too.
+    - Unit tests: `PhysicalDeviceTests`, proved able to fail.
+  - **Matrix device mode (step 7):**
+    - The probe is built by `xcodebuild` from `Evaluation/Probe/AXProbe.xcodeproj` and signed with the owner's team (`SIMDRIVE_TEAM`). Automatic provisioning first failed until the team accepted Apple's latest Program License Agreement.
+    - The probe logs `LAYOUT` for taps without a tree, and its log is copied with `devicectl`.
+    - Settings checks start from each setting's current value, since the owner had Increase Contrast on.
+    - `uninstall` of a missing app on a device now returns `app-not-installed`.
+- **Spike (2026-11-27):** step 0 passed on a tvOS device: an Apple TV 4K on tvOS 27.2.1, over the local network.
+  - simdrive's own guest messages, sent over `RemoteDevice.remoteXPCConnection`, created a button service and pressed `menu`, `left` and `right`, as screenshots confirmed. The barrier answers there too.
+  - This confirms the channel seam of the design below, so the drivers can stay unchanged.
+  - Details are in [private APIs](../docs/private-apis.md#physical-devices).
+  - A second spike added the design's `GuestLink` under `GuestConnection`. The unchanged `GuestButtons`, `GuestKeyboard` and `GuestSettingActions` drove the Apple TV: buttons, typing into Search, and appearance reads.
+  - A screenshot taken in process through `CaptureScreenshotActionDeclaration` needs a lit display. While the Apple TV sleeps it fails with 25005, so `DisplayWake` must cover devices too. Waking lands on tvOS's profile picker.
+  - Setting actions on a device need the CoreDevice identifier as `deviceIdentifier`.
+  - **iPhone, iOS 27.2.1, wired.** The unchanged `GuestTouchscreen` and `GuestOrientation` worked on an iPhone 15 Pro. Taps and swipes landed, and the bottom-edge swipe went home. Rotation also worked: Safari turned to landscape, and screenshots follow the interface. So did the seven appearance reads and in-process screenshots (1.1 s). A system alert blocked the home swipe.
+  - **Orientation needs design.** On a device, `orientation` sets a simulated physical orientation that persists. CoreDevice has no call to clear it, only `faceUp` and `faceDown` among the values it accepts. The device design must record the reading before setting it and restore it, or the command must say that it holds the orientation.
+  - **Still unverified:** the pasteboard (not read on a personal phone), pinch and rotate, buttons and the keyboard on an iPhone, and the simulator matrix on the link layer.
+  - The spike code was throwaway executable targets, not kept.
+- **Why:** agents test on real hardware too. This was investigated without a device first; only the spike above has run against one.
+- **Found on this Mac (Xcode 27.2, CoreDevice 651.32):**
+  - The iOS and tvOS 27 developer disk images (`/Library/Developer/DeveloperDiskImages/{iOS,tvOS}_DDI`, mounted read-only) ship CoreDevice daemons with the features simdrive already sends in simulators. `dtuhidd` has `remote.universalhidservice`, `remote.hid.digitizer`, `remote.hid.button`, `remote.hid.keyboard` and `remote.hid.vendordefined`. `dthidd` has `remote.devicecontrol.orientation`. `dtpasteboardd` has `pasteboard`. `dtconfigurationd` has `customizeuistyle`, `customizeappearancesettings`, `customizeliquidglass` and `voiceover`. `dtscreencaptured` has `capturescreenshot`. `dtdeviceinfod` has `getdisplayinfo`, `getlockstate` and `monitormotion`. `dtlocationd` has `simulatelocation`. `dtappserviced` covers launch, install, signals, memory warnings and stdio.
+  - Each daemon requires a `com.apple.private.CoreDevice.*` entitlement of its RemoteXPC peer. The Mac-side holder is `CoreDevice.framework/XPCServices/CoreDeviceService.xpc`, which runs for any process loading the framework. That is how an unentitled `devicectl` and NeoSimulator reach these services, and why simdrive could too.
+  - `devicectl device` in Xcode 27.2 has these subcommands: `capture screenshot|screen-record`, `orientation get|set|rotate`, `pasteboard`, `settings appearance` (style, text size, contrast, reduce motion and transparency, borders, Liquid Glass, color filter), `settings voiceover`, `simulate location|statusBar|biometrics`, `info displays|lockState`, and `process launch|openURL|sendMemoryWarning`.
+  - The device's testmanagerd `remote.automation` service requires `AppleInternal`.
+  - **The tvOS 27 image differs from the iOS one:**
+    - `dtuhidd` adds `remote.hid.tvremote`, a dedicated Siri Remote feature beside `remote.hid.button`.
+    - `dthidd` lists no features, so it has no orientation.
+    - There is no `dtpasteboardd`.
+    - `dtconfigurationd` lacks `customizeliquidglass`.
+    - Screenshots, appearance, VoiceOver, display info, location and the app service match iOS.
+    - An Apple TV pairs over the network only (`remote pair` with a PIN), so every call crosses Wi-Fi or Ethernet.
+- **Read:**
+  - **Physical-device prior art:** NeoSimulator reaches physical devices through `RemoteDevice.getImplementation(for:)` with `UniversalHIDServiceCapability`, `ButtonHIDCapability` and `DigitizerHIDCapability` (`N:NeoSimulatorDeviceIO/CoreDevice/CoreDeviceHIDService.swift:45-93`, `N:NeoSimulatorPresentationAdapters/Native/CoreDeviceScreenInput.swift:25-92` @c9710cf), streams screens over USB and Wi-Fi (#544), and follows rotation (#555).
+  - **Raw-protocol versions:**
+    - pymobiledevice3 `remote/core_device/{hid_service,screen_capture_service,orientation_service}.py` and `remote/ddi_services.py`. It dates these services to DDI build 27A5194q.
+    - go-ios `ios/hid/{digitizer,button}.go` and `ios/screencapture`. On iOS 18, go-ios gets CoreDeviceError 9021.
+    - idb `FBDeviceHID`.
+  - **Clones:** `/tmp/devsurvey/`.
+- **What each command would need:**
+
+  | Command | Physical transport | iOS / tvOS |
+  | --- | --- | --- |
+  | `tap`, `swipe` (with `--edge`), `pinch`, `rotate`, `key`, `type`, `button` | CoreDevice HID capabilities, as in simulators but through `RemoteDevice`. pymobiledevice3 says raw UniversalHID reports are dropped without an active media stream, while the digitizer and button features are not; check which holds through CoreDevice. No acknowledgment, so the matrix must check effects. | 27+ |
+  | `screenshot` | `capturescreenshot`, per display | 27+; DVT screenshot service for 17–26, main display only |
+  | `orientation` | `remote.devicecontrol.orientation` (rotates even when locked, per pymobiledevice3) | 27+ |
+  | `pasteboard` | `PasteboardCapability`, unchanged | 27+ (go-ios says 17+, unconfirmed) |
+  | `setting` | The configuration actions simdrive already sends, through CoreDevice rather than a guest Mach lookup. The preference-file reads (I30) do not exist on a device, so reads go through the actions or the AX audit daemon's settings. | 27+ |
+  | `launch`, `install`, `uninstall`, `openurl`, `memory-warning` | CoreDevice appservice (`devicectl process …`), with stdout and stderr over its stdio socket | 17+ |
+  | `logs` | `os_trace_relay` for the unified log; crash reports over `crashreportcopymobile` (AFC). Neither is wrapped by CoreDevice. Needs a new driver. | 17+ |
+  | `status-bar`, location | `devicectl device simulate statusBar` and `simulatelocation` (location is a new command) | 27+ |
+  | `doctor` | `getdisplayinfo`, `getlockstate` | 27+ |
+  | `tree`, `tree <x> <y>`, `tap --label`, `wait --label`, `alert`, `swipe --until-*`, `tree --covered` | **None without an XCTest runner.** `AXPTranslator` reaches a guest only through CoreSimulator. The AX audit daemon (`com.apple.accessibility.axAuditDaemon.remoteserver`, which Accessibility Inspector uses) gives VoiceOver-order focus with label, value and identifier, but no frames, and its point hit test answers empty on devices (go-ios on iOS 18.4). A full tree needs a signed runner app, as WebDriverAgent or agent-device use, at 0.7–3.7 s a touch through the runner. | — |
+  | `posture`, `split` | No hinge on a real device to drive | — |
+  | `push`, `privacy`, `shake` | None found: `simctl`-only, and no host-side privacy grant exists for devices | — |
+
+- **Decide with the user:**
+  - Whether simdrive takes on devices at all. Its scope so far is simulators ("Not planned" below).
+  - The device floor. 27+ keeps one transport. Supporting 17–26 needs DVT and lockdown drivers and still has no input.
+  - Whether to ship without element commands, or to add a runner, which brings signing, a team ID and an install step.
+  - Device identity and selection: `list`, `booted` and the UDID no longer come from CoreSimulator.
+- **Design (2026-11-27): the transport splits at the channel, not at the drivers.**
+  - **Drivers stay unchanged.** Every input and control driver (`GuestTouchscreen`, `GuestKeyboard`, `GuestButtons`, `GuestOrientation`, `GuestSettingActions`, the pasteboard) only calls `connection(to: feature)` on `S:SimDriveNative/Guest/SimulatorGuest.swift`, then posts, requests, flushes and creates services on a `GuestConnection`.
+  - **CoreDevice has the physical equivalent:** `RemoteDevice.remoteXPCConnection(toFeatureIdentifiedBy:connectionMode:handlingEventsOn:) -> OS_xpc_remote_connection`, plus `RemoteDevice.enableDeveloperDiskImageServices(options:…)`, both in CoreDevice's symbols. The daemon on the far end is the same binary, so the messages should be the same (unverified).
+  - **SimDriveNative:**
+    - A `GuestLink` protocol: `SimulatorLink` is today's `xpc_connection_t`, and `RemoteDeviceLink` wraps `xpc_remote_connection`. `GuestConnection` keeps its failure tracking, deadlines and `flush`/`drain` on top. Drain timing moves to the link.
+    - `SimulatorGuest` becomes `Guest`, with factories `Guest.simulator(SimulatorDevice)` and `Guest.device(CoreDeviceRemote)`.
+    - `CoreDeviceRemote.open` takes an identity: a simulator's UDID or a physical device's identifier.
+    - New physical drivers: `DeviceScreenCapture` (`capturescreenshot`), `DeviceDisplayInfo` (`getdisplayinfo`, `getlockstate`) and `DeviceAppService` (appservice).
+  - **SimDriveCore:**
+    - `DeviceIdentity` (`kind`, `id`, `name`, `platform`, `osVersion`, `hasTouchscreen`). `list` and `booted` merge booted simulators with paired devices from `CoreDeviceManager`. The daemon and state paths key on `id`.
+    - `DeviceBackend`, built once by `.simulator(…)` or `.physical(…)`, holds `guest`, `ScreenSource`, `PowerState`, `AppControl`, `LogSource`, `AccessibilitySource` (nil on devices), `KeyboardLayoutSource` (US on devices) and `isCurrent`. `DeviceSession`, `Screens`, `DisplayWake`, `DeviceAccessibility`, `SplitView` and `AppLauncher` take parts instead of `SimulatorDevice`. A missing part fails with a named code.
+    - `SettingCatalog` rows get an ordered list of storages. The backend says which storage kinds it has, and devices have only actions. Appearance, text size and the like gain `dtconfigurationd` action storages.
+    - Parsing, JSON, geometry, gestures, element logic, log digests, `run` and the daemon protocol stay unchanged.
+  - **Decide before step 2:**
+    - The new codes: `accessibility-unsupported`, `logs-unsupported`, `push-unsupported` and `privacy-unsupported`, or one `unsupported-on-device` code instead.
+    - `device-disconnected` (retryable), `developer-mode-off` and `device-locked`.
+    - A `"kind"` field in `list`.
+- **Do (if yes), each step one commit:**
+  0. **A spike on a real iPhone and Apple TV, both on 27.** It gates the rest.
+     - List `supportsFeature`.
+     - Through `remoteXPCConnection`, send today's digitizer tap and the barrier, then keyboard and buttons through `universalhidservice`, with and without a media stream.
+     - Read orientation, take a screenshot, and run one setting action.
+     - Record the results in `docs/private-apis.md`.
+     - If the raw messages differ, the device branch of step 3 uses CoreDevice's typed capabilities (`HIDDigitizer.send`, as NeoSimulator does) behind the same drivers.
+  1. **A refactor of simulators only, with no behavior change:** `GuestLink` with `SimulatorLink`, `Guest.simulator`, `DeviceIdentity`, and `DeviceBackend` with its simulator parts. The full matrix must match v0.1.2 on new iPhone, Duo and Apple TV simulators.
+  2. **Device discovery and selection**, with the contract changes above.
+  3. **`RemoteDeviceLink` and `Guest.device`:** input, orientation, pasteboard and setting actions.
+  4. **Screens, wake and `doctor`** from capture and display info, plus the settings storage list.
+  5. **`AppControl` for devices.**
+  6. **`LogSource` over `os_trace_relay`** and crash reports.
+  7. **Matrix device mode**, skipping `tree`, `alert`, `posture`, `privacy`, `push`, and `pasteboard` on tvOS. The probe app is signed with a team ID from the environment.
+- **Edge cases:**
+  - Developer Mode is off, or the DDI is not mounted: mount it once per session.
+  - A device locked with a passcode fails with `device-locked`; simdrive never types a passcode.
+  - A Wi-Fi drop or an unplugged cable gives `device-disconnected`, and the lazy parts reopen.
+  - An Apple TV is reached over the network only.
+  - A foreground app using the camera or microphone refuses the media stream.
+  - Whether idle release still matters on a device.
+  - The barrier reply is the only acknowledgment.
+- **Test:**
+  - Unit tests: `DeviceIdentity` merging and resolution, backend part selection with fakes, the order of setting storages, and the error mapping.
+  - The matrix's device mode on a real iPhone and Apple TV, both on 27. Say which device and OS ran.

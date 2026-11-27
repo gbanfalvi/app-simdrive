@@ -54,6 +54,11 @@ extension ErrorCode {
     static let coreDeviceErrorType = ErrorCode(rawValue: "coredevice-error-type")
     static let coreDeviceTimeout = ErrorCode(rawValue: "coredevice-timeout", retryable: true)
     static let coreDeviceNotReady = ErrorCode(rawValue: "coredevice-not-ready", retryable: true)
+    /// A physical device CoreDevice lists but cannot reach: unplugged, off the network, locked before first unlock, or
+    /// without Developer Mode.
+    package static let deviceNotConnected = ErrorCode(rawValue: "device-not-connected")
+    static let screenCapture = ErrorCode(rawValue: "screen-capture")
+    package static let displayAsleep = ErrorCode(rawValue: "display-asleep")
     static let hingeObservation = ErrorCode(rawValue: "hinge-observation")
     static let hingeSnapshot = ErrorCode(rawValue: "hinge-snapshot")
     static let hingePayload = ErrorCode(rawValue: "hinge-payload")

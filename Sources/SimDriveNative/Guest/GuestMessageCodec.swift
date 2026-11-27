@@ -104,9 +104,9 @@ struct GuestMessageCodec {
         try orientationRequestType.makeEnumCase(named: "currentOrientation")
     }
 
-    func orientationRequest(_ orientation: DeviceOrientation) throws -> NativeSwiftValue {
-        try orientationRequestType.makeEnumCaseAndWait(named: "changeOrientation",
-            payload: orientationType.makeEnumCase(named: orientation.rawValue))
+    /// `orientation` is a CoreDevice `DeviceOrientation` case name, such as `landscapeLeft` or `faceUp`.
+    func orientationRequest(_ orientation: String) throws -> NativeSwiftValue {
+        try orientationRequestType.makeEnumCaseAndWait(named: "changeOrientation", payload: orientationType.makeEnumCase(named: orientation))
     }
 
     func orientation(from reply: xpc_object_t) throws -> GuestOrientationReading { try readOrientation(reply) }

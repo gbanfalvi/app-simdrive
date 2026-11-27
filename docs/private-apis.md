@@ -154,6 +154,62 @@ Loaded from `/System/Library/PrivateFrameworks/AccessibilityPlatformTranslation.
 - Body fields used: `procName`, `pid`, `captureTime` (`2026-11-12 13:54:50.9488 +0000`), `exception` (`type`, `signal`), `asi` (an image's strings), `faultingThread`, `threads[].frames` (`imageIndex`, `symbol`, `symbolLocation`, `imageOffset`), `lastExceptionBacktrace` and `usedImages[].name`.
 - A report's extended attributes include `Signature`, by which ReportCrash recognizes a repeated crash.
 
+## Physical devices
+
+Learned in N35 on 2026-11-27 with Xcode 27.2 (CoreDevice 651.32): first in spikes, then through simdrive's own commands. It used an Apple TV 4K on tvOS 27.2.1, paired over the local network, and an iPhone 15 Pro on iOS 27.2.1 over USB, both with Developer Mode on.
+
+- **Listing.** `PhysicalDevices.paired()` reads `DeviceInfo`'s `name`, `udid`, `productType`, `osVersion`, `state` and `visibilityClass`, whose raw value `simulators` marks a simulator's record.
+- **Connecting.** `CoreDeviceRemote.open(physical:)` connects, and `Guest(physical:)` opens each feature with `remoteXPCConnection` behind a `RemoteDeviceLink`.
+- **Settings and screenshots** go through `GuestActions`, named by CoreDevice's identifier.
+
+- **The device's services.** Its developer disk image runs the guest's CoreDevice daemons: `dtuhidd`, `dthidd`, `dtconfigurationd`, `dtscreencaptured`, `dtdeviceinfod`, `dtappserviced` and others. The image's files live in `/Library/Developer/DeveloperDiskImages/{iOS,tvOS}_DDI`, each daemon's `RemoteServices` listing its features.
+  - Each service requires a `com.apple.private.CoreDevice.*` entitlement of its peer. CoreDevice.framework's `CoreDeviceService.xpc` holds them, so an unentitled process that loads CoreDevice reaches them.
+- **Reaching the device.** `DeviceManager.devices` lists paired devices, since simdrive's manager already admits `.default`.
+  - `RemoteDevice.connect()` took 1.1 s cold and 30 ms warm.
+  - `RemoteDevice.remoteXPCConnection(toFeatureIdentifiedBy:connectionMode:handlingEventsOn:)` with mode 0 took 30 ms. It returns an `OS_xpc_remote_connection`.
+  - That connection is driven with RemoteXPC.framework's C functions: `xpc_remote_connection_set_event_handler`, `_activate`, `_send_message`, `_send_message_with_reply` and `_cancel`. Their block parameters escape.
+- **The same messages as a simulator's guest.** simdrive's `GuestMessageCodec` messages worked unchanged on this connection.
+  - The `{"isBarrier": true}` request answered with an empty dictionary: 200 ms first, then 26–80 ms.
+  - `createService` with `HIDServiceType.mainScreenButtons` returned `serviceID`.
+  - `CustomButtonReport` presses `menu` (which dismissed the screensaver), `left` and `right` moved focus, as screenshots showed.
+  - No media stream was running. pymobiledevice3's note that UniversalHID needs one did not hold for buttons here.
+- **The Apple TV's features.** It supports `remote.universalhidservice`, `remote.hid.button`, `remote.hid.keyboard`, `capturescreenshot`, `customizeuistyle`, `customizeappearancesettings`, `getlockstate` and `getdisplayinfo`.
+  - It lacks `remote.hid.digitizer`, `remote.hid.tvremote`, `remote.devicecontrol.orientation` and `pasteboard`, though its image lists `tvremote` and `digitizer`.
+  - `devicectl device info voiceover` fails with CoreDeviceError 21062, "VoiceOver is not supported on this device".
+- **Through `devicectl`, warm:**
+  - `capture screenshot` returned a 3840 × 2160 PNG in 6.9 s.
+  - `info displays` reads `TVOut` at 3840 × 2160 and point scale 1. Its `backlightState` was `off` on the display and `activeOn` at the top level, with the TV showing.
+  - `info lockState` reads `passcodeRequired` and `unlockedSinceBoot`.
+  - `info appearance` reads `userInterfaceStyle`, `textSize` and `increaseContrast`.
+- **Unchanged drivers through a link layer.** A second spike put a `GuestLink` protocol under `GuestConnection`, with a simulator link for `xpc_connection_t` and a remote one for the RemoteXPC functions. `GuestButtons`, `GuestKeyboard` and `GuestSettingActions` then ran on the device unchanged.
+  - **Keyboard.** Opening the keyboard took 3.1–3.5 s, binding resolution included. The keyboard's `return` chose a profile, and typing `test` into Search, then four deletes, worked.
+  - **Buttons.** `select` opened Search from the Home screen, but did nothing on the profile picker shown after waking, where `return` worked (cause unknown).
+  - **Setting actions.**
+    - The message's `CoreDevice.deviceIdentifier` must be the device's CoreDevice identifier. The hardware UDID gets CoreDevice error 0 with no description.
+    - `GetUserInterfaceStyle` (`{"style":"light"}`) took 1.0 s cold. `GetDeviceTextSize` (`{"textSize":{"size":{"large":{}}}}`) and `GetDeviceIncreaseContrast` each took 90–180 ms warm.
+    - On tvOS, Reduce Motion fails with 21040 and Reduce Transparency with 21041, both "not supported on this device". Liquid Glass has no service.
+  - **Screenshots.**
+    - `CaptureScreenshotActionDeclaration` takes the top-level `CaptureScreenshotInput` (`displayUniqueID`, `requestedFormat` `"png"`) and returns `CaptureScreenshotOutput`, whose `image` is a `CGImage` (base64 PNG as JSON).
+    - With the display lit, a 3840 × 2160 capture took 4.5–4.9 s through the spike's JSON round trip.
+    - While the Apple TV sleeps (top-level `backlightState` `off`), it fails with 25005, "Display reports zero-sized native size", through `devicectl` too.
+    - A `menu` press woke the Apple TV, onto its profile picker.
+- **iPhone 15 Pro, iOS 27.2.1 (24B156), wired, no passcode.**
+  - **Features.** It lists every feature simdrive uses: `remote.hid.digitizer`, `remote.hid.button`, `remote.hid.keyboard`, `remote.universalhidservice`, `remote.devicecontrol.orientation`, `pasteboard`, `capturescreenshot`, `customizeuistyle`, `customizeappearancesettings`, `customizeliquidglass`, `voiceover`, `getlockstate` and `getdisplayinfo`.
+  - **Touch.** The unchanged `GuestTouchscreen` with `DigitizerTarget.mainScreen` and native unit coordinates worked. Swipes paged the Home screen both ways in 0.4 s, and a tap opened Clock in 74 ms. A drag from (0.5, 0.999) with the `bottom` edge went home. Opening the touchscreen took 0.3 s.
+  - **Orientation.** The unchanged `GuestOrientation` read in 5–8 ms and set `landscapeLeft`, then `portrait`, in 5–9 ms.
+    - The set is a simulated physical orientation, and it persists. Afterwards the device reported `portrait` instead of the `faceUp` its sensor had given.
+    - With Safari in front, `landscapeLeft` turned its interface. `devicectl`'s screenshot came back upright at 2556 × 1179, with the Dynamic Island on the left, so screenshots follow the interface, as on simulators. Back in `portrait`, the bottom-edge home swipe did nothing while a system alert ("iPhone Storage Full") was up.
+    - `devicectl device orientation set` also takes `faceUp` and `faceDown`, which restored the reading. CoreDevice has no call to clear the override, so whether the sensor takes over again is unverified.
+  - **Setting actions.** All took 50–100 ms warm and 1.3 s cold: `GetUserInterfaceStyle`, `GetDeviceTextSize`, `GetReduceMotion`, `GetReduceTransparency`, `GetDeviceIncreaseContrast`, `GetLiquidGlassConfiguration` and `GetVoiceOver`.
+  - **Screenshots.** `CaptureScreenshotActionDeclaration` returned a 1179 × 2556 PNG in 1.1–1.2 s. `devicectl device info displays` lists the panel (`LCD`, 1179 × 2556, point scale 3) and a second display whose backlight was off.
+  - **Pasteboard.** Not read, since this was the owner's own phone.
+- **Not tried:**
+  - pinch and rotate
+  - hardware buttons and the keyboard on an iPhone
+  - the pasteboard
+  - decoding the `CGImage` directly instead of through JSON
+  - the simulator matrix on the link-layer change
+
 ## Finding more
 
 - **Swift symbols**: `nm -gU <binary> | swift demangle`, filtered for the type or feature. ABIBridge takes the demangled names.

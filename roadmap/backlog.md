@@ -73,7 +73,33 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Why:** reported from app_mono (2026-11-26, iPad Pro 13-inch (M5), iOS 26.5, HarnessCross in Release). With a SwiftUI `Picker` menu open (the editor's Antialiasing picker), `tap --label TAA` failed with `ambiguous-element`, naming two elements at the same point, (0.8605, 0.6254); `tree` likewise listed each option twice. Tapping the point worked. Either the app exposes the item twice (a container and its child with the same label), or `tree` flattens both levels of one element.
 - **Do:** reproduce with any SwiftUI menu picker, compare with `tree --full` and Accessibility Inspector; if both entries are the same element seen twice, deduplicate in the flattening; if it's a parent and its child, prefer the actionable one for `tap` instead of failing as ambiguous. **Test:** `tap --label <option>` on an open menu picker.
 
+### - [ ] F42. Physical-device behavior N35 did not check (M, unverified)
+
+- **Why:** N35 ran on one iPhone 15 Pro (iOS 27.2.1, USB) and one Apple TV 4K (tvOS 27.2.1, Wi-Fi), both the owner's own. Device mode covers input, keys, typing, orientation, volume, Home, `run`, `openurl`, `install`, a missing app's `uninstall` and the action-backed settings. These were not tried:
+  - **Untried commands:**
+    - `pasteboard`, not read on a personal phone. Device mode writes it only with `--pasteboard`.
+    - Installing an `.ipa`.
+    - `button lock` and `button siri` on an iPhone, which device mode leaves out on an owner's phone.
+  - **Seen once:** in the Apple TV's first device-mode run (2026-11-27), `screenshot` failed without printing a reason, and a direct call right after worked. The check now prints the error.
+  - **Untried devices:** an iPad, an iPad with an external display, which `DeviceScreens` treats as one display, and iOS 27.0 or 27.1.
+  - **Interface orientation:** a device reports none, so pixel and fraction mapping uses the device's orientation. A landscape-only app on an upright iPhone may map taps wrongly, as simulators did before reading CoreSimulator's interface orientation.
+  - **Failure modes:**
+    - Unplugging, or losing Wi-Fi, mid-session: the expected codes are `guest-connection`, then `device-not-connected` on reopen. `DeviceSession.isCurrent` is always true for a device, so the daemon keeps its session and `CoreDeviceRemote`. Whether that record still opens connections after a reconnect is unknown; if not, `isCurrent` should check the record's connection state.
+    - A device locked with a passcode.
+    - Developer Mode off.
+  - **State that outlives the device:** `ScreenStore` keeps a device's records across its reboots (no `bootedAt`).
+  - **Unexplained:** `select` on the Apple TV's profile picker did nothing, though `return` worked.
+  - **Idle release:** whether releasing inputs after 30 s still matters on a device.
+- **Do:** run each on a device you own or one set aside for testing, fix what breaks, and record behavior in `docs/device-behavior.md`. The interface-orientation gap may need `DisplayInfoActionDeclaration`, whose input type is not nested in the declaration, as with the screenshot's.
+- **Test:** the matrix's device mode, `Evaluation/matrix.py <device-udid>` with `SIMDRIVE_TEAM`, extended for each case.
+
 ## 2. Improvements to existing commands
+
+### - [ ] I34. `launch` with new arguments while the app is running (S, unverified)
+
+- **Seen (2026-11-27, app_mono, iPad Pro 13-inch (M5), iOS 27.2):** `launch com.gb.harness.HarnessCross -tab leadKit -leadKitDemo environment -leadKitOrbit <yaw>,-10,12` with the app already running, twice with different yaws, gave identical screenshots: the arguments, read once from `UserDefaults` at startup, apparently never reached a new process. `scripts/run` (install, then launch) applied them.
+- **Do:** check whether `launch` terminates a running instance before launching (`simctl launch --terminate-running-process` does). If not, terminate first whenever arguments are passed, or add `--relaunch`, and say in the result whether a process was replaced.
+- **Test:** the probe app logging its arguments, launched twice with different ones; the second log shows the second set.
 
 ### - [ ] I10. Apply settings through the guest's own setting actions (M, steps 1 and 3 done)
 
@@ -174,7 +200,7 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 ### - [ ] I29. Read and set the hinge through the guest's own services, not CoreDevice (M, unverified)
 
 - **Why:** found in the source comparison (2026-11-25). `posture` waits on `CoreDeviceRemote`, whose first call blocks 10–40 s after a boot, and `posture-timeout` showed up on new Duos (F31). AXe reaches the guest directly: `SimDevice lookup:` of `com.apple.coredevice.feature.monitormotion` to read and of `…remote.hid.vendordefined` to write, connected with `xpc_endpoint_create_mach_port_4sim`, `xpc_connection_create_from_endpoint` and `xpc_connection_enable_sim2host_4sim`; writes are an `IndigoVendorDefinedEvent` with usage page 0xFF61, usage 0x5B; reads have a 3 s budget; and it keys on `launchd_sim`'s pid and start time so a reboot mid-call fails cleanly (`A:Packages/IDBKit/FBSimulatorControl/HID/FBSimulatorHIDMotionFeed.swift:87-104`, `A:FBSimulatorHingeNative.swift:16,76-134`, `A:FBSimulatorHingeReader.swift:13-23@581c5b7`). AXe is GPL: reimplement the mechanism, do not copy code.
-- **Read:** `S:SimDriveNative/DeviceControl/CoreDeviceHinge.swift`, `S:SimDriveCore/DeviceControl/Hinge.swift`, `S:SimDriveNative/Guest/SimulatorGuest.swift` (how `Guest*` drivers connect).
+- **Read:** `S:SimDriveNative/DeviceControl/CoreDeviceHinge.swift`, `S:SimDriveCore/DeviceControl/Hinge.swift`, `S:SimDriveNative/Guest/Guest.swift` (how `Guest*` drivers connect).
 - **Do:** a `GuestHinge` driver in `DeviceControl/` with `open(guest:)` returning nil without the services, and `Hinge` on it; drop `CoreDeviceHinge` once the matrix's `posture` passes on new Duos.
 - **Test:** `Evaluation/fresh.py --device 'iPhone Duo' --only posture` three times; time the first `posture` after `bootstatus` before and after.
 
@@ -192,6 +218,11 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 
 - **Why:** found in the source comparison (2026-11-25). idb's in-guest bridge turns on automation mode, observes `kAXUserTestingNotification` (4002), and asks the app with action 0x7fa (monitor the idle run loop) or 0x7fb (detect animations finished); the app answers `RunLoopIsIdle` or `AnimationsNonActive`, and posts `TouchEventsCompleted` after each touch sequence (`I:SimulatorFrameworkBridge/Runtime/Private/AXRuntimePrivate.h:86-114`, `I:SimulatorFrameworkBridge/Swift/AccessibilityQuiescence.swift:193-249`). It is the signal XCTest's `waitForQuiescenceIncludingAnimationsIdle` uses. `TouchEventsCompleted` would also confirm that a tap was delivered, which no simdrive check does.
 - **Do:** spike whether the Mac's translator can perform 0x7fa/0x7fb on an app element and receive 4002; idb used a helper in the guest. Compare with `Stillness` on the F29 alert and I27's sheet. Automation mode is device-wide and turns off when another client exits; apps with endless animations never go idle, so keep a bound (agent-device caps XCTest's wait at 1 s).
+
+### - [ ] I35. Faster screenshots on physical devices (S)
+
+- **Why:** left from N35. A 3840 × 2160 Apple TV screenshot took 8.2 s over Wi-Fi, and an iPhone's 1.3–2.3 s over USB. `GuestScreenCapture` decodes `CaptureScreenshotOutput` to JSON, so the image is PNG-encoded on the device, base64-encoded, JSON-parsed, decoded, then encoded again as PNG.
+- **Do:** read `CaptureScreenshotOutput.image` as a `CGImage` through ABIBridge instead of through JSON. Measure several rounds before and after. Check whether the input takes a smaller size for calibration, which needs only the image's size; the display info's `nativeSize` may give that with no capture.
 
 ## 3. New features
 
@@ -442,6 +473,35 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
 - **Why:** left from I6 (2026-11-25). Input now wakes a dimmed display first, pressing Lock. An agent that tests what a dimmed or sleeping display does with a touch cannot send one.
 - **Do:** a `--no-wake` flag on `tap`, `swipe`, `pinch`, `rotate`, `alert` and `orientation`, passed to `DisplayWake`; parser tests, README and skill. Only if someone asks for it.
 
+### - [ ] N36. `logs` on physical devices (M, unverified)
+
+- **Why:** left from N35. A device's `logs` fails with `logs-unsupported`, and its `launch` captures no stdout or stderr.
+- **Read:**
+  - pymobiledevice3 `services/os_trace.py` streams the unified log over `com.apple.os_trace_relay`, a lockdown and RSD service in the OS that needs no Developer Mode. `services/crash_reports.py` copies crash reports over `com.apple.crashreportcopymobile`. Both are in the clones in `/tmp/devsurvey/`.
+  - `devicectl device process launch --console` gives stdout over CoreDevice's stdio socket.
+- **Do:** a `LogSource` behind `DeviceLogs` with a simulator implementation (`simctl spawn log`) and a device one. First check whether CoreDevice wraps `os_trace_relay`; if not, decide with the user before adding a lockdown client.
+- **Test:** the probe app on a device, logging `TAP play` to the unified log and stdout. The matrix's `logs` section in device mode.
+
+### - [ ] N37. Accessibility on physical devices (L, needs a decision)
+
+- **Why:** left from N35. `tree`, `tap --label`, `wait --label`, `alert` and `swipe --until-*` fail with `accessibility-unsupported` on devices. Element commands are what agents use most.
+- **Read:**
+  - The AX audit daemon (`com.apple.accessibility.axAuditDaemon.remoteserver`, which Accessibility Inspector uses) moves VoiceOver focus and reads label, value and identifier. It has no frames, and its hit test answers empty on devices (go-ios, iOS 18.4).
+  - A full tree needs an XCTest runner signed with a team ID, as WebDriverAgent and agent-device use, at 0.7–3.7 s a touch.
+  - testmanagerd's `remote.automation` requires `AppleInternal`.
+- **Do:** decide with the user between a signed runner (signing, install, latency) and the audit daemon's focus-only reads (no frames, so `tap --label` would activate rather than tap).
+
+### - [ ] N38. Device extras: wake, status bar, memory warning, launch to front, larger text sizes (M, unverified)
+
+- **Why:** left from N35, each with a route that was not built:
+  - **Wake:** `DisplayWake` skips devices, since their backlight and lock state are not read. `devicectl device info displays` reports `backlightState`, and `info lockState` reports `passcodeRequired` and `unlockedSinceBoot`. Waking an Apple TV lands on its profile picker. A passcode must never be typed: fail with a named code.
+  - **`status-bar`:** `devicectl device simulate statusBar override|clear`.
+  - **`memory-warning`:** `devicectl device process sendMemoryWarning --pid`, with the launched app's pid.
+  - **`launch` to front:** `launch` neither waits for the app to come to the front (no accessibility) nor captures output (N36).
+  - **Larger text sizes:** accessibility text sizes need Larger Accessibility Sizes, which only `CoreDevice.CustomizableAppearanceElements.largerAccessibilitySizes` names. No action declaration for it was found.
+  - **`show-borders`:** `GetShowBordersActionDeclaration` exists, but its input shape is unchecked, so the row has no action storage.
+- **Do:** each as its own step. Check the setting inputs on a simulator first, as N35 did.
+
 ## Not planned
 
 - **Scroll wheel and trackpad gestures:** the guest drops them unless they come from a real Mac HID device (`N:NeoSimulatorPresentationAdapters/Native/CoreDeviceScreenInput.swift:318-319,388`). Drags already scroll.
@@ -449,5 +509,5 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
 - **Screen connection, USB capture, virtual-machine client and device reports:** these serve physical devices (`N:NeoSimulatorDeviceIO/CoreDevice/CoreDeviceScreenConnection.swift`, `RemoteScreenCaptureSource.swift`, `CoreDeviceVirtualMachineClient.swift`, `N:NeoSimulatorKit/Devices/DeviceReports.swift`). `logs` already reads simulator crash reports.
 - **Video recording through CoreDevice:** `simctl io recordVideo` covers simulators. N28 plans `record start|stop` over `simctl` (stopped with SIGINT, waiting for "Recording started", as `N:NeoSimulatorKit/Simulator/Capture/VideoRecording.swift:56-96` does).
 - **An XCTest runner inside the simulator, as agent-device uses:** each touch costs 0.7–3.7 s, and a cold start may build the runner with `xcodebuild` (`D:apple/runner/RUNNER_PROTOCOL.md`, `D:docs/evidence/ios-other-paths-latency-2026-10-19.md`). simdrive's guest services answer in milliseconds.
-- **An LLM agent loop, React Native tooling, device clouds and physical devices** (AXe's `agent`, agent-device's `react-devtools` and remote sessions): outside simdrive's job of driving simulators for an agent that already exists.
+- **An LLM agent loop, React Native tooling and device clouds** (AXe's `agent`, agent-device's `react-devtools` and remote sessions): outside simdrive's job of driving simulators for an agent that already exists. Physical devices were here too, until N35 found that iOS 27's developer disk image carries the same CoreDevice services.
 - **External displays, CarPlay and audio routing:** costly, and of little use to agents.

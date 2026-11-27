@@ -18,10 +18,11 @@ final class DisplayWake {
     private static let pollInterval: Duration = .milliseconds(100)
     private static let unlockPath = [CGPoint(x: 0.5, y: 0.999), CGPoint(x: 0.5, y: 0.3)]
 
-    private let device: SimulatorDevice
+    private let device: SimulatorDevice?
     private let inputs: DeviceInputs
 
-    init(device: SimulatorDevice, inputs: DeviceInputs) {
+    /// Nil `device` for a physical device, whose backlight and lock state simdrive cannot read yet; its input is sent as is.
+    init(device: SimulatorDevice?, inputs: DeviceInputs) {
         self.device = device
         self.inputs = inputs
     }
@@ -33,9 +34,10 @@ final class DisplayWake {
 
     /// Wakes `screen`'s display when it is dimmed or off, and returns whether it did.
     func wake(_ screen: Screen) async throws -> Bool {
+        guard let device else { return false }
         let screenID = screen.display?.index ?? Screens.mainScreenID
         guard Self.needsWake(try await device.backlights()[screenID]) else { return false }
-        let wasLocked = try isLocked()
+        let wasLocked = try isLocked(device)
         var presses = 0
         repeat {
             guard presses < Self.maximumPresses else {
@@ -44,35 +46,35 @@ final class DisplayWake {
             }
             try await inputs.press(.lock, count: 1, hold: CommandParser.defaultButtonHold, legacy: false)
             presses += 1
-        } while try await !isLit(screenID)
-        if !wasLocked, try isLocked() { try await unlock(screen) }
+        } while try await !isLit(screenID, on: device)
+        if !wasLocked, try isLocked(device) { try await unlock(screen, on: device) }
         return true
     }
 
-    private func isLit(_ screenID: Int) async throws -> Bool {
+    private func isLit(_ screenID: Int, on device: SimulatorDevice) async throws -> Bool {
         try await poll(every: Self.pollInterval, within: Self.lightLimit) { [device] in
             try await device.backlights()[screenID] == .on ? true : nil
         } ?? false
     }
 
     /// Swipes up from the bottom edge, and presses Home where the guest ignores the edge, as iOS 17.0 does (F16).
-    private func unlock(_ screen: Screen) async throws {
+    private func unlock(_ screen: Screen, on device: SimulatorDevice) async throws {
         try await inputs.drag(through: Self.unlockPath.map { screen.digitizerPoint(.normalized($0)) },
                               duration: CommandParser.defaultSwipeDuration, edge: screen.mapping.digitizerEdge(.bottom),
                               on: screen.digitizerTarget)
-        if try await waitUntilUnlocked() { return }
+        if try await waitUntilUnlocked(device) { return }
         try await inputs.press(.home, count: 1, hold: CommandParser.defaultButtonHold, legacy: false)
-        guard try await waitUntilUnlocked() else {
+        guard try await waitUntilUnlocked(device) else {
             throw SimDriveError(.displayAsleep, "\(device.name) lit its display but stayed locked; swipe up from the bottom edge "
                                 + "to unlock it.")
         }
     }
 
-    private func waitUntilUnlocked() async throws -> Bool {
-        try await poll(every: Self.pollInterval, within: Self.unlockLimit) { [self] in try isLocked() ? nil : true } ?? false
+    private func waitUntilUnlocked(_ device: SimulatorDevice) async throws -> Bool {
+        try await poll(every: Self.pollInterval, within: Self.unlockLimit) { [self] in try isLocked(device) ? nil : true } ?? false
     }
 
-    private func isLocked() throws -> Bool {
+    private func isLocked(_ device: SimulatorDevice) throws -> Bool {
         try device.darwinNotificationState(Self.lockStateNotification) != 0
     }
 }

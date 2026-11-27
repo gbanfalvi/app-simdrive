@@ -33,13 +33,10 @@ enum Screenshots {
     /// `maxDimension` pixels, writes a downscaled copy to `path` and the original next to it. Zero keeps the original only.
     static func capture(udid: String, display: Int?, frame: ScreenFrame?, to path: String, maxDimension: Int,
                         tools: DeveloperTools) async throws -> Screenshot {
-        let url = URL(fileURLWithPath: path)
-        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
-        let fileExtension = url.pathExtension.isEmpty ? pngExtension : url.pathExtension
-        let fullURL = url.deletingPathExtension().appendingPathExtension(fullExtension).appendingPathExtension(fileExtension)
         if let frame {
-            return try capture(upright(frame), url: url, fullURL: fullURL, maxDimension: maxDimension)
+            return try write(upright(frame), to: path, maxDimension: maxDimension)
         }
+        let (url, fullURL) = try urls(for: path)
         try await tools.simctl(simctlArguments(udid: udid, display: display, path: fullURL.path))
         let full = try size(of: fullURL.path)
         guard maxDimension > 0, max(full.width, full.height) > maxDimension else {
@@ -49,6 +46,20 @@ enum Screenshots {
         }
         let image = try downscale(fullURL, to: url, maxDimension: maxDimension)
         return Screenshot(path: url.path, image: image, fullPath: fullURL.path, full: full)
+    }
+
+    /// Writes an upright image as `capture` writes a screen.
+    static func write(_ image: CGImage, to path: String, maxDimension: Int) throws -> Screenshot {
+        let (url, fullURL) = try urls(for: path)
+        return try capture(image, url: url, fullURL: fullURL, maxDimension: maxDimension)
+    }
+
+    /// The image's file, and its full-resolution original's next to it, with their directory created.
+    private static func urls(for path: String) throws -> (url: URL, fullURL: URL) {
+        let url = URL(fileURLWithPath: path)
+        try FileManager.default.createDirectory(at: url.deletingLastPathComponent(), withIntermediateDirectories: true)
+        let fileExtension = url.pathExtension.isEmpty ? pngExtension : url.pathExtension
+        return (url, url.deletingPathExtension().appendingPathExtension(fullExtension).appendingPathExtension(fileExtension))
     }
 
     /// The size of `frame` as a screenshot shows it.

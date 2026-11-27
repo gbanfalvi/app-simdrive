@@ -10,7 +10,9 @@ final class DaemonServer {
     /// How long closing the session may take at shutdown, since a guest that stopped answering cannot be released.
     private static let closeLimit: Duration = .seconds(3)
 
-    private let udid: String
+    private let target: DeviceTarget
+    /// The device's ID, which names its socket, lock and log.
+    private var udid: String { target.id }
     private let tools: DeveloperTools
     private var session: DeviceSession?
     private var lastActivity = ContinuousClock.now
@@ -21,8 +23,8 @@ final class DaemonServer {
     /// Set once shutdown starts; the idle loop, a `stop` request and a signal all await this one shutdown.
     private var stopping: Task<Void, Never>?
 
-    init(udid: String, tools: DeveloperTools) {
-        self.udid = udid
+    init(target: DeviceTarget, tools: DeveloperTools) {
+        self.target = target
         self.tools = tools
     }
 
@@ -150,7 +152,7 @@ final class DaemonServer {
             self.session = nil
             await session.close()
         }
-        let opened = try await DeviceSession.open(udid: udid, tools: tools)
+        let opened = try await DeviceSession.open(target, tools: tools)
         opened.warmUpAccessibility()
         session = opened
         return opened

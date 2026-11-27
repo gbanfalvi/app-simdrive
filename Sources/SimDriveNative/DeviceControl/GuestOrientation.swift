@@ -47,7 +47,7 @@ package final class GuestOrientation {
     }
 
     /// The guest's orientation service, or nil when it has none, as on tvOS.
-    package static func open(guest: SimulatorGuest) async throws -> GuestOrientation? {
+    package static func open(guest: Guest) async throws -> GuestOrientation? {
         guard guest.hasService(feature) else { return nil }
         return GuestOrientation(connection: try await guest.connection(to: feature), codec: guest.codec)
     }
@@ -59,7 +59,20 @@ package final class GuestOrientation {
     }
 
     package func set(_ orientation: DeviceOrientation) async throws -> GuestOrientationReading {
-        try await send(codec.orientationRequest(orientation))
+        try await send(codec.orientationRequest(orientation.rawValue))
+    }
+
+    /// Sets the device back to how it lay, flat included. On a physical device a set orientation holds until set again,
+    /// since CoreDevice has no call to hand it back to the device's sensor. An unknown orientation is left as it is.
+    package func restore(_ physical: PhysicalOrientation) async throws {
+        let name: String? = switch physical {
+        case .upright(let orientation): orientation.rawValue
+        case .faceUp: "faceUp"
+        case .faceDown: "faceDown"
+        case .unknown, .other: nil
+        }
+        guard let name else { return }
+        _ = try await send(codec.orientationRequest(name))
     }
 
     private func send(_ request: NativeSwiftValue) async throws -> GuestOrientationReading {

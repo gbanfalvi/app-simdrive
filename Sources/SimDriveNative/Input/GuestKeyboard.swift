@@ -16,7 +16,7 @@ package final class GuestKeyboard {
     }
 
     /// Creates the guest's keyboard and waits until the guest takes its keys.
-    package static func open(guest: SimulatorGuest, bindings: KeyboardBindings) async throws -> GuestKeyboard {
+    package static func open(guest: Guest, bindings: KeyboardBindings) async throws -> GuestKeyboard {
         let connection = try await guest.connection(to: GuestHIDService.universalHIDFeature)
         let service = try await connection.createService(try bindings.mainKeyboardDescriptor())
         let keyboard = GuestKeyboard(connection: connection, translator: try bindings.makeTranslator(), service: service)

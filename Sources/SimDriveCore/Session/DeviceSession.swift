@@ -2,79 +2,145 @@ import AppKit
 import Foundation
 import SimDriveNative
 
-/// One booted simulator's services, opened on first use. Each command runs here and returns its JSON result.
+/// One device's services, opened on first use: a booted simulator's, or a connected physical device's. Each command runs
+/// here and returns its JSON result. Input, orientation, the pasteboard, screenshots, settings and apps work on both;
+/// the rest needs CoreSimulator, so a physical device fails it with the capability's `-unsupported` code.
 @MainActor
 final class DeviceSession {
     /// UIKit in the guest turns it into a shake motion event, as Simulator's Device > Shake posts it.
     private static let shakeNotification = "com.apple.UIKit.SimulatorShake"
-    private let udid: String
-    private let device: SimulatorDevice
-    private let bootedAt: Date?
+
+    /// What only a simulator has: CoreSimulator's device, and what needs it.
+    private struct SimulatorParts {
+        let device: SimulatorDevice
+        let bootedAt: Date?
+        let accessibility: DeviceAccessibility
+        let splitView: SplitView
+        let logs: DeviceLogs
+        let apps: DeviceApps
+    }
+
+    private let target: DeviceTarget
+    private let name: String
+    private let hasTouchscreen: Bool
+    private let simulator: SimulatorParts?
     private let tools: DeveloperTools
     private let inputs: DeviceInputs
     private let screens: Screens
     private let wake: DisplayWake
-    private let accessibility: DeviceAccessibility
-    private let splitView: SplitView
     private let split: SplitState
     private let settings: DeviceSettings
-    private let logs: DeviceLogs
-    private let apps: DeviceApps
-    private let launcher: AppLauncher
+    private let apps: any AppControl
     private let orientation: LazyCapability<GuestOrientation>
     private let pasteboard: LazyCapability<CoreDevicePasteboard>
     private let hinge: LazyCapability<Hinge>
+    /// How a physical device lay before simdrive first set its orientation, put back when the session closes: a set
+    /// orientation holds there until set again.
+    private var orientationToRestore: PhysicalOrientation?
 
-    private init(udid: String, device: SimulatorDevice, tools: DeveloperTools, guest: SimulatorGuest) {
-        self.udid = udid
-        self.device = device
-        bootedAt = device.lastBootedAt
-        self.tools = tools
+    private convenience init(simulator device: SimulatorDevice, tools: DeveloperTools, guest: Guest) {
+        let udid = device.udid
         let coreDevice = LazyCapability(isUsable: { !$0.hasFailed }) { try await CoreDeviceRemote.open(device: device) }
-        let orientation = LazyCapability(isUsable: { !$0.hasFailed }) { try await GuestOrientation.open(guest: guest) }
         let hinge = LazyCapability<Hinge>(isUsable: { !$0.hasFailed }, close: { $0.stop() }) {
             try await Hinge.open(device: device, remote: { try await coreDevice.value() })
         }
-        pasteboard = LazyCapability(isUsable: { !$0.hasFailed }) {
-            try await CoreDevicePasteboard.open(guest: guest, remote: { try await coreDevice.value() })
-        }
-        self.orientation = orientation
+        let source = SimulatorScreens(udid: udid, device: device, tools: tools)
+        let settingActions = LazyCapability { GuestSettingActions.open(guest: guest) }
+        let settings = DeviceSettings(id: udid, name: device.name, majorOSVersion: device.majorOSVersion, simulator: device, tools: tools,
+                                      actions: { try await settingActions.required(orThrow: Self.noSettingActions(device.name)) })
+        self.init(target: DeviceTarget(kind: .simulator, id: udid), name: device.name, hasTouchscreen: device.hasTouchscreen,
+                  tools: tools, guest: guest, source: source, bootedAt: device.lastBootedAt, simulator: device, settings: settings,
+                  coreDevice: { try await coreDevice.value() }, hinge: hinge)
+    }
+
+    private convenience init(physical record: PhysicalDeviceRecord, remote: CoreDeviceRemote, tools: DeveloperTools, guest: Guest) {
+        let capture = LazyCapability { GuestScreenCapture.open(guest: guest) }
+        let source = DeviceScreens(name: record.name, hasTouchscreen: !record.isAppleTV, capture: capture)
+        let settingActions = LazyCapability { GuestSettingActions.open(guest: guest) }
+        let settings = DeviceSettings(id: record.identifier.uuidString, name: record.name, majorOSVersion: record.majorOSVersion,
+                                      simulator: nil, tools: tools,
+                                      actions: { try await settingActions.required(orThrow: Self.noSettingActions(record.name)) })
+        self.init(target: DeviceTarget(kind: .physical, id: record.identifier.uuidString), name: record.name,
+                  hasTouchscreen: !record.isAppleTV, tools: tools, guest: guest, source: source, bootedAt: nil, simulator: nil,
+                  settings: settings, coreDevice: { remote }, hinge: LazyCapability { nil })
+    }
+
+    private init(target: DeviceTarget, name: String, hasTouchscreen: Bool, tools: DeveloperTools, guest: Guest, source: any ScreenSource,
+                 bootedAt: Date?, simulator device: SimulatorDevice?, settings: DeviceSettings,
+                 coreDevice: @escaping @MainActor () async throws -> CoreDeviceRemote?, hinge: LazyCapability<Hinge>) {
+        self.target = target
+        self.name = name
+        self.hasTouchscreen = hasTouchscreen
+        self.tools = tools
+        self.settings = settings
         self.hinge = hinge
-        inputs = DeviceInputs(guest: guest)
-        screens = Screens(udid: udid, device: device, tools: tools, orientation: orientation, hinge: hinge)
+        let orientation = LazyCapability(isUsable: { !$0.hasFailed }) { try await GuestOrientation.open(guest: guest) }
+        self.orientation = orientation
+        pasteboard = LazyCapability(isUsable: { !$0.hasFailed }) { try await CoreDevicePasteboard.open(guest: guest, remote: coreDevice) }
+        let inputs = DeviceInputs(guest: guest)
+        self.inputs = inputs
+        let screens = Screens(id: target.id, source: source, bootedAt: bootedAt, orientation: orientation, hinge: hinge)
+        self.screens = screens
         wake = DisplayWake(device: device, inputs: inputs)
         let split = SplitState()
         self.split = split
-        let settingActions = LazyCapability { GuestSettingActions.open(guest: guest, udid: udid) }
-        let settings = DeviceSettings(udid: udid, device: device, tools: tools, actions: {
-            try await settingActions.required(orThrow: SimDriveError(.settingUnsupported, "\(device.name) has no setting actions."))
-        })
-        self.settings = settings
+        guard let device else {
+            simulator = nil
+            apps = DeviceAppControl(id: target.id, tools: tools, screens: screens)
+            return
+        }
         let accessibility = DeviceAccessibility(device: device, screens: screens, split: split,
                                                 isAppAccessibilityEnabled: { try await settings.isApplicationAccessibilityEnabled() })
-        self.accessibility = accessibility
-        let logs = DeviceLogs(udid: udid, tools: tools)
-        self.logs = logs
-        splitView = SplitView(screens: screens, state: split, inputs: inputs, accessibility: accessibility, logs: logs)
-        apps = DeviceApps(udid: udid, tools: tools)
-        launcher = AppLauncher(udid: udid, device: device, tools: tools, settings: settings, logs: logs, screens: screens,
-                               accessibility: accessibility)
+        let logs = DeviceLogs(udid: target.id, tools: tools)
+        let deviceApps = DeviceApps(udid: target.id, tools: tools)
+        simulator = SimulatorParts(device: device, bootedAt: bootedAt, accessibility: accessibility,
+                                   splitView: SplitView(screens: screens, state: split, inputs: inputs, accessibility: accessibility, logs: logs),
+                                   logs: logs, apps: deviceApps)
+        apps = SimulatorApps(apps: deviceApps, launcher: AppLauncher(udid: target.id, device: device, tools: tools, settings: settings,
+                                                                    logs: logs, screens: screens, accessibility: accessibility))
     }
 
-    static func open(udid: String, tools: DeveloperTools) async throws -> DeviceSession {
-        let device = try SimulatorDevice.find(udid: udid, developerDirectory: tools.developerDirectory)
-        guard device.isBooted else {
-            throw SimDriveError(.notBooted, "\(device.name) is \(device.state ?? "not booted"); boot it first.")
+    static func open(_ target: DeviceTarget, tools: DeveloperTools) async throws -> DeviceSession {
+        switch target.kind {
+        case .simulator:
+            let device = try SimulatorDevice.find(udid: target.id, developerDirectory: tools.developerDirectory)
+            guard device.isBooted else {
+                throw SimDriveError(.notBooted, "\(device.name) is \(device.state ?? "not booted"); boot it first.")
+            }
+            let guest = try await Guest(simulator: device)
+            try StatePaths.prepare()
+            return DeviceSession(simulator: device, tools: tools, guest: guest)
+        case .physical:
+            guard let record = try await PhysicalDevices.paired().first(where: { $0.isNamed(target.id) }) else {
+                throw SimDriveError(.deviceNotConnected, "CoreDevice no longer lists the device \(target.id).")
+            }
+            let remote = try await CoreDeviceRemote.open(physical: record)
+            let guest = try await Guest(physical: remote)
+            try StatePaths.prepare()
+            return DeviceSession(physical: record, remote: remote, tools: tools, guest: guest)
         }
-        let guest = try await SimulatorGuest(device: device)
-        try StatePaths.prepare()
-        return DeviceSession(udid: udid, device: device, tools: tools, guest: guest)
     }
 
     /// Starts the guest's accessibility server in the background, for a session that outlives its first command. A
     /// one-shot run must not: it exits while the read runs on the translator's queue, which crashed in `AXPTranslator`.
     func warmUpAccessibility() {
-        accessibility.prepare()
+        simulator?.accessibility.prepare()
+    }
+
+    private static func noSettingActions(_ name: String) -> SimDriveError {
+        SimDriveError(.settingUnsupported, "\(name) has no setting actions.")
+    }
+
+    /// The simulator's parts, or `code` on a physical device, which lacks `what`.
+    private func simulatorOnly(_ code: ErrorCode, _ what: String) throws -> SimulatorParts {
+        guard let simulator else {
+            throw SimDriveError(code, "\(name) is a physical device, which simdrive cannot \(what) yet.")
+        }
+        return simulator
+    }
+
+    private func accessibility() throws -> DeviceAccessibility {
+        try simulatorOnly(.accessibilityUnsupported, "read the accessibility of").accessibility
     }
 
     func execute(_ command: Command, workingDirectory: String) async throws -> JSONValue {
@@ -106,10 +172,11 @@ final class DeviceSession {
         case .posture(nil):
             return try await readPosture()
         case .split(let layout, let current):
-            return try await splitView.move(to: layout, from: current)
+            return try await simulatorOnly(.splitUnsupported, "split the screen of").splitView.move(to: layout, from: current)
         case .orientation(let orientation?):
             let control = try await connectedOrientation()
-            let woke = device.hasTouchscreen ? try await wake.wake(screens.touchscreen(.automatic, usesPixels: false)) : false
+            let woke = hasTouchscreen ? try await wake.wake(screens.touchscreen(.automatic, usesPixels: false)) : false
+            if target.kind == .physical, orientationToRestore == nil { orientationToRestore = try await control.read().physical }
             return Self.noting(woke: woke, in: try await control.set(orientation).json)
         case .orientation(nil):
             return try await connectedOrientation().read().json
@@ -121,10 +188,11 @@ final class DeviceSession {
             return try await screens.screenshot(to: Self.absolutePath(path, in: workingDirectory), display: display,
                                                 maxDimension: maxDimension)
         case .tree(let point?, let detail, _, _):
-            return try await accessibility.element(at: point, detail: detail)
+            return try await accessibility().element(at: point, detail: detail)
         case .tree(nil, let detail, let covered, let bundleID):
+            let accessibility = try accessibility()
             var pid: Int32?
-            if let bundleID { pid = try await apps.runningProcess(of: bundleID) }
+            if let bundleID, let simulator { pid = try await simulator.apps.runningProcess(of: bundleID) }
             return try await accessibility.tree(detail: detail, marksCovered: covered, process: pid)
         case .setting(let setting?, let value?):
             return try await settings.set(setting, to: value)
@@ -133,42 +201,47 @@ final class DeviceSession {
         case .setting(nil, _):
             return try await settings.all()
         case .launch(let bundleID, let arguments):
-            return try await launcher.launch(bundleID, arguments: arguments)
+            return try await apps.launch(bundleID, arguments: arguments)
         case .install(let path):
             return try await apps.install(Self.absolutePath(path, in: workingDirectory))
         case .uninstall(let bundleID):
             return try await apps.uninstall(bundleID)
         case .openURL(let url):
-            return try await launcher.open(url)
+            return try await apps.open(url)
         case .push(let bundleID, let payload):
-            return try await apps.push(payload, to: bundleID, workingDirectory: workingDirectory)
+            return try await simulatorOnly(.pushUnsupported, "push notifications to").apps
+                .push(payload, to: bundleID, workingDirectory: workingDirectory)
         case .privacy(let action, let service, let bundleID):
-            return try await apps.privacy(action, service: service, bundleID: bundleID)
+            return try await simulatorOnly(.privacyUnsupported, "change app privacy on").apps
+                .privacy(action, service: service, bundleID: bundleID)
         case .statusBar(let override?):
-            try await tools.simctl(["status_bar", udid, "override"] + override.simctlArguments)
+            _ = try simulatorOnly(.statusBarUnsupported, "override the status bar of")
+            try await tools.simctl(["status_bar", target.id, "override"] + override.simctlArguments)
             return ["overrides": .object(override.values.mapValues(JSONValue.string))]
         case .statusBar(nil):
-            try await tools.simctl(["status_bar", udid, "clear"])
+            _ = try simulatorOnly(.statusBarUnsupported, "override the status bar of")
+            try await tools.simctl(["status_bar", target.id, "clear"])
             return ["cleared": true]
         case .wait(let milliseconds):
             try await Task.sleep(for: .milliseconds(milliseconds))
             return ["waited": JSONValue(milliseconds)]
         case .waitForElement(let selector, gone: false, let timeout):
-            let found = try await accessibility.element(selector, within: timeout)
+            let found = try await accessibility().element(selector, within: timeout)
             return ["element": found.json]
         case .waitForElement(let selector, gone: true, let timeout):
-            try await accessibility.waitUntilGone(selector, within: timeout)
+            try await accessibility().waitUntilGone(selector, within: timeout)
             return ["absent": true]
         case .logs(let query):
-            return try await logs.read(query)
+            return try await simulatorOnly(.logsUnsupported, "read the logs of").logs.read(query)
         case .run(let steps, let attachesLogs):
             return try await run(steps, attachesLogs: attachesLogs, workingDirectory: workingDirectory)
         case .alert(let answer, let timeout):
             return try await alert(answer, within: timeout)
         case .shake:
-            try device.postDarwinNotification(Self.shakeNotification)
+            try simulatorOnly(.shakeUnsupported, "shake").device.postDarwinNotification(Self.shakeNotification)
             return [:]
         case .memoryWarning:
+            let device = try simulatorOnly(.memoryWarningUnsupported, "send a memory warning to").device
             guard let file = device.memoryWarningFile() else {
                 throw SimDriveError(.memoryWarningUnsupported, "\(device.name) reports no memory warning file.")
             }
@@ -181,8 +254,12 @@ final class DeviceSession {
         }
     }
 
-    /// Whether the device still runs the boot the session opened in; its guest connections end with that boot.
-    var isCurrent: Bool { device.isBooted && device.lastBootedAt == bootedAt }
+    /// Whether a simulator still runs the boot the session opened in; its guest connections end with that boot. A
+    /// physical device's connections that end are opened again by the parts that use them.
+    var isCurrent: Bool {
+        guard let simulator else { return true }
+        return simulator.device.isBooted && simulator.device.lastBootedAt == simulator.bootedAt
+    }
 
     /// Releases the inputs, as after an idle period; the next command opens them again.
     func releaseInputs() async {
@@ -192,6 +269,14 @@ final class DeviceSession {
     func close() async {
         await inputs.release()
         await hinge.close()
+        await restoreOrientation()
+    }
+
+    /// Puts a physical device back as it lay before simdrive set its orientation, which otherwise holds.
+    private func restoreOrientation() async {
+        guard let physical = orientationToRestore else { return }
+        orientationToRestore = nil
+        try? await orientation.value()?.restore(physical)
     }
 
     // MARK: Keyboard
@@ -203,9 +288,10 @@ final class DeviceSession {
                 "count": JSONValue(count)]
     }
 
-    /// Types on the guest's hardware keyboard layout; other text goes through the pasteboard.
+    /// Types on the guest's hardware keyboard layout; other text goes through the pasteboard. A physical device's layout
+    /// cannot be read from the Mac, so it is taken as US.
     private func type(_ text: String) async throws -> JSONValue {
-        let (keys, layout) = try KeyMap.keys(for: text, layout: KeyboardLayout.active(on: device))
+        let (keys, layout) = try KeyMap.keys(for: text, layout: simulator.flatMap { KeyboardLayout.active(on: $0.device) })
         try await inputs.type(keys)
         return ["characters": JSONValue(text.count), "layout": .string(layout)]
     }
@@ -222,6 +308,7 @@ final class DeviceSession {
     /// Taps the element's tap point once the pixels there hold still, and reports the element, whose `point` says where,
     /// and the wait.
     private func tap(_ selector: ElementSelector, within limit: Duration) async throws -> JSONValue {
+        let accessibility = try accessibility()
         let found = try await accessibility.element(selector, within: limit)
         try await accessibility.checkReachable(found.element, in: found.pid, among: found.screen, as: selector)
         return try await tapOnceStill(found.element, ["element": found.json])
@@ -242,7 +329,7 @@ final class DeviceSession {
 
     /// Reads the newest alert, waiting up to `limit` for one; with an answer, taps the button that gives it.
     private func alert(_ answer: AlertAnswer?, within limit: Duration) async throws -> JSONValue {
-        let found = try await accessibility.alert(within: limit)
+        let found = try await accessibility().alert(within: limit)
         guard let answer else { return ["app": found?.app ?? .null, "alert": found?.json ?? .null] }
         guard let found else {
             throw SimDriveError(.noAlert, "No alert showed within \(Int((limit / .milliseconds(1)).rounded())) ms; take a screenshot to "
@@ -295,7 +382,7 @@ final class DeviceSession {
         var before: String?
         var woke = false
         while true {
-            let seen = try await accessibility.shownElementAtRest(selector)
+            let seen = try await accessibility().shownElementAtRest(selector)
             if let found = seen.found {
                 return Self.noting(woke: woke, in: ["element": found.json, "swipes": JSONValue(swipes)])
             }
@@ -323,7 +410,7 @@ final class DeviceSession {
     // MARK: Orientation, pasteboard and posture
 
     private func connectedOrientation() async throws -> GuestOrientation {
-        try await orientation.required(orThrow: SimDriveError(.orientationUnsupported, "\(device.name) cannot rotate."))
+        try await orientation.required(orThrow: SimDriveError(.orientationUnsupported, "\(name) cannot rotate."))
     }
 
     private func readPasteboard() async throws -> JSONValue {
@@ -336,7 +423,7 @@ final class DeviceSession {
     }
 
     private func connectedPasteboard() async throws -> CoreDevicePasteboard {
-        try await pasteboard.required(orThrow: SimDriveError(.pasteboardUnsupported, "\(device.name) has no pasteboard."))
+        try await pasteboard.required(orThrow: SimDriveError(.pasteboardUnsupported, "\(name) has no pasteboard."))
     }
 
     private func readPosture() async throws -> JSONValue {
@@ -354,7 +441,7 @@ final class DeviceSession {
     }
 
     private func connectedHinge() async throws -> Hinge {
-        try await hinge.required(orThrow: SimDriveError(.postureUnsupported, "\(device.name) has no hinge."))
+        try await hinge.required(orThrow: SimDriveError(.postureUnsupported, "\(name) has no hinge."))
     }
 
     // MARK: Apps, steps and diagnostics
@@ -367,6 +454,7 @@ final class DeviceSession {
             starts.append(.now)
             do {
                 if case .logs(let query) = step.command {
+                    let logs = try simulatorOnly(.logsUnsupported, "read the logs of").logs
                     results.append(try await logs.read(query, previousStepStart: previousStart))
                 } else {
                     results.append(try await execute(step.command, workingDirectory: workingDirectory))
@@ -379,15 +467,18 @@ final class DeviceSession {
         }
         guard attachesLogs else { return ["steps": .array(results)] }
         // The steps have run, so a failed read reports itself beside their results.
-        do { return ["steps": .array(try await logs.attach(to: results, stepStarts: starts))] } catch {
+        do {
+            let logs = try simulatorOnly(.logsUnsupported, "read the logs of").logs
+            return ["steps": .array(try await logs.attach(to: results, stepStarts: starts))]
+        } catch {
             return ["steps": .array(results), "logsError": .string(error.localizedDescription)]
         }
     }
 
     private func doctor() async -> JSONValue {
         var report: [String: JSONValue] = [
-            "developerDirectory": .string(tools.developerDirectory), "device": .string(device.name),
-            "state": JSONValue(device.state), "deviceType": JSONValue(device.deviceTypeIdentifier),
+            "developerDirectory": .string(tools.developerDirectory), "device": .string(name), "kind": .string(target.kind.rawValue),
+            "state": JSONValue(simulator?.device.state), "deviceType": JSONValue(simulator?.device.deviceTypeIdentifier),
         ]
         report["orientation"] = await Self.check {
             (try await self.screens.deviceOrientation()?.name).map(JSONValue.string) ?? .unsupported
@@ -399,14 +490,16 @@ final class DeviceSession {
         }
         report["displays"] = await Self.check { try await self.screens.displaysJSON() }
         report["backlight"] = await Self.check {
-            let backlights = try await self.device.backlights()
+            guard let device = self.simulator?.device else { return .unsupported }
+            let backlights = try await device.backlights()
             guard !backlights.isEmpty else { return .unsupported }
             return .object(Dictionary(uniqueKeysWithValues: backlights.map { (String($0.key), JSONValue.string($0.value.rawValue)) }))
         }
         report["locked"] = await Self.check {
-            .bool(try self.device.darwinNotificationState(DisplayWake.lockStateNotification) != 0)
+            guard let device = self.simulator?.device else { return .unsupported }
+            return .bool(try device.darwinNotificationState(DisplayWake.lockStateNotification) != 0)
         }
-        report["accessibility"] = await Self.check { try await self.accessibility.doctorJSON() }
+        report["accessibility"] = await Self.check { try await self.accessibility().doctorJSON() }
         report["appearance"] = await Self.check { try await self.settings.value(of: SettingCatalog.appearance) }
         report["posture"] = await Self.check {
             guard try await self.hinge.value() != nil else { return .unsupported }

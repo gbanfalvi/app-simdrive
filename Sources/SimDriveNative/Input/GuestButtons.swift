@@ -66,7 +66,7 @@ package final class GuestButtons: ButtonPresser {
     }
 
     /// Creates the guest's button service and waits until the guest takes its presses.
-    package static func open(guest: SimulatorGuest) async throws -> GuestButtons {
+    package static func open(guest: Guest) async throws -> GuestButtons {
         let runtime = ABIRuntime.shared
         let report = try await runtime.prepare { try await Self.reports(runtime: $0) }
         let descriptor = try await runtime.prepare { try await Self.mainScreenButtons(runtime: $0) }
@@ -145,7 +145,7 @@ package final class LegacyGuestButtons: ButtonPresser {
     }
 
     /// Fails with `legacy-buttons-unavailable` on Xcode 27.3 and later.
-    package static func open(guest: SimulatorGuest) async throws -> LegacyGuestButtons {
+    package static func open(guest: Guest) async throws -> LegacyGuestButtons {
         let event = try await ABIRuntime.shared.prepare { try await GuestMessageCodec.indigoButtonEvents(runtime: $0) }
         return LegacyGuestButtons(connection: try await guest.connection(to: feature), event: event)
     }

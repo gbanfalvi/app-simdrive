@@ -31,18 +31,25 @@ struct Setting: Equatable, Sendable {
 
     let name: String
     let kind: Kind
-    let storage: Storage
+    /// Where the setting is kept, in order of preference: a device uses the first it can reach. A simulator reaches every
+    /// kind; a physical device only CoreDevice's setting actions.
+    let storages: [Storage]
     let minimumOSVersion: Int?
     /// The guest's on-demand launchd daemon that Settings starts when the setting turns on; the setting needs it.
     let service: String?
 
-    init(name: String, kind: Kind, storage: Storage, minimumOSVersion: Int? = nil, service: String? = nil) {
+    /// `action` keeps the setting where `storage` cannot be reached, as on a physical device.
+    init(name: String, kind: Kind, storage: Storage, action: CoreDeviceSetting? = nil, minimumOSVersion: Int? = nil,
+         service: String? = nil) {
         self.name = name
         self.kind = kind
-        self.storage = storage
+        storages = [storage] + (action.map { [.coreDevice($0)] } ?? [])
         self.minimumOSVersion = minimumOSVersion
         self.service = service
     }
+
+    /// The storage a simulator uses.
+    var storage: Storage { storages[0] }
 
     /// True when the OS version is unknown.
     func isAvailable(onOSVersion version: Int?) -> Bool {
@@ -123,7 +130,7 @@ enum SettingCatalog {
     private static let colorFilterOSVersion = 27
     private static let fullKeyboardAccessService = "com.apple.fullkeyboardaccess"
     static let appearance = Setting(name: "appearance", kind: .choice(SimulatorDevice.InterfaceOption.appearance.choices),
-                                    storage: .interface(.appearance))
+                                    storage: .interface(.appearance), action: .appearance)
 
     /// Not a setting of its own: Settings turns it on before starting a setting's service, so running apps answer that service,
     /// and `launch` before launching, so the app answers `tree`. backboardd turns it off when its last client, such as that
@@ -133,15 +140,18 @@ enum SettingCatalog {
 
     static let all: [Setting] = [
         appearance,
-        Setting(name: "text-size", kind: .choice(SimulatorDevice.InterfaceOption.textSize.choices), storage: .interface(.textSize)),
-        Setting(name: "increase-contrast", kind: .toggle, storage: .interface(.increaseContrast)),
+        Setting(name: "text-size", kind: .choice(SimulatorDevice.InterfaceOption.textSize.choices), storage: .interface(.textSize),
+                action: .textSize),
+        Setting(name: "increase-contrast", kind: .toggle, storage: .interface(.increaseContrast), action: .increaseContrast),
         accessibilityToggle("bold-text", key: "EnhancedTextLegibilityEnabled", notification: "text.legibility.status",
                             cache: "enhance.text.legibility"),
-        accessibilityToggle("reduce-motion", key: "ReduceMotionEnabled", notification: "reduce.motion.status", cache: "reduce.motion"),
+        accessibilityToggle("reduce-motion", key: "ReduceMotionEnabled", notification: "reduce.motion.status", cache: "reduce.motion",
+                            action: .reduceMotion),
         accessibilityToggle("prefer-cross-fade", key: "ReduceMotionReduceSlideTransitionsPreference",
                             notification: "reduce.motion.reduce.slide.transitions.status", cache: "reduce.motion.reduce.slide.transitions"),
         accessibilityToggle("reduce-transparency", key: "EnhancedBackgroundContrastEnabled",
-                            notification: "enhance.background.contrast.status", cache: "enhance.background.contrast"),
+                            notification: "enhance.background.contrast.status", cache: "enhance.background.contrast",
+                            action: .reduceTransparency),
         accessibilityToggle("show-borders", key: "ButtonShapesEnabled", notification: "button.shapes", cache: "button.shapes.enabled"),
         accessibilityToggle("on-off-labels", key: "IncreaseButtonLegibilityEnabled", notification: "increase.button.legibility",
                             cache: "increase.button.legibility"),
@@ -180,11 +190,12 @@ enum SettingCatalog {
 
     /// Apps on iOS 17 and 18 reread some settings only once their `cache` notification arrives.
     private static func accessibilityToggle(_ name: String, key: String, notification: String, cache: String? = nil,
-                                            defaultValue: Bool = false, minimumOSVersion: Int? = nil,
-                                            service: String? = nil) -> Setting {
+                                            defaultValue: Bool = false, action: CoreDeviceSetting? = nil,
+                                            minimumOSVersion: Int? = nil, service: String? = nil) -> Setting {
         let notifications = [notificationPrefix + notification] + (cache.map { [cacheNotificationPrefix + $0] } ?? [])
         let storage = Setting.Storage.preference(domain: accessibility, key: key, defaultValue: .bool(defaultValue),
                                                  notifications: notifications)
-        return Setting(name: name, kind: .toggle, storage: storage, minimumOSVersion: minimumOSVersion, service: service)
+        return Setting(name: name, kind: .toggle, storage: storage, action: action, minimumOSVersion: minimumOSVersion,
+                       service: service)
     }
 }

@@ -1,6 +1,6 @@
 # AGENTS.md — simdrive
 
-simdrive drives booted iOS and tvOS simulators from the command line for agents. See [README.md](README.md) for what it does.
+simdrive drives booted iOS and tvOS simulators, and paired physical devices on iOS and tvOS 27, from the command line for agents. See [README.md](README.md) for what it does, and [architecture](docs/architecture.md#simulators-and-physical-devices) for how the two kinds share code.
 
 ## Install the skill
 
@@ -70,3 +70,4 @@ A device setting is one row in `Sources/SimDriveCore/Settings/SettingCatalog.swi
 - After splitting work into several commits, `scripts/check-commits` builds and tests each unpushed one on its own.
 - Never write the Mac clipboard, and only write a simulator's pasteboard with the user's consent: a syncing host such as DeviceHub copies it to the Mac clipboard.
 - Stop the daemons you started: `simdrive <udid> stop`.
+- A physical device is someone's own: drive it only as far as they agreed, never read or write its pasteboard, change its settings only to put them back, and leave it as you found it. `Evaluation/matrix.py <device-udid>` runs device mode, which puts back what it changes; an iPhone's needs `SIMDRIVE_TEAM` set to the team that signs the probe.

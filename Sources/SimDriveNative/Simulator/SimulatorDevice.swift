@@ -66,7 +66,7 @@ package final class SimulatorDevice {
     private static let firstInterfaceValue = 1
     private static var contexts: [String: NSObject] = [:]
 
-    let udid: String
+    package let udid: String
     private let device: NSObject
 
     private init(udid: String, device: NSObject) {

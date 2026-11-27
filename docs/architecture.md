@@ -10,7 +10,18 @@ Each module uses only the one below it.
 | `SimDriveCore` | Command parsing, the per-device session, screen geometry, settings, device logs, the daemon and its client. |
 | `SimDriveNative` | Drivers for CoreSimulator, the guest's Mach services, CoreDevice and AccessibilityPlatformTranslation. Its API is `package`, so nothing private-framework-shaped leaks out of the package. |
 
-Native types speak in domain terms (`tap(at:target:)`, `set(_ posture:)`), and Core never sees an XPC object, a Swift mangled name or an Objective-C selector. Native files named `Guest*` reach the guest's Mach services directly; `CoreDevice*` files go through CoreDevice.
+Native types speak in domain terms (`tap(at:target:)`, `set(_ posture:)`), and Core never sees an XPC object, a Swift mangled name or an Objective-C selector. Native files named `Guest*` talk to the guest's CoreDevice services through a `Guest`; `CoreDevice*` files go through CoreDevice's capabilities.
+
+## Simulators and physical devices
+
+A simulator's guest and a physical device's developer disk image run the same CoreDevice daemons, which take the same messages (N35). So the two kinds split at the bottom, in how a `Guest` connects to a service: a simulator's through the Mach right CoreSimulator looks up (`SimulatorLink`), and a device's through CoreDevice's RemoteXPC connection (`RemoteDeviceLink`). Every `Guest*` driver above that is shared.
+
+In Core, `DeviceSession` builds a session's parts once, by kind. Where the kinds differ, a part has one implementation per kind:
+- `ScreenSource`: `SimulatorScreens` and `DeviceScreens`.
+- `AppControl`: `SimulatorApps` and `DeviceAppControl`.
+- Settings: each `SettingCatalog` row lists its storages in order of preference.
+
+What needs CoreSimulator is kept in the session's `SimulatorParts`: accessibility, logs, split view, `push`, `privacy`, `shake`, the status bar, the memory warning and the display wake. On a device, each fails with its capability's `-unsupported` code.
 
 ## Source layout
 
@@ -19,10 +30,10 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | Folder | Holds |
 | --- | --- |
 | `SimDriveNative/Simulator` | `SimulatorDevice`, CoreSimulator's `SimDevice`: state, boot date, screen scale, service lookup, Darwin notifications and the accessibility request channel. Framebuffer reads (`ScreenFramebuffers`, `ScreenAdapter`) and `InterfaceOrientation`. |
-| `SimDriveNative/Guest` | `SimulatorGuest` and `GuestConnection`, XPC connections to the guest's Mach services; `GuestMessageCodec`, which encodes their messages as CoreDevice does; `GuestInputTiming`. |
+| `SimDriveNative/Guest` | `Guest`, a simulator's or physical device's guest services; `GuestLink`, with `SimulatorLink` and `RemoteDeviceLink`, the connection under each `GuestConnection`; `GuestActions`, which performs CoreDevice's guest actions; `GuestMessageCodec`, which encodes their messages as CoreDevice does; `GuestInputTiming`. |
 | `SimDriveNative/Input` | `GuestKeyboard`, `GuestTouchscreen`, `GuestButtons`, `KeyboardBindings`, which turns Mac key events into HID reports, and `KeyboardLayout`, the guest's hardware keyboard layout. |
-| `SimDriveNative/DeviceControl` | `GuestOrientation`, `GuestSettingActions`, `CoreDevicePasteboard`, `CoreDeviceHinge`. |
-| `SimDriveNative/CoreDevice` | `CoreDeviceManager` and `CoreDeviceRemote`: finding the simulator's CoreDevice record and calling its capabilities. |
+| `SimDriveNative/DeviceControl` | `GuestOrientation`, `GuestSettingActions`, `GuestScreenCapture` (physical devices' screenshots), `CoreDevicePasteboard`, `CoreDeviceHinge`. |
+| `SimDriveNative/CoreDevice` | `CoreDeviceManager` and `CoreDeviceRemote`: finding a simulator's or physical device's CoreDevice record, connecting it, and calling its capabilities. `PhysicalDevices`: the paired devices. |
 | `SimDriveNative/Accessibility` | `SimulatorAccessibility`, which drives `AXPTranslator`, and `AccessibilityElement`, the snapshot it returns. |
 | `SimDriveNative/Support` | `SimDriveError` and `ErrorCode`, `SharedInitialization`, `waitForCompletion`, ABIBridge setup. |
 | `SimDriveCore/CLI` | `SimDriveCLI`, the entry point. |
@@ -30,14 +41,14 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Daemon` | `DaemonServer`, `DaemonClient`, the wire types in `DaemonProtocol`, `UnixSocket`, `StatePaths`. |
 | `SimDriveCore/Session` | `DeviceSession` and `LazyCapability`. |
 | `SimDriveCore/Input` | `DeviceInputs`, which owns the three input drivers, and `KeyMap`, characters and key names to key codes, on US or a `KeyboardLayout`. |
-| `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. `Stillness`: whether the pixels under an element tap have stopped changing. `StatusBarOverride`, checked values for `simctl status_bar`. |
-| `SimDriveCore/Apps` | `DeviceApps`: install, uninstall, `push` and `privacy` through `simctl`, with `PushPayload` and `PrivacyAction`. `AppLauncher`: `launch`, which turns on app accessibility, captures the app's output and waits for it to come to the front, and `openurl`. |
+| `SimDriveCore/Screens` | `Screens`, `Screen`, `ScreenMapping`, `ScreenStore`, `Screenshots`, `SimulatorDisplay`: which display a point means and where it lands. `ScreenSource`, with `SimulatorScreens` and `DeviceScreens`: what each kind reads its screens from. `Stillness`: whether the pixels under an element tap have stopped changing. `StatusBarOverride`, checked values for `simctl status_bar`. |
+| `SimDriveCore/Apps` | `AppControl`, with `SimulatorApps` and `DeviceAppControl` (`devicectl`). `DeviceApps`: install, uninstall, `push` and `privacy` through `simctl`, with `PushPayload` and `PrivacyAction`. `AppLauncher`: `launch`, which turns on app accessibility, captures the app's output and waits for it to come to the front, and `openurl`. |
 | `SimDriveCore/Accessibility` | `DeviceAccessibility` and `AccessibilityLayout`: the tree in the fractions `tap` takes, with what a presentation covers marked. `PanelWindows`: the Duo SpringBoard's windows from the active panel only. `AlertReader`: the alert in a tree, and the button that answers it. |
 | `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs; `SplitState`, the half simdrive set, kept per app pid since reading SpringBoard's log for it takes seconds. |
 | `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |
 | `SimDriveCore/Settings` | `SettingCatalog` (one row per setting), `DeviceSettings`, `GuestPreferences`, and `CoreDeviceSetting`, which maps rows to setting actions' JSON. |
 | `SimDriveCore/Logs` | `DeviceLogs`, `LogQuery`, `LogDigest`, `LogStore`, `LogEvent`, `CrashReports`. |
-| `SimDriveCore/Tools` | `DeveloperTools`, which runs `simctl` and friends for one developer directory, and `BootedSimulators`. |
+| `SimDriveCore/Tools` | `DeveloperTools`, which runs `simctl`, `devicectl` and friends for one developer directory, and `Devices`, which lists booted simulators and connected devices and resolves the `DeviceTarget` a command names. |
 | `SimDriveCore/Support` | Core's `ErrorCode` constants, `JSONValue`, and `poll` and `withDeadline`, the one way Core waits with a limit. |
 
 ## Request path
@@ -144,8 +155,8 @@ Guest services are reached the way CoreDevice's simulator plugin reaches them: `
 - **`DeviceInputs`** owns the keyboard, touchscreen and buttons, and releases all three after 30 s idle. Each input holds an **`IdleRelease`** while it runs, so the release never closes a service mid-input.
 - **`Screens`** knows the device's displays and each one's last screenshot; it returns a **`Screen`**, which maps that display's points to the digitizer through **`ScreenMapping`**. `ScreenStore` persists the screenshot records across processes.
 - **`DeviceAccessibility`** places **`SimulatorAccessibility`**'s snapshots on the screen with **`AccessibilityLayout`**, and answers `becomesFrontmost` for `launch`. It names an app launched while app accessibility was off (`app-accessibility-off`) itself.
-- **`SimulatorDevice`** wraps CoreSimulator's `SimDevice`; **`SimulatorGuest`** opens a **`GuestConnection`** per guest service, and a connection that ends reports `hasFailed`.
-- **`CoreDeviceRemote`** is the simulator's CoreDevice `RemoteDevice`, opened once per session and shared by the pasteboard and hinge.
+- **`SimulatorDevice`** wraps CoreSimulator's `SimDevice`; **`Guest`** opens a **`GuestConnection`** per guest service over a simulator's or device's `GuestLink`, and a connection that ends reports `hasFailed`.
+- **`CoreDeviceRemote`** is the device's CoreDevice `RemoteDevice`, opened once per session and shared by the pasteboard and hinge; on a physical device it also carries the guest's connections.
 - **`DeveloperTools`** runs `simctl` and other tools for the session's developer directory, and streams `log stream` lines.
 - **`JSONValue`** is every result and the daemon's payload; results get their JSON in `CommandResults`, next to nothing else, so the README's JSON section has one place to check against.
 
