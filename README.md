@@ -111,13 +111,13 @@ A failure prints `{"ok": false, "error": message, "code": code, "retry": bool}`.
 | `tool-timeout` | A `simctl` call ran past its limit and was stopped | yes |
 | `unknown-key`, `unsupported-character` | A key or character the keyboard layout cannot type; paste it instead | no |
 | `no-touchscreen` | The device has no touchscreen, as an Apple TV | no |
-| `display-asleep` | The display stayed dimmed after three Lock presses, or lit but stayed locked; the input was not sent. On a physical device, its display slept during a screenshot; press a button to wake it | no |
+| `display-asleep` | The display stayed dimmed after three Lock presses, or lit but stayed locked; the input was not sent. On a physical Apple TV, its display slept during a screenshot; press a button to wake it | no |
 | `no-screenshot`, `stale-screenshot` | Pixel coordinates need a screenshot taken since the device or the interface last rotated; take one | no |
 | `screenshot`, `screenshot-read`, `screenshot-scale`, `screenshot-write` | A screenshot could not be captured, read, scaled or written | no |
 | `single-display`, `unknown-display` | `--display` names a display the device lacks | no |
 | `legacy-buttons-unavailable` | `button --legacy` needs `IndigoButtonEvent`, which Xcode 27.3 removed; press without `--legacy` | no |
 | `orientation-unsupported`, `pasteboard-unsupported`, `posture-unsupported`, `setting-unsupported`, `accessibility-unsupported`, `memory-warning-unsupported` | The device lacks the capability | no |
-| `logs-unsupported`, `push-unsupported`, `privacy-unsupported`, `shake-unsupported`, `status-bar-unsupported` | A physical device, which has no route for the command yet; `accessibility-unsupported` and `split-unsupported` also answer there | no |
+| `logs-unsupported`, `push-unsupported`, `privacy-unsupported`, `shake-unsupported`, `status-bar-unsupported` | A physical device, which has no route for the command yet, or for `logs`, for the unified log; `accessibility-unsupported`, `memory-warning-unsupported` and `split-unsupported` also answer there | no |
 | `device-not-connected` | CoreDevice cannot reach the physical device: it is unplugged, off the network, locked since it started, or without Developer Mode | no |
 | `devicectl` | A `devicectl` call failed; the message has CoreDevice's error | no |
 | `screen-capture` | A physical device refused or garbled a screenshot | no |
@@ -245,11 +245,16 @@ An iPhone, iPad or Apple TV on iOS or tvOS 27, paired with this Mac and with Dev
 - **Same as a simulator:** `key`, `type`, `tap`, `swipe` with `--edge`, `pinch`, `rotate`, `button`, `orientation`, `pasteboard`, `screenshot`, `run` and `wait <ms>`.
 - **Different on a device:**
   - `setting` reaches appearance, `text-size`, `increase-contrast`, `reduce-motion`, `reduce-transparency`, `voiceover` and the color filter, as the device allows. The rest read `unsupported`. An accessibility text size needs Larger Accessibility Sizes turned on on the device first.
-  - `install`, `uninstall`, `launch` and `openurl` go through `devicectl`, about a second each. `launch` neither captures the app's output nor waits for it to come to the front.
-  - `screenshot` captures over the cable or network, about 1 s for an iPhone; a sleeping display fails with `display-asleep`.
+  - `install`, `uninstall`, `launch` and `openurl` go through `devicectl`, about a second each. `launch` relays the app's stdout and stderr through `devicectl --console` for as long as the app runs, and returns once its process runs, not once it is in front.
+  - `logs` reads the launched app's stdout, stderr and crash reports, copied off the device, but not the unified log: `--source log`, `--until` and `run --logs` fail with `logs-unsupported`.
+  - `screenshot` captures over the cable or network: about 1 s for an iPhone, 6–9 s for a 4K Apple TV over Wi-Fi. A sleeping Apple TV's display fails with `display-asleep`; a sleeping iPhone's captures black.
+  - Touch input and rotation wake a sleeping display first, as on a simulator. A device without a passcode is unlocked with an edge swipe; one with a passcode stays on its lock screen, since simdrive never types one.
   - `type` assumes a US keyboard layout.
-  - Element taps do not wait for pixels to settle, and input does not wake a sleeping display first.
-- **Not on a device:** `tree`, `tap --label`, `wait --label`, `alert` and `swipe --until-*` fail with `accessibility-unsupported`. `logs` fails with `logs-unsupported`, and `push`, `privacy`, `shake`, `status-bar` and `memory-warning` fail with their own `-unsupported` codes. A device has no hinge, so `posture` and `split` fail too.
+  - Element taps do not wait for pixels to settle.
+- **Not on a device:**
+  - `tree`, `tap --label`, `wait --label`, `alert` and `swipe --until-*` fail with `accessibility-unsupported`.
+  - `push`, `privacy`, `shake`, `status-bar` and `memory-warning` fail with their own `-unsupported` codes. The device refuses `devicectl`'s status bar and memory warning.
+  - A device has no hinge, so `posture` and `split` fail too.
 - **Orientation holds:** setting `orientation` on a device sets a simulated orientation that holds, since CoreDevice cannot give it back to the device's sensor. The daemon puts the device back as it lay, flat included, when it stops: after `stop`, 10 idle minutes, or a replaced build.
 
 ### Daemon

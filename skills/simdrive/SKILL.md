@@ -92,9 +92,10 @@ echo '["tap 0.5 0.3", "logs --until loaded", "screenshot /tmp/b.png"]' | $S <udi
 A paired iPhone, iPad or Apple TV on iOS or tvOS 27 with Developer Mode on appears in `list` as `"kind": "physical"`. It is someone's real device: act only as the task asks, and put back what you change.
 
 - **Works:** `key`, `type` (US layout), `tap`, `swipe` with `--edge`, `pinch`, `rotate`, `button`, `orientation`, `pasteboard`, `screenshot`, `setting` (appearance, text size, contrast, reduce motion and transparency, VoiceOver, color filter), `install`, `uninstall`, `launch`, `openurl`, `run` and `doctor`.
-- **Calls are slower:** a screenshot takes a second or more, many on an Apple TV over Wi-Fi.
-- **Missing:** `tree`, `tap --label`, `wait --label`, `alert`, `logs`, `push`, `privacy`, `shake`, `status-bar` and `memory-warning` fail with `accessibility-unsupported`, `logs-unsupported` or their own `-unsupported` code. Find things from screenshots and tap by pixels or fractions.
-- **Prepare the display:** input does not wake a sleeping display, and a screenshot of one fails with `display-asleep`; press a button first. A device with a passcode must be unlocked by its owner.
+- **Logs:** `logs` gives the launched app's stdout, stderr and crashes, but not the unified log, so `--source log`, `--until` and `run --logs` fail with `logs-unsupported`. `print` instead of `os_log` while debugging on a device.
+- **Calls are slower:** a screenshot takes about a second on an iPhone, 6–9 s on an Apple TV over Wi-Fi. `launch` returns once the process runs, before it is in front: screenshot before tapping.
+- **Missing:** `tree`, `tap --label`, `wait --label`, `alert`, `push`, `privacy`, `shake`, `status-bar` and `memory-warning` fail with `accessibility-unsupported` or their own `-unsupported` code. Find things from screenshots and tap by pixels or fractions.
+- **The display:** touches and rotation wake a sleeping display, and unlock a device without a passcode. One with a passcode stays on its lock screen, and launches fail there: ask its owner to unlock it. A sleeping iPhone's screenshot is black; a sleeping Apple TV's fails with `display-asleep`, so press a button first.
 - **Orientation:** `orientation` holds on a device until simdrive's daemon stops. `stop` puts it back as it lay.
 - **Reaching it:** `device-not-connected` means it is unplugged, off the network or without Developer Mode; ask its owner.
 

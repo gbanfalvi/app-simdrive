@@ -47,12 +47,13 @@ package enum SimDriveCLI {
         case .stop:
             return try await DaemonClient.stop(udid: udid, tools: tools)
         case .logs(let query):
-            guard device.kind == .simulator else {
-                throw SimDriveError(.logsUnsupported, "\(target) is a physical device, which simdrive cannot read the logs of yet.")
-            }
-            // Needs only simctl, so it neither waits behind the daemon's queue nor holds it while it waits.
+            // Needs only simctl or devicectl, so it neither waits behind the daemon's queue nor holds it while it waits.
             try StatePaths.prepare()
-            return .success(try await DeviceLogs(udid: udid, tools: tools).read(query))
+            let logs = switch device.kind {
+            case .simulator: DeviceLogs(udid: udid, tools: tools)
+            case .physical: DeviceLogs(device: DeviceAppProcesses(id: udid, tools: tools))
+            }
+            return .success(try await logs.read(query))
         default:
             guard runsInProcess else {
                 return try await DaemonClient.send(udid: udid, arguments: commandArguments, workingDirectory: workingDirectory,

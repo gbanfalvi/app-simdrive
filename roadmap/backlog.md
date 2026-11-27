@@ -219,10 +219,11 @@ Work found by reviewing [NeoSimulator](https://github.com/lynnswap/NeoSimulator)
 - **Why:** found in the source comparison (2026-11-25). idb's in-guest bridge turns on automation mode, observes `kAXUserTestingNotification` (4002), and asks the app with action 0x7fa (monitor the idle run loop) or 0x7fb (detect animations finished); the app answers `RunLoopIsIdle` or `AnimationsNonActive`, and posts `TouchEventsCompleted` after each touch sequence (`I:SimulatorFrameworkBridge/Runtime/Private/AXRuntimePrivate.h:86-114`, `I:SimulatorFrameworkBridge/Swift/AccessibilityQuiescence.swift:193-249`). It is the signal XCTest's `waitForQuiescenceIncludingAnimationsIdle` uses. `TouchEventsCompleted` would also confirm that a tap was delivered, which no simdrive check does.
 - **Do:** spike whether the Mac's translator can perform 0x7fa/0x7fb on an app element and receive 4002; idb used a helper in the guest. Compare with `Stillness` on the F29 alert and I27's sheet. Automation mode is device-wide and turns off when another client exits; apps with endless animations never go idle, so keep a bound (agent-device caps XCTest's wait at 1 s).
 
-### - [ ] I35. Faster screenshots on physical devices (S)
+### - [ ] I36. Calibrate a device's fractions without a capture (S, unverified)
 
-- **Why:** left from N35. A 3840 × 2160 Apple TV screenshot took 8.2 s over Wi-Fi, and an iPhone's 1.3–2.3 s over USB. `GuestScreenCapture` decodes `CaptureScreenshotOutput` to JSON, so the image is PNG-encoded on the device, base64-encoded, JSON-parsed, decoded, then encoded again as PNG.
-- **Do:** read `CaptureScreenshotOutput.image` as a `CGImage` through ABIBridge instead of through JSON. Measure several rounds before and after. Check whether the input takes a smaller size for calibration, which needs only the image's size; the display info's `nativeSize` may give that with no capture.
+- **Why:** left from I35. A device's first fraction after a rotation captures the whole screen to learn its size, about 1 s on an iPhone. A simulator reads the size from its framebuffer instead.
+- **Do:** derive the upright size from `DisplayInfo`'s display `bounds` or `nativeSize` and the device's orientation, which `CoreDeviceDisplays` already reads, and use it in `DeviceScreens.frame` or calibration.
+- **Test:** a fraction tap right after `orientation landscape-left` on an iPhone, in device mode, timed before and after.
 
 ## 3. New features
 
@@ -473,13 +474,26 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
 - **Why:** left from I6 (2026-11-25). Input now wakes a dimmed display first, pressing Lock. An agent that tests what a dimmed or sleeping display does with a touch cannot send one.
 - **Do:** a `--no-wake` flag on `tap`, `swipe`, `pinch`, `rotate`, `alert` and `orientation`, passed to `DisplayWake`; parser tests, README and skill. Only if someone asks for it.
 
-### - [ ] N36. `logs` on physical devices (M, unverified)
+### - [ ] N36. The unified log on physical devices (L, needs a decision)
 
-- **Why:** left from N35. A device's `logs` fails with `logs-unsupported`, and its `launch` captures no stdout or stderr.
+- **Result so far (2026-11-27):**
+  - **Steps 1 and 2 landed.** A device's `launch` relays stdout and stderr through `devicectl --console`, and `logs` reads them along with crash reports copied off the device. The matrix's device-mode `logs` checks for stdout, stderr and the crash summary passed on an iPhone 15 Pro, iOS 27.2.1.
+  - **Step 3 failed as planned.** The service socket refuses every RSD shim service with CoreDeviceError 4000.
+  - **The route left** is CoreDevice's `fileHandleToServiceHub()`, which does open, to Instruments' `com.apple.instruments.server.services.activitytracetap` over DTX. That needs either Xcode's `DTXConnectionServices.framework` (`DTXSocketTransport`, `DTXConnection`, as Accessibility Inspector uses it), or a DTX client of simdrive's own. On top of either sits a decoder for the activity trace's binary rows, which pymobiledevice3 does in about 600 lines (`services/dvt/instruments/activity_trace_tap.py`).
+  - Decide with the user before starting.
+- **Why:** left from N35. A device's `logs` reads no unified log, so `--source log`, `--until` and `run --logs` fail with `logs-unsupported`.
 - **Read:**
   - pymobiledevice3 `services/os_trace.py` streams the unified log over `com.apple.os_trace_relay`, a lockdown and RSD service in the OS that needs no Developer Mode. `services/crash_reports.py` copies crash reports over `com.apple.crashreportcopymobile`. Both are in the clones in `/tmp/devsurvey/`.
   - `devicectl device process launch --console` gives stdout over CoreDevice's stdio socket.
-- **Do:** a `LogSource` behind `DeviceLogs` with a simulator implementation (`simctl spawn log`) and a device one. First check whether CoreDevice wraps `os_trace_relay`; if not, decide with the user before adding a lockdown client.
+  - **Checked 2026-11-27 (Xcode 27.2):**
+    - CoreDevice and CoreDeviceUtilities have no log streaming symbols, and no device feature names one.
+    - `log collect --device-udid` fails with "Must be root to collect logs from attached device".
+    - `devicectl device copy from --domain-type systemCrashLogs` copies crash reports.
+    - The only unified-log route left is `os_trace_relay`, perhaps reached through CoreDevice's service-socket feature (`com.apple.dt.servicesocket.create`, `CreateServiceSocketActionDeclaration`), which is unverified.
+- **Do, in steps:**
+  1. Capture `launch`'s stdout and stderr with `--console`, held by the daemon.
+  2. Read crash reports from `systemCrashLogs`, summarized as `CrashReports` does today.
+  3. Spike `os_trace_relay` through the service socket. If it works, add a device `LogSource`; if not, decide with the user before adding a lockdown client.
 - **Test:** the probe app on a device, logging `TAP play` to the unified log and stdout. The matrix's `logs` section in device mode.
 
 ### - [ ] N37. Accessibility on physical devices (L, needs a decision)
@@ -491,8 +505,12 @@ Each new command needs a `Command` case, parsing, usage text, results JSON, an e
   - testmanagerd's `remote.automation` requires `AppleInternal`.
 - **Do:** decide with the user between a signed runner (signing, install, latency) and the audit daemon's focus-only reads (no frames, so `tap --label` would activate rather than tap).
 
-### - [ ] N38. Device extras: wake, status bar, memory warning, launch to front, larger text sizes (M, unverified)
+### - [ ] N38. Device extras: launch to front, larger text sizes, show borders (M, unverified)
 
+- **Result so far (2026-11-27):**
+  - **Wake** landed: `DisplayWake` reads a `PowerSource`, through CoreDevice's display-info and lock-state capabilities on a device. It took 2.9 s on a locked iPhone, which it lit and left on its lock screen because a passcode guards it. Unlocking a device without a passcode is unverified, with no such device to hand.
+  - **`status-bar` and `memory-warning`** stay unsupported. The iPhone refuses both through `devicectl`; see [private APIs](../docs/private-apis.md#physical-devices).
+  - **Waking an Apple TV** is unbuilt, since it takes no touch input: a screenshot of a sleeping one still fails with `display-asleep`, and waking lands on its profile picker.
 - **Why:** left from N35, each with a route that was not built:
   - **Wake:** `DisplayWake` skips devices, since their backlight and lock state are not read. `devicectl device info displays` reports `backlightState`, and `info lockState` reports `passcodeRequired` and `unlockedSinceBoot`. Waking an Apple TV lands on its profile picker. A passcode must never be typed: fail with a named code.
   - **`status-bar`:** `devicectl device simulate statusBar override|clear`.

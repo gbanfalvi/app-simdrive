@@ -29,6 +29,13 @@ final class GuestActions {
     /// Performs the action, throwing `GuestActionRefusal` when the guest declines it. The output is empty for an action
     /// declared without one.
     func perform(_ declaration: Declaration, input: [String: Any]) async throws -> [String: Any] {
+        guard let output = try await performNative(declaration, input: input) else { return [:] }
+        return try JSONSerialization.jsonObject(with: Action.json(of: output)) as? [String: Any] ?? [:]
+    }
+
+    /// Performs the action and returns its output as the native value, for outputs JSON would carry slowly, such as an
+    /// image; nil for an action declared without one.
+    func performNative(_ declaration: Declaration, input: [String: Any]) async throws -> NativeSwiftValue? {
         let action = try await action(declaration)
         let connection: GuestConnection
         if let existing = connections[action.feature], !existing.hasFailed { connection = existing } else {
@@ -77,7 +84,7 @@ final class GuestActions {
         let feature: String
         private let identifier: String
         private let encodeInput: (Data) throws -> xpc_object_t
-        private let decodeOutput: ((xpc_object_t) throws -> Data)?
+        private let decodeOutput: ((xpc_object_t) throws -> NativeSwiftValue)?
 
         init(_ declaration: Declaration) async throws {
             let runtime = ABIRuntime.shared
@@ -105,7 +112,7 @@ final class GuestActions {
                 "Mercury.XPCObjectDecoder.decode<A where A: Swift.Decodable>(_: A.Type, from: __C.OS_xpc_object) throws -> A",
                 as: ((NativeSwiftValue, xpc_object_t) throws -> NativeSwiftValue).self, genericArguments: [.type(outputType)])))
             let metatype = try outputType.makeMetatypeValue()
-            decodeOutput = { object in try Self.json(of: unsafe decode.unsafeInvoke(on: makeDecoder.unsafeInvoke(), metatype, object)) }
+            decodeOutput = { object in try unsafe decode.unsafeInvoke(on: makeDecoder.unsafeInvoke(), metatype, object) }
         }
 
         /// The guest service named by the declaration's `executionLocation`, which CoreDeviceUtilities 699.2 (Xcode 27.3)
@@ -172,7 +179,7 @@ final class GuestActions {
             return value
         }
 
-        func output(from reply: xpc_object_t) throws -> [String: Any] {
+        func output(from reply: xpc_object_t) throws -> NativeSwiftValue? {
             if let error = xpc_dictionary_get_value(reply, "CoreDevice.error") {
                 let description = unsafe xpc_dictionary_get_value(error, "userInfo")
                     .flatMap { unsafe xpc_dictionary_get_string($0, NSLocalizedDescriptionKey) }
@@ -180,11 +187,11 @@ final class GuestActions {
                 let reason = description.map { $0.hasSuffix(".") ? $0 : $0 + "." } ?? "no description."
                 throw GuestActionRefusal(code: xpc_dictionary_get_int64(error, "code"), reason: reason)
             }
-            guard let decodeOutput else { return [:] }
+            guard let decodeOutput else { return nil }
             guard let output = xpc_dictionary_get_value(reply, "CoreDevice.output") else {
                 throw SimDriveError(.guestSetting, "The guest's reply has no output.")
             }
-            return try JSONSerialization.jsonObject(with: decodeOutput(output)) as? [String: Any] ?? [:]
+            return try decodeOutput(output)
         }
     }
 }

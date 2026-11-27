@@ -110,6 +110,27 @@ struct DeveloperTools: Sendable {
         return report?["result"] as? [String: Any] ?? [:]
     }
 
+    /// Starts `devicectl` with its stdout and stderr in `output`'s files, and returns it running, for a `--console` launch
+    /// that relays an app's output for as long as the app runs. `devicectl`'s own messages go to `log`: `--quiet` would
+    /// also silence the relayed output.
+    func devicectlConsole(_ arguments: [String], output: AppOutput, log: URL) throws -> Process {
+        guard let stdout = output.files[.stdout], let stderr = output.files[.stderr] else {
+            throw SimDriveError(.devicectl, "The app's output has no files to go to.")
+        }
+        for file in [stdout, stderr, log] { FileManager.default.createFile(atPath: file.path, contents: nil) }
+        let process = Process()
+        process.executableURL = URL(fileURLWithPath: Self.xcrun)
+        process.arguments = ["devicectl", "--log-output", log.path] + arguments
+        var environment = ProcessInfo.processInfo.environment
+        environment[Self.developerDirectoryVariable] = developerDirectory
+        process.environment = environment
+        process.standardOutput = try FileHandle(forWritingTo: stdout)
+        process.standardError = try FileHandle(forWritingTo: stderr)
+        process.standardInput = FileHandle.nullDevice
+        try process.run()
+        return process
+    }
+
     /// Extracts the members of a zip archive that match `pattern` into `directory`.
     func unzip(_ archive: String, members pattern: String, into directory: String) async throws -> ToolResult {
         try await Self.run([Self.unzip, "-qq", "-o", archive, pattern, "-d", directory], environment: ProcessInfo.processInfo.environment,

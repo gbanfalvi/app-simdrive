@@ -722,6 +722,12 @@ Items from [backlog.md](backlog.md) that have landed, each with its **Result:**,
   - Run the matrix's `orientation` section after an idle period.
   - Add the observed timings to `docs/device-behavior.md`, and close the open question.
 
+### - [x] I35. Faster screenshots on physical devices (S)
+
+- **Result (2026-11-27):** `GuestScreenCapture` reads `CaptureScreenshotOutput.image` from the native output, skipping JSON, which saves a 20 MB string per 4K capture but no time. Five warm 4K Apple TV captures over Wi-Fi took 6.3–9.1 s with JSON and 6.2–8.0 s without, and `devicectl` takes as long. The device's PNG encoding and the network bound it, and `ScreenshotImageFormat` offers only `png`. Binding the getter as `CGImage` crashed ABIBridge, so it is bound as `AnyObject`. Left: I36.
+- **Why:** left from N35. A 3840 × 2160 Apple TV screenshot took 8.2 s over Wi-Fi, and an iPhone's 1.3–2.3 s over USB. `GuestScreenCapture` decodes `CaptureScreenshotOutput` to JSON, so the image is PNG-encoded on the device, base64-encoded, JSON-parsed, decoded, then encoded again as PNG.
+- **Do:** read `CaptureScreenshotOutput.image` as a `CGImage` through ABIBridge instead of through JSON. Measure several rounds before and after. Check whether the input takes a smaller size for calibration, which needs only the image's size; the display info's `nativeSize` may give that with no capture.
+
 ## 3. New features
 
 ### - [x] N1. `openurl <url>`: open a URL or deep link (S)

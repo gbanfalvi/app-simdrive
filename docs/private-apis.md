@@ -161,6 +161,27 @@ Learned in N35 on 2026-11-27 with Xcode 27.2 (CoreDevice 651.32): first in spike
 - **Listing.** `PhysicalDevices.paired()` reads `DeviceInfo`'s `name`, `udid`, `productType`, `osVersion`, `state` and `visibilityClass`, whose raw value `simulators` marks a simulator's record.
 - **Connecting.** `CoreDeviceRemote.open(physical:)` connects, and `Guest(physical:)` opens each feature with `remoteXPCConnection` behind a `RemoteDeviceLink`.
 - **Settings and screenshots** go through `GuestActions`, named by CoreDevice's identifier.
+- **Screenshot output.** The screenshot's `CaptureScreenshotOutput.image` is read from the decoded native value.
+  - Binding that getter as returning `CGImage` crashed in ABIBridge's reference check (`RuntimeObjectType.isSubclass(of:)`, SIGSEGV), so it is bound as `AnyObject` and checked with `CFGetTypeID`.
+  - A 3840 × 2160 Apple TV capture takes 6–9 s warm over Wi-Fi, with JSON or without. `ScreenshotImageFormat` has only `png`, and `devicectl` takes as long.
+- **Backlight and lock state.** These come from `DisplayInfoCapability` and `LockStateCapability`, through `RemoteDevice.getImplementation`.
+  - Their getters, `CoreDevice.DisplayInfoProtocol.displayInfo` and `CoreDevice.LockStateProtocol.currentLockState`, need ABIBridge's `declaredAs:` with `async throws(CoreDevice.CoreDeviceError)`.
+  - `Display.BacklightState` reads `activeOn`, `activeDimmed`, `inactiveOn`, `off` and `unknown`.
+  - `LockState.isPasscodeRequired` is true while a device with a passcode is locked, and false once it is unlocked: it is the only lock signal, and a device without a passcode gives none.
+  - A sleeping iPhone captures black; a sleeping Apple TV refuses with 25005.
+- **Launch output.** `devicectl device process launch --console` relays the app's stdout and stderr to its own, then ends with the app.
+  - It reports the process only in its end-of-run JSON, so simdrive finds the process in `devicectl device info processes`, under the bundle URL `info apps` gives.
+  - `--quiet` also silences the relayed output.
+  - `devicectl`'s own lines ("Launched application…", "App terminated due to signal 5.") reach stdout even with `--log-output`, which only copies them, so `logs` drops stdout lines found in that log.
+  - The relay is a terminal, so lines end in CRLF.
+- **Crash reports.** `devicectl device info files --domain-type systemCrashLogs` lists the crash folder recursively in 0.5 s, with `lastModDate`, and `copy from` fetches a report. The probe's crash report appeared about 4 s after the crash.
+- **Refused by an iPhone on iOS 27.2.1:**
+  - `devicectl device simulate statusBar` fails with "The capability Simulate Status Bar is not supported by this device".
+  - `devicectl device process sendMemoryWarning` fails with "No such file or directory" (POSIX 2), though the device lists `sendmemorywarningtoprocess`.
+- **No unified log route yet.**
+  - `log collect --device-udid` needs root.
+  - `CreateServiceSocketProtocol.fileHandle(toServiceNamed:)` failed with CoreDeviceError 4000 (POSIX 83) for every RSD shim service tried (`os_trace_relay`, `syslog_relay`, `crashreportcopymobile`, `diagnostics_relay`), locked or not. The lockdown name `com.apple.os_trace_relay` gets 1001 ("not supported").
+  - `fileHandleToServiceHub()` does open a socket to the instruments hub, whose `activitytracetap` service carries the log over DTX (N36).
 
 - **The device's services.** Its developer disk image runs the guest's CoreDevice daemons: `dtuhidd`, `dthidd`, `dtconfigurationd`, `dtscreencaptured`, `dtdeviceinfod`, `dtappserviced` and others. The image's files live in `/Library/Developer/DeveloperDiskImages/{iOS,tvOS}_DDI`, each daemon's `RemoteServices` listing its features.
   - Each service requires a `com.apple.private.CoreDevice.*` entitlement of its peer. CoreDevice.framework's `CoreDeviceService.xpc` holds them, so an unentitled process that loads CoreDevice reaches them.

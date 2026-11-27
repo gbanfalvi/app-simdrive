@@ -16,7 +16,6 @@ final class DeviceSession {
         let bootedAt: Date?
         let accessibility: DeviceAccessibility
         let splitView: SplitView
-        let logs: DeviceLogs
         let apps: DeviceApps
     }
 
@@ -28,9 +27,12 @@ final class DeviceSession {
     private let inputs: DeviceInputs
     private let screens: Screens
     private let wake: DisplayWake
+    private let power: any PowerSource
     private let split: SplitState
     private let settings: DeviceSettings
     private let apps: any AppControl
+    /// A simulator's logs, or a physical device's app output and crash reports.
+    private let logs: DeviceLogs
     private let orientation: LazyCapability<GuestOrientation>
     private let pasteboard: LazyCapability<CoreDevicePasteboard>
     private let hinge: LazyCapability<Hinge>
@@ -49,24 +51,25 @@ final class DeviceSession {
         let settings = DeviceSettings(id: udid, name: device.name, majorOSVersion: device.majorOSVersion, simulator: device, tools: tools,
                                       actions: { try await settingActions.required(orThrow: Self.noSettingActions(device.name)) })
         self.init(target: DeviceTarget(kind: .simulator, id: udid), name: device.name, hasTouchscreen: device.hasTouchscreen,
-                  tools: tools, guest: guest, source: source, bootedAt: device.lastBootedAt, simulator: device, settings: settings,
-                  coreDevice: { try await coreDevice.value() }, hinge: hinge)
+                  tools: tools, guest: guest, source: source, bootedAt: device.lastBootedAt, simulator: device, power: device,
+                  settings: settings, coreDevice: { try await coreDevice.value() }, hinge: hinge)
     }
 
     private convenience init(physical record: PhysicalDeviceRecord, remote: CoreDeviceRemote, tools: DeveloperTools, guest: Guest) {
-        let capture = LazyCapability { GuestScreenCapture.open(guest: guest) }
+        let capture = LazyCapability { try await GuestScreenCapture.open(guest: guest) }
         let source = DeviceScreens(name: record.name, hasTouchscreen: !record.isAppleTV, capture: capture)
         let settingActions = LazyCapability { GuestSettingActions.open(guest: guest) }
         let settings = DeviceSettings(id: record.identifier.uuidString, name: record.name, majorOSVersion: record.majorOSVersion,
                                       simulator: nil, tools: tools,
                                       actions: { try await settingActions.required(orThrow: Self.noSettingActions(record.name)) })
+        let power = DevicePower(name: record.name, displays: LazyCapability { try await CoreDeviceDisplays.open(remote: remote) })
         self.init(target: DeviceTarget(kind: .physical, id: record.identifier.uuidString), name: record.name,
                   hasTouchscreen: !record.isAppleTV, tools: tools, guest: guest, source: source, bootedAt: nil, simulator: nil,
-                  settings: settings, coreDevice: { remote }, hinge: LazyCapability { nil })
+                  power: power, settings: settings, coreDevice: { remote }, hinge: LazyCapability { nil })
     }
 
     private init(target: DeviceTarget, name: String, hasTouchscreen: Bool, tools: DeveloperTools, guest: Guest, source: any ScreenSource,
-                 bootedAt: Date?, simulator device: SimulatorDevice?, settings: DeviceSettings,
+                 bootedAt: Date?, simulator device: SimulatorDevice?, power: any PowerSource, settings: DeviceSettings,
                  coreDevice: @escaping @MainActor () async throws -> CoreDeviceRemote?, hinge: LazyCapability<Hinge>) {
         self.target = target
         self.name = name
@@ -74,6 +77,7 @@ final class DeviceSession {
         self.tools = tools
         self.settings = settings
         self.hinge = hinge
+        self.power = power
         let orientation = LazyCapability(isUsable: { !$0.hasFailed }) { try await GuestOrientation.open(guest: guest) }
         self.orientation = orientation
         pasteboard = LazyCapability(isUsable: { !$0.hasFailed }) { try await CoreDevicePasteboard.open(guest: guest, remote: coreDevice) }
@@ -81,22 +85,25 @@ final class DeviceSession {
         self.inputs = inputs
         let screens = Screens(id: target.id, source: source, bootedAt: bootedAt, orientation: orientation, hinge: hinge)
         self.screens = screens
-        wake = DisplayWake(device: device, inputs: inputs)
+        wake = DisplayWake(power: power, inputs: inputs)
         let split = SplitState()
         self.split = split
         guard let device else {
             simulator = nil
-            apps = DeviceAppControl(id: target.id, tools: tools, screens: screens)
+            let logs = DeviceLogs(device: DeviceAppProcesses(id: target.id, tools: tools))
+            self.logs = logs
+            apps = DeviceAppControl(id: target.id, tools: tools, screens: screens, logs: logs)
             return
         }
         let accessibility = DeviceAccessibility(device: device, screens: screens, split: split,
                                                 isAppAccessibilityEnabled: { try await settings.isApplicationAccessibilityEnabled() })
         let logs = DeviceLogs(udid: target.id, tools: tools)
+        self.logs = logs
         let deviceApps = DeviceApps(udid: target.id, tools: tools)
         simulator = SimulatorParts(device: device, bootedAt: bootedAt, accessibility: accessibility,
                                    splitView: SplitView(screens: screens, state: split, inputs: inputs, accessibility: accessibility, logs: logs),
-                                   logs: logs, apps: deviceApps)
-        apps = SimulatorApps(apps: deviceApps, launcher: AppLauncher(udid: target.id, device: device, tools: tools, settings: settings,
+                                   apps: deviceApps)
+        apps = SimulatorApps(device: device, apps: deviceApps, launcher: AppLauncher(udid: target.id, device: device, tools: tools, settings: settings,
                                                                     logs: logs, screens: screens, accessibility: accessibility))
     }
 
@@ -214,6 +221,7 @@ final class DeviceSession {
         case .privacy(let action, let service, let bundleID):
             return try await simulatorOnly(.privacyUnsupported, "change app privacy on").apps
                 .privacy(action, service: service, bundleID: bundleID)
+        // A physical device refuses `devicectl device simulate statusBar`: "Simulate Status Bar is not supported".
         case .statusBar(let override?):
             _ = try simulatorOnly(.statusBarUnsupported, "override the status bar of")
             try await tools.simctl(["status_bar", target.id, "override"] + override.simctlArguments)
@@ -232,7 +240,7 @@ final class DeviceSession {
             try await accessibility().waitUntilGone(selector, within: timeout)
             return ["absent": true]
         case .logs(let query):
-            return try await simulatorOnly(.logsUnsupported, "read the logs of").logs.read(query)
+            return try await logs.read(query)
         case .run(let steps, let attachesLogs):
             return try await run(steps, attachesLogs: attachesLogs, workingDirectory: workingDirectory)
         case .alert(let answer, let timeout):
@@ -241,11 +249,7 @@ final class DeviceSession {
             try simulatorOnly(.shakeUnsupported, "shake").device.postDarwinNotification(Self.shakeNotification)
             return [:]
         case .memoryWarning:
-            let device = try simulatorOnly(.memoryWarningUnsupported, "send a memory warning to").device
-            guard let file = device.memoryWarningFile() else {
-                throw SimDriveError(.memoryWarningUnsupported, "\(device.name) reports no memory warning file.")
-            }
-            try Data().write(to: file)
+            try await apps.memoryWarning()
             return [:]
         case .doctor:
             return await doctor()
@@ -454,7 +458,6 @@ final class DeviceSession {
             starts.append(.now)
             do {
                 if case .logs(let query) = step.command {
-                    let logs = try simulatorOnly(.logsUnsupported, "read the logs of").logs
                     results.append(try await logs.read(query, previousStepStart: previousStart))
                 } else {
                     results.append(try await execute(step.command, workingDirectory: workingDirectory))
@@ -468,7 +471,6 @@ final class DeviceSession {
         guard attachesLogs else { return ["steps": .array(results)] }
         // The steps have run, so a failed read reports itself beside their results.
         do {
-            let logs = try simulatorOnly(.logsUnsupported, "read the logs of").logs
             return ["steps": .array(try await logs.attach(to: results, stepStarts: starts))]
         } catch {
             return ["steps": .array(results), "logsError": .string(error.localizedDescription)]
@@ -490,15 +492,16 @@ final class DeviceSession {
         }
         report["displays"] = await Self.check { try await self.screens.displaysJSON() }
         report["backlight"] = await Self.check {
-            guard let device = self.simulator?.device else { return .unsupported }
+            guard let device = self.simulator?.device else {
+                // A physical device has one screen, numbered as a simulator's main screen.
+                return try await self.power.backlight(screenID: Screens.mainScreenID).map { [String(Screens.mainScreenID): .string($0.rawValue)] }
+                    ?? .unsupported
+            }
             let backlights = try await device.backlights()
             guard !backlights.isEmpty else { return .unsupported }
             return .object(Dictionary(uniqueKeysWithValues: backlights.map { (String($0.key), JSONValue.string($0.value.rawValue)) }))
         }
-        report["locked"] = await Self.check {
-            guard let device = self.simulator?.device else { return .unsupported }
-            return .bool(try device.darwinNotificationState(DisplayWake.lockStateNotification) != 0)
-        }
+        report["locked"] = await Self.check { try await self.power.isLocked().map(JSONValue.bool) ?? .unsupported }
         report["accessibility"] = await Self.check { try await self.accessibility().doctorJSON() }
         report["appearance"] = await Self.check { try await self.settings.value(of: SettingCatalog.appearance) }
         report["posture"] = await Self.check {

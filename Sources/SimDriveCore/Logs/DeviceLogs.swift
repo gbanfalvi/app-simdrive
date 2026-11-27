@@ -1,7 +1,9 @@
 import Foundation
 import SimDriveNative
 
-/// Reads a simulator's unified log, its launched app's output and its crash reports, each from a named cursor.
+/// Reads a simulator's unified log, its launched app's output and its crash reports, each from a named cursor. A physical
+/// device's launched app's output and crash reports read the same way; its unified log needs Instruments' activity trace
+/// (N36), so `logs` there leaves the log out, and fails with `logs-unsupported` when asked for nothing else.
 @MainActor
 struct DeviceLogs {
     /// Where a cursor that has never read starts when no app was launched.
@@ -25,11 +27,26 @@ struct DeviceLogs {
     private let udid: String
     private let tools: DeveloperTools
     private let store: LogStore
+    /// A physical device's apps and crash reports; nil for a simulator.
+    private let device: DeviceAppProcesses?
 
     init(udid: String, tools: DeveloperTools) {
         self.udid = udid
         self.tools = tools
+        device = nil
         store = LogStore(url: StatePaths.logCursors(for: udid))
+    }
+
+    init(device: DeviceAppProcesses) {
+        udid = device.id
+        tools = device.tools
+        self.device = device
+        store = LogStore(url: StatePaths.logCursors(for: device.id))
+    }
+
+    private var logsUnsupported: SimDriveError {
+        SimDriveError(.logsUnsupported, "A physical device's unified log is not readable yet; read its app's output and crashes with "
+                      + "--source stdout,crash.")
     }
 
     /// Removes the last launch's output, and returns where the next one's goes: the guest's own `/tmp`, since the guest
@@ -38,6 +55,13 @@ struct DeviceLogs {
         guard let directory = dataDirectory?.appendingPathComponent(Self.outputDirectory, isDirectory: true) else {
             return AppOutput(files: [:])
         }
+        return prepareLaunch(in: directory)
+    }
+
+    /// As `prepareLaunch(dataDirectory:)`, with the output in `directory` on the Mac, where a physical device's relayed
+    /// output is written.
+    func prepareLaunch(in directory: URL) -> AppOutput {
+        try? FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
         return AppOutput(files: Dictionary(uniqueKeysWithValues: AppOutputStream.allCases.map { stream in
             let url = directory.appendingPathComponent("\(Self.outputFilePrefix).\(stream.rawValue).txt")
             try? FileManager.default.removeItem(at: url)
@@ -54,6 +78,11 @@ struct DeviceLogs {
 
     /// Within `run`, `--until` starts by default at the previous step's start.
     func read(_ query: LogQuery, previousStepStart: Date? = nil) async throws -> JSONValue {
+        var query = query
+        if device != nil {
+            query.sources.remove(.log)
+            guard query.until == nil, !query.sources.isEmpty else { throw logsUnsupported }
+        }
         let contents = store.read()
         let target = try await target(of: query.scope)
         let digest = try LogDigest(query: query, target: target)
@@ -85,10 +114,13 @@ struct DeviceLogs {
             if let last = events.last { moved.date = max(moved.date, last.date.addingTimeInterval(Self.cursorStep)) }
         }
         if query.sources.contains(.stdout) {
+            // `devicectl --console` writes its own messages into a device's relayed stdout as well as into its log.
+            let consoleMessages = device == nil ? [] : Set(((try? String(contentsOf: StatePaths.consoleLog(for: udid), encoding: .utf8)) ?? "")
+                .split(whereSeparator: \.isNewline).map(String.init))
             for stream in AppOutputStream.allCases {
                 let path = contents.app?.path(of: stream)
                 let output = path.map { Self.newLines(of: URL(fileURLWithPath: $0), from: moved[offset: stream]) } ?? ([], 0)
-                let digested = digest.lines(output.lines)
+                let digested = digest.lines(output.lines.filter { !consoleMessages.contains($0) })
                 result[stream.rawValue] = .array(digested.lines.map(JSONValue.string))
                 dropped += digested.dropped
                 moved[offset: stream] = output.end
@@ -96,14 +128,20 @@ struct DeviceLogs {
         }
         if query.sources.contains(.crash) {
             let checkedAt = Date.now
-            if !query.sources.contains(.log), query.until == nil {
+            if device == nil, !query.sources.contains(.log), query.until == nil {
                 var exitsOnly = LogQuery()
                 exitsOnly.predicate = CrashReports.exitPredicate
                 exits = try await show(exitsOnly, target: .all, since: start).compactMap(CrashReports.appExit)
             }
             let writtenAfter = query.since == nil ? cursor?.crashesCheckedAt ?? start : start
             let capturedAfter = query.since == nil ? min(contents.app?.launchedAt ?? start, start) : start
-            let reported = CrashReports.summaries(udid: udid, target: target, writtenAfter: writtenAfter, capturedAfter: capturedAfter)
+            let files = if let device {
+                try await device.crashReports(writtenAfter: writtenAfter, into: StatePaths.crashReports(for: udid))
+            } else {
+                CrashReports.simulatorReports()
+            }
+            let reported = CrashReports.summaries(of: files, udid: device == nil ? udid : nil, target: target, writtenAfter: writtenAfter,
+                                                  capturedAfter: capturedAfter)
             // Read again: resolving the scope may have stored the app's executable name.
             let app = store.read().app
             let ofScope = exits.filter { exit in
@@ -129,6 +167,7 @@ struct DeviceLogs {
 
     /// Adds to each step's result the entries logged while it ran, and moves the default cursor past them.
     func attach(to results: [JSONValue], stepStarts: [Date]) async throws -> [JSONValue] {
+        guard device == nil else { throw logsUnsupported }
         guard let first = stepStarts.first else { return results }
         let launchedAt = store.read().app?.launchedAt
         let query = LogQuery()
@@ -262,6 +301,7 @@ struct DeviceLogs {
     }
 
     private func executable(of bundleID: String) async throws -> String {
+        if let device { return try await device.executable(of: bundleID) }
         let result = try await tools.simctlResult(["get_app_container", udid, bundleID])
         let path = result.standardOutput.trimmingCharacters(in: .whitespacesAndNewlines)
         guard result.succeeded, !path.isEmpty else {
@@ -300,6 +340,8 @@ struct DeviceLogs {
             return ([], start)
         }
         let complete = data[data.startIndex...lastNewline]
-        return (String(decoding: complete, as: UTF8.self).split(separator: "\n").map(String.init), start + UInt64(complete.count))
+        // A device's output arrives through `devicectl`'s terminal, which ends lines with CRLF.
+        let lines = String(decoding: complete, as: UTF8.self).split(omittingEmptySubsequences: true) { $0 == "\n" || $0 == "\r\n" }
+        return (lines.map { String($0).trimmingCharacters(in: CharacterSet(charactersIn: "\r")) }, start + UInt64(complete.count))
     }
 }

@@ -42,6 +42,12 @@ struct CrashReportsTests {
         #expect(summary.frames == ["AXProbe objc_exception_throw + 4"])
     }
 
+    /// A physical device's reports are copied off it, so all are its own, whatever their coalition.
+    @Test func aDevicesReportsNeedNoSimulatorCoalition() throws {
+        let summary = try #require(CrashReports.summary(ofReport: report(coalition: "com.apple.FrontBoard"), path: "/r.ips", udid: nil))
+        #expect(summary.process == "AXProbe")
+    }
+
     @Test func ignoresOtherDevicesAndMalformedReports() {
         #expect(CrashReports.summary(ofReport: report(coalition: "OTHER"), path: "/r.ips", udid: udid) == nil)
         #expect(CrashReports.summary(ofReport: "{}", path: "/r.ips", udid: udid) == nil)

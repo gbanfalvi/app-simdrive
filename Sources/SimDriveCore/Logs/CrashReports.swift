@@ -22,24 +22,39 @@ struct AppExit: Equatable, Sendable {
     let date: Date
 }
 
-/// Reads the crash reports of a simulator's processes.
+/// A crash report file on the Mac, and when it was last written.
+struct CrashReportFile: Sendable {
+    let url: URL
+    let modified: Date
+}
+
+/// Reads crash reports: a simulator's from the Mac's DiagnosticReports, which name the simulator in their coalition, and
+/// a physical device's from the copies `DeviceCrashReports` makes.
 enum CrashReports {
     static let directory = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Library/Logs/DiagnosticReports")
-    private static let reportExtension = "ips"
+    static let reportExtension = "ips"
     private static let deviceCoalitionPrefix = "com.apple.CoreSimulator.SimDevice."
     private static let frameLimit = 10
 
-    /// The device's reports of `target`'s processes written after `writtenAfter` of crashes after `capturedAfter`, oldest
-    /// first. The system rewrites old reports, so the write date alone would repeat them.
-    static func summaries(udid: String, target: LogTarget, writtenAfter: Date, capturedAfter: Date) -> [CrashSummary] {
+    /// The Mac's crash reports, every simulator's among them.
+    static func simulatorReports() -> [CrashReportFile] {
         let keys: Set<URLResourceKey> = [.contentModificationDateKey]
         let files = (try? FileManager.default.contentsOfDirectory(at: directory, includingPropertiesForKeys: Array(keys))) ?? []
-        return files.filter { file in
-            guard file.pathExtension == reportExtension,
-                  let modified = try? file.resourceValues(forKeys: keys).contentModificationDate else { return false }
-            return modified > writtenAfter
-        }.compactMap { file in
-            (try? String(contentsOf: file, encoding: .utf8)).flatMap { summary(ofReport: $0, path: file.path, udid: udid) }
+        return files.compactMap { file in
+            guard file.pathExtension == reportExtension, let modified = try? file.resourceValues(forKeys: keys).contentModificationDate else {
+                return nil
+            }
+            return CrashReportFile(url: file, modified: modified)
+        }
+    }
+
+    /// The reports among `files` of `target`'s processes written after `writtenAfter` of crashes after `capturedAfter`,
+    /// oldest first; `udid` keeps a simulator's own. The system rewrites old reports, so the write date alone would repeat
+    /// them.
+    static func summaries(of files: [CrashReportFile], udid: String?, target: LogTarget, writtenAfter: Date,
+                          capturedAfter: Date) -> [CrashSummary] {
+        files.filter { $0.modified > writtenAfter }.compactMap { file in
+            (try? String(contentsOf: file.url, encoding: .utf8)).flatMap { summary(ofReport: $0, path: file.url.path, udid: udid) }
         }.filter { summary in
             guard capturedAt(summary).map({ $0 >= capturedAfter }) ?? true else { return false }
             return switch target {
@@ -50,11 +65,11 @@ enum CrashReports {
         }.sorted { $0.time < $1.time }
     }
 
-    /// Nil when the report is of another device or not a crash.
-    static func summary(ofReport text: String, path: String, udid: String) -> CrashSummary? {
+    /// Nil when the report is not a crash, or with `udid`, of another simulator. A device's reports are all its own.
+    static func summary(ofReport text: String, path: String, udid: String?) -> CrashSummary? {
         guard let headerEnd = text.firstIndex(of: "\n"),
               let body = try? JSONSerialization.jsonObject(with: Data(text[text.index(after: headerEnd)...].utf8)) as? [String: Any],
-              body["coalitionName"] as? String == deviceCoalitionPrefix + udid,
+              udid.map({ body["coalitionName"] as? String == deviceCoalitionPrefix + $0 }) ?? true,
               let process = body["procName"] as? String, let exception = body["exception"] as? [String: Any] else {
             return nil
         }

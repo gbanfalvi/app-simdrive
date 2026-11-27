@@ -21,7 +21,7 @@ In Core, `DeviceSession` builds a session's parts once, by kind. Where the kinds
 - `AppControl`: `SimulatorApps` and `DeviceAppControl`.
 - Settings: each `SettingCatalog` row lists its storages in order of preference.
 
-What needs CoreSimulator is kept in the session's `SimulatorParts`: accessibility, logs, split view, `push`, `privacy`, `shake`, the status bar, the memory warning and the display wake. On a device, each fails with its capability's `-unsupported` code.
+What needs CoreSimulator is kept in the session's `SimulatorParts`: accessibility, split view, `push`, `privacy`, `shake` and the status bar. On a device, each fails with its capability's `-unsupported` code, as does the memory warning, which a device refuses. The display wake reads a `PowerSource`, either CoreSimulator or CoreDevice's display and lock capabilities. `DeviceLogs` reads a device's relayed app output, and its crash reports through `DeviceAppProcesses`, but no unified log yet (N36).
 
 ## Source layout
 
@@ -47,7 +47,7 @@ Folders group code by subject; a subject usually has a driver in Native and a ty
 | `SimDriveCore/Split` | `SplitView`, `SplitGesture` and `DisplayLayout`, the Duo's split view and the layout SpringBoard logs; `SplitState`, the half simdrive set, kept per app pid since reading SpringBoard's log for it takes seconds. |
 | `SimDriveCore/DeviceControl` | `Hinge`, which waits for the hinge to settle at a posture. |
 | `SimDriveCore/Settings` | `SettingCatalog` (one row per setting), `DeviceSettings`, `GuestPreferences`, and `CoreDeviceSetting`, which maps rows to setting actions' JSON. |
-| `SimDriveCore/Logs` | `DeviceLogs`, `LogQuery`, `LogDigest`, `LogStore`, `LogEvent`, `CrashReports`. |
+| `SimDriveCore/Logs` | `DeviceLogs`, `LogQuery`, `LogDigest`, `LogStore`, `LogEvent`, `CrashReports`, and `DeviceAppProcesses`, a physical device's apps, processes and crash reports through `devicectl`. |
 | `SimDriveCore/Tools` | `DeveloperTools`, which runs `simctl`, `devicectl` and friends for one developer directory, and `Devices`, which lists booted simulators and connected devices and resolves the `DeviceTarget` a command names. |
 | `SimDriveCore/Support` | Core's `ErrorCode` constants, `JSONValue`, and `poll` and `withDeadline`, the one way Core waits with a limit. |
 

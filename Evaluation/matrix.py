@@ -959,7 +959,7 @@ DEVICE_UNSUPPORTED = [
     (('tree',), 'accessibility-unsupported'),
     (('tap', '--label', 'Play', '--timeout', '100'), 'accessibility-unsupported'),
     (('alert',), 'accessibility-unsupported'),
-    (('logs',), 'logs-unsupported'),
+    (('logs', '--source', 'log'), 'logs-unsupported'),
     (('shake',), 'shake-unsupported'),
     (('memory-warning',), 'memory-warning-unsupported'),
     (('status-bar', 'clear'), 'status-bar-unsupported'),
@@ -1070,6 +1070,23 @@ def device_misc_checks():
     launch_probe()
 
 
+def device_logs_checks(points):
+    """A device's launched app's stdout, stderr and crash report; its unified log is not readable yet (N36)."""
+    launch_probe()
+    time.sleep(2)
+    sd('logs', '--source', 'stdout,crash')
+    sd('tap', *points['play'])
+    response = poll_logs(['--source', 'stdout'], lambda result: 'TAP play stdout' in result.get('stdout', []), 10)
+    check('logs stdout', 'TAP play stdout' in response.get('result', {}).get('stdout', []), brief(response))
+    sd('launch', BUNDLE, '-probeCrash')
+    response = poll_logs(['--source', 'stdout'], lambda result: any('probe crash' in line for line in result.get('stderr', [])), 15)
+    check('logs stderr (fatal error)', 'probe crash' in json.dumps(response.get('result', {}).get('stderr')), brief(response))
+    response = poll_logs(['--source', 'crash'], lambda result: result.get('crashes'), 60)
+    crashes = response.get('result', {}).get('crashes', [])
+    check('logs crash summary', any('sceneDidBecomeActive' in ' '.join(crash['frames']) for crash in crashes), brief(response)[:200])
+    launch_probe()
+
+
 def device_setting_checks():
     """Each setting changes from its current value and back, since a device's owner may already have it either way."""
     for name, value, default, on, off in DEVICE_SETTINGS:
@@ -1114,6 +1131,10 @@ def device_tv_checks():
 def device_main(doctor):
     """Checks a physical device. A device is someone's own, so every change is put back, and the pasteboard is written
     only with --pasteboard; there is no tree, so the probe logs where its controls are."""
+    # A device with a passcode locks when its display sleeps, and simdrive never types the passcode, so a locked device
+    # fails every launch and touch; Auto-Lock set to Never keeps it unlocked for a run.
+    if doctor['result'].get('locked') is True:
+        sys.exit(f'{udid} is locked: unlock it, and set Auto-Lock to Never for the run')
     initial = setting_snapshot()
     if want('basics'):
         basics(doctor)
@@ -1130,6 +1151,8 @@ def device_main(doctor):
             device_tap_checks(points)
         if points and want('keys'):
             device_key_checks(points)
+        if points and want('logs'):
+            device_logs_checks(points)
         if want('orientation'):
             device_orientation_checks()
         if want('buttons'):

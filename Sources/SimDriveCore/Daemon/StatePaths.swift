@@ -15,6 +15,12 @@ enum StatePaths {
     static func screens(for udid: String) -> URL { directory.appendingPathComponent("\(udid).screens.json") }
     static func calibration(for udid: String) -> URL { directory.appendingPathComponent("\(udid).calibration.png") }
     static func logCursors(for udid: String) -> URL { directory.appendingPathComponent("\(udid).logs.json") }
+    /// A physical device's crash reports, copied off it as `logs` reads them.
+    static func crashReports(for udid: String) -> URL { directory.appendingPathComponent("\(udid).crashes", isDirectory: true) }
+    /// A physical device's launched app's stdout and stderr, which `devicectl --console` relays to the Mac.
+    static func appOutput(for udid: String) -> URL { directory.appendingPathComponent("\(udid).output", isDirectory: true) }
+    /// `devicectl`'s own messages while it relays that output, which it also writes to the app's stdout.
+    static func consoleLog(for udid: String) -> URL { appOutput(for: udid).appendingPathComponent("devicectl.txt") }
 
     /// Creates the directory, or checks the one there. Its name is predictable in a directory every user can write to,
     /// so another user could create it first and redirect the socket, the log or the records written into it.
