@@ -48,7 +48,7 @@ Results at v0.1.2, on new simulators: iPhone 17, iOS 27.2: the whole matrix 156/
 
 Results at v0.2.0: the whole matrix on a new iPhone 17, iOS 27.2, 157/157 with one retried launch. Device mode at N35 (2026-11-27): iPhone 15 Pro, iOS 27.2.1 over USB, 48/48 in about 100 s; Apple TV 4K, tvOS 27.2.1 over Wi-Fi, 20/20.
 
-After device wake and logs (N36, N38): the whole matrix on a new iPhone 17, iOS 27.2, 157/157; device mode on the iPhone 15 Pro, 51/51 with Auto-Lock set to Never, and on the Apple TV, 20/20. A device with a passcode that locks mid-run fails every launch, so device mode refuses to start on a locked device.
+Results at v0.2.1, after device wake and logs (N36, N38): the whole matrix on a new iPhone 17, iOS 27.2, 157/157; device mode on the iPhone 15 Pro, 51/51 with Auto-Lock set to Never, and on the Apple TV, 20/20. A device with a passcode that locks mid-run fails every launch, so device mode refuses to start on a locked device.
 
 ## The probe app
 
