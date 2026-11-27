@@ -45,7 +45,7 @@ Results at v0.1.1, by section on new simulators as each change landed, not one w
 
 Results at v0.1.2, on new simulators: iPhone 17, iOS 27.2: the whole matrix 156/157 before F31's status-bar fix and F24's tokenless request, then `tree,tap` 56/56, `services` 12/12 twice, `settings` 49/49 and 47/47; iPhone Duo, iOS 27.2: `tree,tap,posture,buttons` 64/65, the failure `tree --app` before F24's fix, then `tree,tap` 55/55; iPhone 15, iOS 17.0 at 0d2c5fa: 150/152, failing `privacy grant photos` (F36) and a sheet-transition tap (F37).
 
-Device mode at N35 (2026-11-27): iPhone 15 Pro, iOS 27.2.1 over USB, 48/48 in about 100 s; Apple TV 4K, tvOS 27.2.1 over Wi-Fi, 20/20.
+Results at v0.2.0: the whole matrix on a new iPhone 17, iOS 27.2, 157/157 with one retried launch. Device mode at N35 (2026-11-27): iPhone 15 Pro, iOS 27.2.1 over USB, 48/48 in about 100 s; Apple TV 4K, tvOS 27.2.1 over Wi-Fi, 20/20.
 
 ## The probe app
 
